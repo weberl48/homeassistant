@@ -223,8 +223,67 @@ def build_scheduler(
 
         journal.set_today_markdown(md)
 
+    def _check_crypto_exits() -> int:
+        """Check + execute exits on held crypto positions.
+
+        Returns the number of crypto positions that were open at scan time. Shared between
+        the full crypto_scan (every 30m) and the lightweight crypto_position_monitor (every 5m).
+
+        IMPORTANT: sell qty is read from Alpaca's live position (not our stored filled_qty)
+        because Alpaca's order.filled_qty reports the GROSS amount including their crypto fee,
+        while the actual position holds only the NET amount. Submitting the gross value triggers
+        "insufficient balance" rejections that leave the position stuck in a retry loop.
+        """
+        open_trades = journal.list_open_trades()
+        crypto_opens = [ot for ot in open_trades if ot.strategy == "crypto_mean_reversion"]
+        if not crypto_opens:
+            return 0
+
+        exits = [e for e in cmr.compute_exits(client, crypto_opens) if e.fired]
+        if not exits:
+            return len(crypto_opens)
+
+        # Snapshot Alpaca's live positions once for all exits this cycle.
+        try:
+            live_qty = {p["symbol"]: float(p["qty"]) for p in client.positions()}
+        except Exception:
+            log.exception("crypto exit: failed to fetch live positions, skipping cycle")
+            return len(crypto_opens)
+
+        for e in exits:
+            journal.write_signal("crypto_mean_reversion", e.symbol, "exit", True, e.reason)
+            try:
+                actual_qty = live_qty.get(e.symbol)
+                if actual_qty is None or actual_qty <= 0:
+                    # Position already gone (manual close, prior exit fill, etc.) — sync DB and move on
+                    log.warning("crypto exit %s: no live position; marking closed in DB", e.symbol)
+                    journal.close_trade(e.symbol, "crypto_mean_reversion", e.last_close,
+                                        e.reason + " [no_live_position]")
+                    continue
+                ask = client.latest_crypto_ask(e.symbol)
+                limit = round(ask * (1 - cmr.LIMIT_PREMIUM_OVER_ASK), 2)
+                client.place_crypto_sell_qty(e.symbol, actual_qty, limit)
+                pnl = journal.close_trade(e.symbol, "crypto_mean_reversion", e.last_close, e.reason)
+                journal.record_trade_outcome(was_loss=(pnl is not None and pnl < 0))
+                log.info("CRYPTO EXIT %s qty=%.8f limit=%.2f pnl=%s reason=%s",
+                         e.symbol, actual_qty, limit, f"${pnl:.2f}" if pnl else "?", e.reason)
+            except Exception:
+                log.exception("crypto exit failed for %s", e.symbol)
+        return len(crypto_opens)
+
+    def crypto_position_monitor():
+        """Lightweight 5-min job: exit-only check on open crypto positions.
+        Skips entirely if no positions open — no API calls wasted polling empty state.
+        Complements the every-30-min crypto_scan by tightening stop-loss reaction time."""
+        if not cfg.strategy_crypto_enabled:
+            return
+        n = _check_crypto_exits()
+        if n == 0:
+            return  # silent skip — most invocations land here when no positions are open
+        log.info("crypto_position_monitor: checked exits on %d position(s)", n)
+
     def crypto_scan():
-        """Single 24/7 crypto job: reconcile pending crypto orders, check exits, compute + place entries.
+        """Full 24/7 crypto job: reconcile pending crypto orders, check exits, compute + place entries.
         Runs every 30 min around the clock — crypto markets never close."""
         if not cfg.strategy_crypto_enabled:
             return
@@ -249,25 +308,8 @@ def build_scheduler(
             except Exception:
                 log.exception("crypto order reconcile failed for %s", order_id)
 
-        # 2) Check exits on held crypto positions.
-        open_trades = journal.list_open_trades()
-        crypto_opens = [ot for ot in open_trades if ot.strategy == "crypto_mean_reversion"]
-        exits = [e for e in cmr.compute_exits(client, crypto_opens) if e.fired]
-        for e in exits:
-            journal.write_signal("crypto_mean_reversion", e.symbol, "exit", True, e.reason)
-            try:
-                ask = client.latest_crypto_ask(e.symbol)
-                limit = round(ask * (1 - cmr.LIMIT_PREMIUM_OVER_ASK), 2)
-                ot = next((o for o in crypto_opens if o.symbol == e.symbol), None)
-                if not ot or ot.filled_qty is None:
-                    continue
-                client.place_crypto_sell_qty(e.symbol, ot.filled_qty, limit)
-                pnl = journal.close_trade(e.symbol, "crypto_mean_reversion", e.last_close, e.reason)
-                journal.record_trade_outcome(was_loss=(pnl is not None and pnl < 0))
-                log.info("CRYPTO EXIT %s qty=%.6f limit=%.2f pnl=%s reason=%s",
-                         e.symbol, ot.filled_qty, limit, f"${pnl:.2f}" if pnl else "?", e.reason)
-            except Exception:
-                log.exception("crypto exit failed for %s", e.symbol)
+        # 2) Check exits on held crypto positions (shared with crypto_position_monitor).
+        _check_crypto_exits()
 
         # 3) Compute + log entry signals (one row per symbol, always written for visibility).
         held = {ot.symbol for ot in crypto_opens}
@@ -342,6 +384,7 @@ def build_scheduler(
         "eod_journal": _safe("eod_journal", eod_journal),
         "weekly_review": _safe("weekly_review", weekly_review),
         "crypto_scan": _safe("crypto_scan", crypto_scan),
+        "crypto_position_monitor": _safe("crypto_position_monitor", crypto_position_monitor),
     }
 
     scheduler.add_job(jobs["market_open_check"], CronTrigger(day_of_week="mon-fri", hour=9, minute=30, timezone=ET))
@@ -351,8 +394,11 @@ def build_scheduler(
     scheduler.add_job(jobs["pre_close_exit"], CronTrigger(day_of_week="mon-fri", hour=15, minute=55, timezone=ET))
     scheduler.add_job(jobs["eod_journal"], CronTrigger(day_of_week="mon-fri", hour=16, minute=15, timezone=ET))
     scheduler.add_job(jobs["weekly_review"], CronTrigger(day_of_week="sun", hour=18, minute=0, timezone=ET))
-    # Crypto: 24/7 every 30m. No day_of_week filter — crypto markets never close.
+    # Crypto: 24/7. crypto_scan does the full cycle (reconcile + exits + entries) every 30m;
+    # crypto_position_monitor does exit-only checks every 5m to tighten stop-loss reaction
+    # on crypto's volatility. The 5m job self-skips when no positions are open.
     if cfg.strategy_crypto_enabled:
         scheduler.add_job(jobs["crypto_scan"], CronTrigger(minute="*/30", timezone=ET))
+        scheduler.add_job(jobs["crypto_position_monitor"], CronTrigger(minute="*/5", timezone=ET))
 
     return scheduler, jobs
