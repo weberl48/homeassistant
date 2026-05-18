@@ -1,0 +1,130 @@
+# =====================================================================
+# Jukebox search helpers + scripts (consolidated, no duplicate top-level keys)
+# =====================================================================
+
+input_text:
+  guest_song_query:
+    name: "Guest Song Query"
+    initial: ""
+    mode: text
+    max: 80
+  guest_last_queued:
+    name: "Guest Last Queued"
+    initial: ""
+    mode: text
+    max: 200
+  guest_result_1:
+    name: "Search Result 1"
+    initial: ""
+    max: 255
+  guest_result_2:
+    name: "Search Result 2"
+    initial: ""
+    max: 255
+  guest_result_3:
+    name: "Search Result 3"
+    initial: ""
+    max: 255
+  guest_result_4:
+    name: "Search Result 4"
+    initial: ""
+    max: 255
+  guest_result_5:
+    name: "Search Result 5"
+    initial: ""
+    max: 255
+
+shell_command:
+  spotify_search_only: "python3 /config/scripts/spotify_search_queue.py search '{{ query | string | replace(\"'\", \"\") }}'"
+  spotify_queue_uri: "python3 /config/scripts/spotify_search_queue.py queue-uri '{{ uri | string | replace(\"'\", \"\") }}'"
+
+script:
+  spotify_queue_search:
+    alias: "Spotify: Search and queue top result"
+    icon: mdi:playlist-plus
+    fields:
+      query:
+        name: Query
+        required: true
+    sequence:
+      - service: shell_command.spotify_search_queue
+        data:
+          query: "{{ query }}"
+        response_variable: result
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.guest_last_queued
+        data:
+          value: "{{ (result.stdout if result.stdout else result.stderr) | default('queue failed') | string }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.guest_song_query
+        data:
+          value: ""
+
+  spotify_load_results:
+    alias: "Spotify: Search and load top 5 results"
+    icon: mdi:magnify-scan
+    fields:
+      query:
+        name: Query
+        required: true
+    sequence:
+      - service: shell_command.spotify_search_only
+        data:
+          query: "{{ query }}"
+        response_variable: result
+      - variables:
+          lines: "{{ (result.stdout or '').split('\n') }}"
+      - service: input_text.set_value
+        target: { entity_id: input_text.guest_result_1 }
+        data:
+          value: "{{ lines[0] | default('') }}"
+      - service: input_text.set_value
+        target: { entity_id: input_text.guest_result_2 }
+        data:
+          value: "{{ lines[1] | default('') }}"
+      - service: input_text.set_value
+        target: { entity_id: input_text.guest_result_3 }
+        data:
+          value: "{{ lines[2] | default('') }}"
+      - service: input_text.set_value
+        target: { entity_id: input_text.guest_result_4 }
+        data:
+          value: "{{ lines[3] | default('') }}"
+      - service: input_text.set_value
+        target: { entity_id: input_text.guest_result_5 }
+        data:
+          value: "{{ lines[4] | default('') }}"
+
+  spotify_queue_slot:
+    alias: "Spotify: Queue a specific search result slot"
+    icon: mdi:playlist-plus
+    fields:
+      slot:
+        name: Slot
+        required: true
+    sequence:
+      - variables:
+          line: "{{ states('input_text.guest_result_' ~ slot) }}"
+          parts: "{{ line.split('|||') }}"
+          uri: "{{ parts[2] if parts | length >= 3 else '' }}"
+          title: "{{ parts[0] if parts | length >= 1 else '' }}"
+          artist: "{{ parts[1] if parts | length >= 2 else '' }}"
+      - if:
+          - condition: template
+            value_template: "{{ uri | length > 0 }}"
+        then:
+          - service: shell_command.spotify_queue_uri
+            data:
+              uri: "{{ uri }}"
+            response_variable: r
+          - service: input_text.set_value
+            target: { entity_id: input_text.guest_last_queued }
+            data:
+              value: "QUEUED: {{ title }} — {{ artist }}"
+        else:
+          - service: input_text.set_value
+            target: { entity_id: input_text.guest_last_queued }
+            data:
+              value: "(empty slot)"

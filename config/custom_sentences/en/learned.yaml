@@ -1,0 +1,119 @@
+language: en
+intents:
+  RunLearnedScript:
+    data:
+    - sentences:
+      - turn on the heaters
+      slots:
+        target_script: script.speakeasy_heaters_on
+        done_message: Both heaters are on!
+    - sentences:
+      - pc stream
+      slots:
+        target_script: script.speakeasy_pc_stream
+        done_message: PC stream mode activated!
+    - sentences:
+      - retro mode
+      slots:
+        target_script: script.speakeasy_retro
+        done_message: Retro gaming mode activated — game on!
+    - sentences:
+      - open netflix
+      slots:
+        target_script: script.shield_open_netflix
+        done_message: Opening Netflix on the Shield!
+    - sentences:
+      - open youtube
+      slots:
+        target_script: script.shield_open_youtube
+        done_message: Opening YouTube on the Shield.
+    - sentences:
+      - music viz
+      slots:
+        target_script: script.speakeasy_music_viz
+        done_message: Music and visualizer mode activated!
+    - sentences:
+      - open hulu
+      slots:
+        target_script: script.shield_open_hulu
+        done_message: Opening Hulu.
+    - sentences:
+      - open jellyfin
+      slots:
+        target_script: script.shield_open_jellyfin
+        done_message: Opening Jellyfin.
+    - sentences:
+      - open stremio
+      slots:
+        target_script: script.shield_open_stremio
+        done_message: Opening Stremio on the Shield.
+    - sentences:
+      - open prime video
+      slots:
+        target_script: script.shield_open_prime_video
+        done_message: Opening Prime Video.
+    - sentences:
+      - i'm watching a movie
+      slots:
+        target_script: script.speakeasy_movie
+        done_message: Starting movie mode!
+    - sentences:
+      - warm up the basement
+      slots:
+        target_script: script.speakeasy_warmup_basement
+        done_message: Warming up the basement!
+    - sentences:
+      - warmup the basement
+      slots:
+        target_script: script.speakeasy_warmup_basement
+        done_message: Warming up the basement!
+    - sentences:
+      - movie night
+      slots:
+        target_script: script.speakeasy_movie
+        done_message: Starting movie mode!
+    - sentences:
+      - music visualizer
+      slots:
+        target_script: script.speakeasy_music_viz
+        done_message: Music visualizer mode activated!
+    - sentences:
+      - play some music
+      slots:
+        target_script: script.speakeasy_music_viz
+        done_message: Music mode is on!
+    - sentences:
+      - open spotify
+      slots:
+        target_script: script.shield_open_spotify
+        done_message: Opening Spotify.
+    - sentences:
+      - turn off the heaters
+      slots:
+        target_script: script.speakeasy_heaters_off
+        done_message: Heaters off.
+    - sentences:
+      - snooze adguard for 15 minutes
+      slots:
+        target_script: script.adguard_snooze_15
+        done_message: AdGuard snoozed for 15 minutes.
+    - sentences:
+      - pause adguard for 30 minutes
+      slots:
+        target_script: script.adguard_snooze_30
+        done_message: AdGuard paused for 30 minutes.
+    - sentences:
+      - resume adguard
+      slots:
+        target_script: script.adguard_resume_now
+        done_message: AdGuard blocking resumed.
+    - sentences:
+      - make it warmer
+      slots:
+        target_script: script.speakeasy_warmup_basement
+        done_message: Warming up the basement.
+    - sentences:
+      - turn the heaters off
+      slots:
+        target_script: script.speakeasy_heaters_off
+        done_message: Heaters off.

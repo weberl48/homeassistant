@@ -1,0 +1,319 @@
+shield_launch_app:
+  alias: 'Shield: Launch app (waking if needed)'
+  icon: mdi:application
+  fields:
+    package:
+      description: Android package name (e.g. com.netflix.ninja)
+      required: true
+      example: com.netflix.ninja
+  sequence:
+  - service: shell_command.py_shield_launch_app
+    data:
+      package: '{{ package }}'
+shield_open_netflix:
+  alias: 'Shield: Open Netflix'
+  icon: mdi:netflix
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: netflix
+shield_open_youtube:
+  alias: 'Shield: Open YouTube'
+  icon: mdi:youtube
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: youtube
+shield_open_plex:
+  alias: 'Shield: Open Plex'
+  icon: mdi:plex
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: plex
+shield_open_jellyfin:
+  alias: 'Shield: Open Jellyfin'
+  icon: mdi:jellyfish
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: jellyfin
+shield_open_disney_plus:
+  alias: 'Shield: Open Disney+'
+  icon: mdi:star-david
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: disney_plus
+shield_open_prime_video:
+  alias: 'Shield: Open Prime Video'
+  icon: mdi:amazon
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: prime_video
+shield_open_max:
+  alias: 'Shield: Open Max'
+  icon: mdi:movie-open
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: max
+shield_open_hulu:
+  alias: 'Shield: Open Hulu'
+  icon: mdi:television-classic
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: hulu
+shield_open_apple_tv:
+  alias: 'Shield: Open Apple TV'
+  icon: mdi:apple
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: apple_tv
+shield_open_spotify:
+  alias: 'Shield: Open Spotify'
+  icon: mdi:spotify
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: spotify
+shield_open_tubi:
+  alias: 'Shield: Open Tubi'
+  icon: mdi:television
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: tubi
+shield_open_pluto_tv:
+  alias: 'Shield: Open Pluto TV'
+  icon: mdi:television
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: pluto_tv
+shield_open_twitch:
+  alias: 'Shield: Open Twitch'
+  icon: mdi:twitch
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: twitch
+shield_open_steam_link:
+  alias: 'Shield: Open Steam Link'
+  icon: mdi:steam
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: steam_link
+shield_open_kodi:
+  alias: 'Shield: Open Kodi'
+  icon: mdi:kodi
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: kodi
+shield_open_vlc:
+  alias: 'Shield: Open VLC'
+  icon: mdi:vlc
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: vlc
+shield_open_stremio:
+  alias: 'Shield: Open Stremio'
+  icon: mdi:movie-play
+  sequence:
+  - service: shell_command.py_shield_open
+    data:
+      app: stremio
+shield_play_spotify:
+  alias: 'Shield: Play song on Spotify'
+  icon: mdi:music
+  fields:
+    query:
+      description: Song title (or 'artist - title') to search and play on the Shield
+      required: true
+      example: Bohemian Rhapsody
+  sequence:
+  - service: shell_command.py_shield_play_spotify
+    data:
+      query: '{{ query }}'
+shield_stremio_search:
+  alias: 'Shield: Search Stremio'
+  icon: mdi:movie-search
+  fields:
+    query:
+      description: Title to search on Stremio (movie or series)
+      required: true
+      example: Spider-Man
+  sequence:
+  - service: shell_command.py_shield_stremio_search
+    data:
+      query: '{{ query }}'
+shield_stremio_play:
+  alias: 'Shield: Open in Stremio (best-match detail page)'
+  icon: mdi:movie-play
+  fields:
+    query:
+      description: Movie or series title — opens the detail page in Stremio. You still
+        pick a stream + press Play.
+      required: true
+      example: The Big Lebowski
+  sequence:
+  - service: shell_command.py_shield_stremio_play
+    data:
+      query: '{{ query }}'
+denon_mute_toggle:
+  alias: 'Denon: Toggle mute'
+  icon: mdi:volume-mute
+  sequence:
+  - service: shell_command.py_denon
+    data:
+      cmd: mute_toggle
+denon_volume_step_up:
+  alias: 'Denon: Volume +2%'
+  icon: mdi:volume-plus
+  sequence:
+  - service: shell_command.py_denon
+    data:
+      cmd: vol_up
+  mode: parallel
+  max: 20
+denon_volume_step_down:
+  alias: 'Denon: Volume -2%'
+  icon: mdi:volume-minus
+  sequence:
+  - service: shell_command.py_denon
+    data:
+      cmd: vol_down
+  mode: parallel
+  max: 20
+denon_source_next:
+  alias: 'Denon: Next source'
+  icon: mdi:arrow-right-bold
+  sequence:
+  - service: shell_command.py_denon
+    data:
+      cmd: source_next
+denon_source_prev:
+  alias: 'Denon: Previous source'
+  icon: mdi:arrow-left-bold
+  sequence:
+  - service: shell_command.py_denon
+    data:
+      cmd: source_prev
+speakeasy_activity_next:
+  alias: 'Speakeasy: Next activity'
+  icon: mdi:skip-next
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: activity_next
+speakeasy_activity_prev:
+  alias: 'Speakeasy: Previous activity'
+  icon: mdi:skip-previous
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: activity_prev
+speakeasy_play_pause_smart:
+  alias: 'Speakeasy: Play/Pause smart'
+  icon: mdi:play-pause
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: play_pause_smart
+speakeasy_skip_next:
+  alias: 'Speakeasy: Skip next'
+  icon: mdi:skip-next
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: skip_next
+speakeasy_skip_prev:
+  alias: 'Speakeasy: Skip previous'
+  icon: mdi:skip-previous
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: skip_prev
+speakeasy_heater_target_up:
+  alias: 'Speakeasy: Heater target +1°F'
+  icon: mdi:thermometer-plus
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: heater_target_up
+speakeasy_heater_target_down:
+  alias: 'Speakeasy: Heater target -1°F'
+  icon: mdi:thermometer-minus
+  sequence:
+  - service: shell_command.py_speakeasy_controls
+    data:
+      cmd: heater_target_down
+dial_menu_confirm:
+  alias: 'Speakeasy: Dial menu dispatch'
+  icon: mdi:menu
+  fields:
+    screen:
+      description: Screen index (1=movie, 2=music, 3=retro, 4=pc)
+      example: 1
+    item:
+      description: Selected menu index
+      example: 0
+  sequence:
+  - choose:
+    - conditions: '{{ screen|int == 1 and item|int == 0 }}'
+      sequence:
+      - service: script.speakeasy_movie
+    - conditions: '{{ screen|int == 1 and item|int == 1 }}'
+      sequence:
+      - service: script.shield_open_stremio
+    - conditions: '{{ screen|int == 1 and item|int == 2 }}'
+      sequence:
+      - service: script.shield_open_plex
+    - conditions: '{{ screen|int == 1 and item|int == 3 }}'
+      sequence:
+      - service: script.shield_open_netflix
+    - conditions: '{{ screen|int == 1 and item|int == 4 }}'
+      sequence:
+      - service: script.shield_open_disney_plus
+    - conditions: '{{ screen|int == 1 and item|int == 5 }}'
+      sequence:
+      - service: script.shield_open_prime_video
+    - conditions: '{{ screen|int == 1 and item|int == 6 }}'
+      sequence:
+      - service: script.shield_open_apple_tv
+    - conditions: '{{ screen|int == 1 and item|int == 7 }}'
+      sequence:
+      - service: script.shield_open_hulu
+    - conditions: '{{ screen|int == 1 and item|int == 8 }}'
+      sequence:
+      - service: script.shield_open_max
+    - conditions: '{{ screen|int == 1 and item|int == 9 }}'
+      sequence:
+      - service: script.shield_open_jellyfin
+    - conditions: '{{ screen|int == 2 and item|int == 0 }}'
+      sequence:
+      - service: script.speakeasy_music_viz
+    - conditions: '{{ screen|int == 2 and item|int == 1 }}'
+      sequence:
+      - service: script.shield_open_spotify
+    - conditions: '{{ screen|int == 2 and item|int == 2 }}'
+      sequence:
+      - service: script.shield_open_youtube
+    - conditions: '{{ screen|int == 3 and item|int == 0 }}'
+      sequence:
+      - service: script.speakeasy_retro
+    - conditions: '{{ screen|int == 3 and item|int == 1 }}'
+      sequence:
+      - service: script.shield_open_steam_link
+    - conditions: '{{ screen|int == 4 and item|int == 0 }}'
+      sequence:
+      - service: script.speakeasy_pc_stream
+    - conditions: '{{ screen|int == 4 and item|int == 1 }}'
+      sequence:
+      - service: script.shield_open_steam_link

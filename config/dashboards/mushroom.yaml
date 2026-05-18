@@ -1,0 +1,462 @@
+# =====================================================================
+# Speakeasy Home — phone-friendly dashboard
+# Curated view (no mushroom-strategy auto-generation noise).
+# Single now-playing card chosen by current activity. One volume slider.
+# =====================================================================
+title: "Speakeasy Home"
+
+views:
+  - title: Home
+    path: home
+    icon: mdi:home
+    type: sections
+    max_columns: 2
+    theme: neon_speakeasy
+    sections:
+      # ============================================================
+      # SCENE TILES
+      # ============================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: TONIGHT'S VIBE
+            heading_style: title
+            icon: mdi:star-four-points-circle
+
+          - type: custom:mushroom-template-card
+            primary: MOVIE
+            secondary: stremio · projector
+            icon: mdi:movie-open
+            icon_color: pink
+            fill_container: true
+            layout: vertical
+            tap_action: { action: call-service, service: script.speakeasy_movie }
+            card_mod:
+              style: |
+                ha-card { min-height: 110px !important; background: linear-gradient(135deg, rgba(255,45,146,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,45,146,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,45,146,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 15px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff2d92 !important; text-shadow: 0 0 8px rgba(255,45,146,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,45,146,0.18) !important; --icon-size: 40px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: MUSIC
+            secondary: spotify · viz
+            icon: mdi:music
+            icon_color: purple
+            fill_container: true
+            layout: vertical
+            tap_action: { action: call-service, service: script.speakeasy_music_viz }
+            card_mod:
+              style: |
+                ha-card { min-height: 110px !important; background: linear-gradient(135deg, rgba(200,80,255,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(200,80,255,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(200,80,255,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 15px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #c850ff !important; text-shadow: 0 0 8px rgba(200,80,255,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(200,80,255,0.18) !important; --icon-size: 40px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: RETRO
+            secondary: romm library
+            icon: mdi:gamepad-variant
+            icon_color: green
+            fill_container: true
+            layout: vertical
+            tap_action: { action: call-service, service: script.speakeasy_retro }
+            card_mod:
+              style: |
+                ha-card { min-height: 110px !important; background: linear-gradient(135deg, rgba(0,255,136,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(0,255,136,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(0,255,136,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 15px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #00ff88 !important; text-shadow: 0 0 8px rgba(0,255,136,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(0,255,136,0.18) !important; --icon-size: 40px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: PC STREAM
+            secondary: apollo · artemis
+            icon: mdi:monitor-shimmer
+            icon_color: cyan
+            fill_container: true
+            layout: vertical
+            tap_action: { action: call-service, service: script.speakeasy_pc_stream }
+            card_mod:
+              style: |
+                ha-card { min-height: 110px !important; background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(0,229,255,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(0,229,255,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 15px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #00e5ff !important; text-shadow: 0 0 8px rgba(0,229,255,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(0,229,255,0.18) !important; --icon-size: 40px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: ALL OFF
+            secondary: goodnight
+            icon: mdi:power-standby
+            icon_color: amber
+            fill_container: true
+            layout: vertical
+            tap_action: { action: call-service, service: input_button.press, target: { entity_id: input_button.speakeasy_off } }
+            card_mod:
+              style: |
+                ha-card { min-height: 110px !important; background: linear-gradient(135deg, rgba(255,170,0,0.10), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,170,0,0.35) !important; border-radius: 16px !important; box-shadow: 0 0 18px rgba(255,170,0,0.18) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 15px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ffaa00 !important; text-shadow: 0 0 8px rgba(255,170,0,0.6) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,170,0,0.15) !important; --icon-size: 40px !important; }
+
+      # ============================================================
+      # NOW PLAYING — ONE card, picks the right entity for current activity
+      # ============================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: NOW PLAYING
+            heading_style: title
+            icon: mdi:play-circle-outline
+
+          # Spotify card — when activity = music
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: input_select.speakeasy_activity
+                state: music
+            card:
+              type: custom:mini-media-player
+              entity: media_player.spotify_lucas_weber
+              artwork: full-cover
+              hide:
+                power: false
+                source: true
+                mute: true
+                info: false
+                progress: false
+                runtime: false
+                name: false
+              card_mod:
+                style: |
+                  ha-card { background: linear-gradient(135deg, rgba(30,215,96,0.10), rgba(0,0,0,0.7)) !important; border: 1px solid rgba(30,215,96,0.35) !important; border-radius: 18px !important; box-shadow: 0 0 28px rgba(30,215,96,0.20) !important; }
+                  .mmp-name { font-family: 'Orbitron', sans-serif !important; color: #1ed760 !important; text-shadow: 0 0 8px rgba(30,215,96,0.6) !important; }
+
+          # AVR card — when activity is movie / retro / pc_stream
+          - type: conditional
+            conditions:
+              - condition: or
+                conditions:
+                  - condition: state
+                    entity: input_select.speakeasy_activity
+                    state: movie
+                  - condition: state
+                    entity: input_select.speakeasy_activity
+                    state: retro
+                  - condition: state
+                    entity: input_select.speakeasy_activity
+                    state: pc_stream
+            card:
+              type: custom:mini-media-player
+              entity: media_player.denon_avr_x3800h_2
+              hide:
+                power: false
+                source: false
+                mute: true
+                info: false
+                progress: true
+                runtime: true
+                name: false
+              card_mod:
+                style: |
+                  ha-card { background: linear-gradient(135deg, rgba(0,229,255,0.10), rgba(0,0,0,0.7)) !important; border: 1px solid rgba(0,229,255,0.35) !important; border-radius: 18px !important; box-shadow: 0 0 28px rgba(0,229,255,0.20) !important; }
+                  .mmp-name { font-family: 'Orbitron', sans-serif !important; color: #00e5ff !important; text-shadow: 0 0 8px rgba(0,229,255,0.6) !important; }
+
+          # Idle placeholder — when activity = idle
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: input_select.speakeasy_activity
+                state: idle
+            card:
+              type: custom:mushroom-template-card
+              primary: ALL QUIET
+              secondary: tap a vibe above to start something
+              icon: mdi:volume-off
+              icon_color: grey
+              fill_container: true
+              tap_action: { action: none }
+              card_mod:
+                style: |
+                  ha-card { background: rgba(15,15,28,0.6) !important; border: 1px dashed rgba(138,138,168,0.3) !important; border-radius: 18px !important; padding: 12px !important; }
+                  .primary { font-family: 'Orbitron', sans-serif !important; font-size: 16px !important; letter-spacing: 0.25em !important; color: #8a8aa8 !important; }
+                  .secondary { font-size: 11px !important; letter-spacing: 0.08em !important; color: #666 !important; text-transform: uppercase !important; }
+
+      # ============================================================
+      # CLIMATE — one slider, one status
+      # ============================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: BAR HEAT
+            heading_style: title
+            icon: mdi:thermometer
+
+          - type: custom:mushroom-number-card
+            entity: input_number.speakeasy_heater_target
+            name: TARGET
+            icon: mdi:radiator
+            icon_color: orange
+            display_mode: slider
+            fill_container: true
+            card_mod:
+              style: |
+                ha-card { background: linear-gradient(135deg, rgba(255,90,0,0.08), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,90,0,0.35) !important; border-radius: 14px !important; box-shadow: 0 0 18px rgba(255,90,0,0.15) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; letter-spacing: 0.2em !important; color: #ff5a00 !important; }
+
+          - type: custom:mushroom-template-card
+            primary: |
+              {% set ta = state_attr('climate.smax_b6a6d8_smax_b6a6d8','current_temperature') | float(0) %}
+              {% set tb = state_attr('climate.smax_b6c6f4_smax_b6c6f4','current_temperature') | float(0) %}
+              {% if ta and tb %}{{ ((ta + tb)/2) | round }}°F NOW{% else %}—{% endif %}
+            secondary: |
+              {% set heating = is_state('climate.smax_b6a6d8_smax_b6a6d8','heat') or is_state('climate.smax_b6c6f4_smax_b6c6f4','heat') %}
+              {{ 'heating' if heating else 'idle' }}
+            icon: mdi:fire
+            icon_color: '{{ "orange" if (is_state("climate.smax_b6a6d8_smax_b6a6d8","heat") or is_state("climate.smax_b6c6f4_smax_b6c6f4","heat")) else "grey" }}'
+            fill_container: true
+            tap_action:
+              action: call-service
+              service: script.speakeasy_heaters_on
+            hold_action:
+              action: call-service
+              service: script.speakeasy_heaters_off
+            card_mod:
+              style: |
+                ha-card { background: rgba(15,15,28,0.6) !important; border: 1px solid rgba(64,64,96,0.3) !important; border-radius: 14px !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; letter-spacing: 0.15em !important; }
+                .secondary { font-size: 11px !important; letter-spacing: 0.1em !important; text-transform: uppercase !important; }
+
+      # ============================================================
+      # CELEBRATIONS — multi-phase WLED shows (~30s, end with off)
+      # ============================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: CELEBRATIONS
+            heading_style: title
+            icon: mdi:firework
+
+          - type: custom:mushroom-template-card
+            primary: SABRES GOAL
+            secondary: goal horn · gold + blue
+            icon: mdi:hockey-puck
+            icon_color: amber
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.celebrate_sabres_goal}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(252,181,20,0.14), rgba(0,38,84,0.18) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(252,181,20,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(252,181,20,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #fcb514 !important; text-shadow: 0 0 8px rgba(252,181,20,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(252,181,20,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: BILLS TD
+            secondary: touchdown · red + royal
+            icon: mdi:football
+            icon_color: red
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.celebrate_bills_td}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(198,12,48,0.16), rgba(0,51,141,0.16) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(198,12,48,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(198,12,48,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff3358 !important; text-shadow: 0 0 8px rgba(198,12,48,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(198,12,48,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: PARTY
+            secondary: rainbow · fireworks
+            icon: mdi:party-popper
+            icon_color: pink
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.celebrate_party}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,45,146,0.14), rgba(0,229,255,0.1) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,45,146,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,45,146,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff2d92 !important; text-shadow: 0 0 8px rgba(255,45,146,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,45,146,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: BIRTHDAY
+            secondary: rainbow burst · glitter
+            icon: mdi:cake-variant
+            icon_color: pink
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.celebrate_birthday}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,150,200,0.14), rgba(255,255,100,0.1) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,150,200,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,150,200,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff96c8 !important; text-shadow: 0 0 8px rgba(255,150,200,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,150,200,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: CHRISTMAS
+            secondary: twinkle · fireworks
+            icon: mdi:pine-tree
+            icon_color: green
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.celebrate_christmas}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(0,200,0,0.14), rgba(255,0,0,0.14) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(0,200,0,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(0,200,0,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #4adb4a !important; text-shadow: 0 0 8px rgba(0,200,0,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(0,200,0,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: HALLOWEEN
+            secondary: fire · ghosts · lightning
+            icon: mdi:halloween
+            icon_color: orange
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.celebrate_halloween}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,80,0,0.16), rgba(128,0,200,0.16) 70%, rgba(0,0,0,0.6)) !important; border: 1px solid rgba(255,80,0,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,80,0,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff8000 !important; text-shadow: 0 0 8px rgba(255,80,0,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,80,0,0.2) !important; --icon-size: 36px !important; }
+
+      # ============================================================
+      # LIGHTING MODES — persistent WLED ambient/utility modes
+      # ============================================================
+      - type: grid
+        cards:
+          - type: heading
+            heading: LIGHTING MODES
+            heading_style: title
+            icon: mdi:lightbulb-multiple
+
+          - type: custom:mushroom-template-card
+            primary: FIREPLACE
+            secondary: warm crackle · cozy
+            icon: mdi:fireplace
+            icon_color: orange
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_fireplace}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,90,0,0.14), rgba(180,30,0,0.14) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,90,0,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,90,0,0.22) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff5a00 !important; text-shadow: 0 0 8px rgba(255,90,0,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,90,0,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: AURORA
+            secondary: northern lights · flow
+            icon: mdi:waves
+            icon_color: deep-purple
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_aurora}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(100,0,200,0.14), rgba(0,255,200,0.12) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(100,0,200,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(100,0,200,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #aa55ff !important; text-shadow: 0 0 8px rgba(170,85,255,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(100,0,200,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: LOUNGE
+            secondary: amber flow · bar vibes
+            icon: mdi:glass-cocktail
+            icon_color: amber
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_lounge}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,150,30,0.14), rgba(180,80,20,0.14) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,150,30,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,150,30,0.25) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ffa940 !important; text-shadow: 0 0 8px rgba(255,150,30,0.7) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,150,30,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: MOVIE
+            secondary: dim warm · screen safe
+            icon: mdi:movie-open
+            icon_color: deep-purple
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_movie}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(80,40,150,0.14), rgba(20,10,40,0.5) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(80,40,150,0.45) !important; border-radius: 16px !important; box-shadow: 0 0 18px rgba(80,40,150,0.2) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #9c7fff !important; text-shadow: 0 0 6px rgba(120,80,200,0.6) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(80,40,150,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: CANDLE
+            secondary: flicker · cozy dim
+            icon: mdi:candle
+            icon_color: amber
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_candle}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,120,30,0.12), rgba(100,40,0,0.16) 70%, rgba(0,0,0,0.55)) !important; border: 1px solid rgba(255,120,30,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 18px rgba(255,120,30,0.2) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ffa040 !important; text-shadow: 0 0 6px rgba(255,120,30,0.65) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,120,30,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: WARM WHITE
+            secondary: full bright · daily
+            icon: mdi:lightbulb-on
+            icon_color: amber
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_warm_white}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: linear-gradient(135deg, rgba(255,210,140,0.16), rgba(150,100,40,0.1) 70%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,210,140,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 18px rgba(255,210,140,0.2) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ffd28c !important; text-shadow: 0 0 6px rgba(255,210,140,0.6) !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(255,210,140,0.2) !important; --icon-size: 36px !important; }
+
+          - type: custom:mushroom-template-card
+            primary: WLED OFF
+            secondary: both strips off
+            icon: mdi:lightbulb-off
+            icon_color: grey
+            fill_container: true
+            layout: vertical
+            tap_action: {action: call-service, service: script.mode_off}
+            card_mod:
+              style: |
+                ha-card { min-height: 100px !important; background: rgba(20,20,32,0.6) !important; border: 1px solid rgba(80,80,110,0.35) !important; border-radius: 16px !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 14px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #a0a0c0 !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #6a6a88 !important; text-transform: uppercase !important; }
+                mushroom-shape-icon { --shape-color: rgba(80,80,110,0.2) !important; --icon-size: 36px !important; }
+
+      # ============================================================
+      # PEEK — link to bar tablet dashboard for full controls
+      # ============================================================
+      - type: grid
+        cards:
+          - type: custom:mushroom-template-card
+            primary: SPEAKEASY BAR
+            secondary: full controls · neon mode
+            icon: mdi:glass-cocktail
+            icon_color: cyan
+            fill_container: true
+            tap_action:
+              action: navigate
+              navigation_path: /dashboard-speakeasy/0
+            card_mod:
+              style: |
+                ha-card { background: linear-gradient(135deg, rgba(0,229,255,0.08), rgba(255,45,146,0.04) 60%, rgba(0,0,0,0.5)) !important; border: 1px solid rgba(0,229,255,0.35) !important; border-radius: 14px !important; box-shadow: 0 0 18px rgba(0,229,255,0.15) !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.25em !important; color: #00e5ff !important; }
+                .secondary { font-size: 10px !important; letter-spacing: 0.1em !important; text-transform: uppercase !important; color: #8a8aa8 !important; }

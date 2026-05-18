@@ -1,0 +1,59 @@
+# /config/packages/learned_intents.yaml
+# Wiring for the dynamic-learning intent. Claude can call
+# script.register_learned_phrase to add new phrases to
+# /config/custom_sentences/en/learned.yaml; the local matcher
+# then handles those phrases for free without a round-trip to Claude.
+#
+# Each learned phrase fires intent RunLearnedScript with three slots:
+#   - target_script: the script.* entity to run
+#   - done_message: short speech reply (TTS)
+#   - script_vars_json: optional JSON dict of variables to pass to the script
+
+intent_script:
+  RunLearnedScript:
+    speech:
+      text: "{{ done_message | default('Okay') }}"
+    action:
+      - variables:
+          parsed_vars: >-
+            {% set j = script_vars_json | default('{}') %}
+            {{ j | from_json if (j is string and j and j != '{}') else {} }}
+      - service: script.turn_on
+        target:
+          entity_id: "{{ target_script }}"
+        data:
+          variables: "{{ parsed_vars }}"
+
+script:
+  register_learned_phrase:
+    alias: "Learning: register a new phrase for the local matcher"
+    description: >-
+      After successfully handling a complex command, call this to teach the local
+      intent matcher to handle the same phrase next time without going through
+      Claude. Idempotent. The phrase is lowercased and added to
+      /config/custom_sentences/en/learned.yaml; conversation is reloaded.
+    icon: mdi:school
+    fields:
+      phrase:
+        description: "The user's exact phrase (will be lowercased). Example: 'play disco'"
+        required: true
+        example: "play disco"
+      target_script:
+        description: "Script entity id to run when the phrase matches. Example: 'script.shield_play_spotify'"
+        required: true
+        example: "script.shield_play_spotify"
+      done_message:
+        description: "Short voice reply spoken when the local matcher fires this phrase (default 'Okay')"
+        required: false
+        example: "Playing disco"
+      script_vars_json:
+        description: "Optional JSON string of variables to pass to the target script. Example: '{\"query\":\"disco\"}'"
+        required: false
+        example: '{"query":"disco"}'
+    sequence:
+      - service: shell_command.py_register_learned_phrase
+        data:
+          phrase: "{{ phrase }}"
+          target_script: "{{ target_script }}"
+          done_message: "{{ done_message | default('Okay') }}"
+          script_vars_json: "{{ script_vars_json | default('') }}"

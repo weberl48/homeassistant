@@ -1,0 +1,129 @@
+digitalClock: true
+digitalClockWithSeconds: false
+twelveHourVersion: true
+date: true
+dateFormat: "dddd, MMM D"
+hideTopMenu: true
+width:
+  mobile: 0
+  tablet: 28
+  desktop: 24
+
+# Quick-jump menu — but for a one-view dashboard, repurpose as scene shortcuts
+sidebarMenu:
+  - action: call-service
+    service: script.speakeasy_movie
+    name: "▶ Movie Night"
+  - action: call-service
+    service: script.speakeasy_music_viz
+    name: "♫ Music + Viz"
+  - action: call-service
+    service: script.speakeasy_retro
+    name: "▦ Retro Gaming"
+  - action: call-service
+    service: script.speakeasy_pc_stream
+    name: "⌨ PC Stream"
+  - action: call-service
+    service: input_button.press
+    service_data:
+      entity_id: input_button.speakeasy_off
+    name: "✕ Everything Off"
+
+style: |
+    :host {
+      --sidebar-background: linear-gradient(180deg, #000000 0%, #05050d 100%);
+      --sidebar-text-color: #f5f5ff;
+      --face-color: #00e5ff;
+      --face-border-color: rgba(0, 229, 255, 0.4);
+      --clock-hands-color: #00e5ff;
+      --clock-seconds-hand-color: #ff2d92;
+      --clock-middle-background: rgba(0, 229, 255, 0.1);
+      --clock-middle-border: #00e5ff;
+    }
+    .sidebar-inner {
+      bottom: 0px;
+      height: 100% !important;
+      max-height: 100vh;
+      padding: 24px 0 !important;
+      border-right: 1px solid rgba(0, 229, 255, 0.2) !important;
+      box-shadow: inset -1px 0 16px rgba(0, 229, 255, 0.08) !important;
+    }
+    .digitalClock {
+      font-family: 'Orbitron', 'Rajdhani', sans-serif !important;
+      font-size: 5.2vw !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.05em !important;
+      color: #00e5ff !important;
+      text-shadow: 0 0 14px rgba(0, 229, 255, 0.7), 0 0 28px rgba(0, 229, 255, 0.35) !important;
+      line-height: 1 !important;
+      padding: 0 16px !important;
+    }
+    .date {
+      font-family: 'Rajdhani', sans-serif !important;
+      font-size: 1.2vw !important;
+      letter-spacing: 0.3em !important;
+      text-transform: uppercase !important;
+      color: #b0b0d0 !important;
+      margin-top: 8px !important;
+      padding: 0 16px !important;
+    }
+    .sidebarMenu {
+      margin-top: 32px !important;
+      padding: 0 8px !important;
+      border-top: 1px solid rgba(0, 229, 255, 0.15) !important;
+      padding-top: 24px !important;
+    }
+    .sidebarMenu li {
+      padding: 14px 16px !important;
+      margin: 6px 0 !important;
+      font-family: 'Orbitron', 'Rajdhani', sans-serif !important;
+      font-size: 0.95vw !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.15em !important;
+      text-transform: uppercase !important;
+      border-radius: 8px !important;
+      border: 1px solid rgba(0, 229, 255, 0.15) !important;
+      background: linear-gradient(90deg, rgba(0, 229, 255, 0.04), transparent) !important;
+      transition: all 0.2s ease !important;
+      cursor: pointer !important;
+    }
+    .sidebarMenu li:hover, .sidebarMenu li:active {
+      border-color: rgba(0, 229, 255, 0.5) !important;
+      background: linear-gradient(90deg, rgba(0, 229, 255, 0.12), transparent) !important;
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.3) !important;
+      color: #00e5ff !important;
+    }
+    .bottom {
+      width: 100%;
+      height: auto;
+      padding: 0 12px 12px 12px !important;
+    }
+
+bottomCard:
+  type: custom:vertical-stack-in-card
+  cards:
+    - type: custom:mushroom-template-card
+      primary: |
+        {% set act = states('input_select.speakeasy_activity') %}
+        {{ {'idle':'STANDING BY','movie':'MOVIE NIGHT','music':'MUSIC','retro':'RETRO','pc_stream':'PC STREAM'}.get(act, act|upper) }}
+      secondary: |
+        {% set act = states('input_select.speakeasy_activity') %}
+        {% if act == 'idle' %}cinema bar
+        {% else %}mode active{% endif %}
+      icon: |
+        {% set act = states('input_select.speakeasy_activity') %}
+        {{ {'idle':'mdi:glass-cocktail','movie':'mdi:movie-open','music':'mdi:music','retro':'mdi:gamepad-variant','pc_stream':'mdi:monitor-shimmer'}.get(act, 'mdi:glass-cocktail') }}
+      icon_color: |
+        {% set act = states('input_select.speakeasy_activity') %}
+        {{ {'idle':'amber','movie':'pink','music':'purple','retro':'green','pc_stream':'cyan'}.get(act, 'amber') }}
+      fill_container: true
+      tap_action: { action: none }
+      card_mod:
+        style: |
+          ha-card {
+            background: linear-gradient(135deg, rgba(255,170,0,0.08), rgba(0,0,0,0)) !important;
+            border: 1px solid rgba(255,170,0,0.25) !important;
+            box-shadow: 0 0 14px rgba(255,170,0,0.15) !important;
+          }
+          .primary { font-family: 'Orbitron', sans-serif !important; font-size: 1vw !important; letter-spacing: 0.2em !important; color: #ffaa00 !important; }
+          .secondary { font-size: 0.7vw !important; letter-spacing: 0.1em !important; color: #8a8aa8 !important; }

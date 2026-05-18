@@ -1,0 +1,736 @@
+# =====================================================================
+# Tablet popup scripts — invoked from speakeasy dashboard tap_actions.
+# Replaces the old bubble-card #sound-settings / #projector-settings hash
+# popups (which caused a render loop with mushroom children).
+#
+# Trigger: tap AVR or Projector tile on /dashboard-speakeasy/bar.
+# Render: browser_mod.popup mounts a modal dialog on the active browser.
+# =====================================================================
+script:
+  show_sound_settings_popup:
+    alias: Show Sound Settings Popup
+    description: Modal with Denon X3800H sound mode + Audyssey + Dirac controls.
+    mode: single
+    sequence:
+      - service: browser_mod.popup
+        data:
+          title: SOUND SETTINGS
+          size: normal
+          style: |
+            --popup-background-color: rgba(0,0,0,0.85);
+            --popup-border-radius: 16px;
+            --primary-text-color: #00e5ff;
+            --mdc-dialog-min-width: min(720px, 95vw);
+          content:
+            type: vertical-stack
+            cards:
+              # --- Sound Mode (button row + status chip showing current) ---
+              - type: custom:mushroom-template-card
+                primary: SOUND MODE
+                secondary: |
+                  {{ state_attr('media_player.denon_avr_x3800h_2','sound_mode') or '—' }}
+                  {%- set raw = state_attr('media_player.denon_avr_x3800h_2','sound_mode_raw') %}
+                  {%- if raw and raw != state_attr('media_player.denon_avr_x3800h_2','sound_mode') %} · {{ raw }}{% endif %}
+                icon: mdi:surround-sound
+                icon_color: cyan
+                fill_container: true
+                tap_action:
+                  action: more-info
+                  entity: media_player.denon_avr_x3800h_2
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: AUTO
+                    secondary: ''
+                    icon: mdi:auto-mode
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="AUTO" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: AUTO
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: MOVIE
+                    secondary: ''
+                    icon: mdi:filmstrip
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="MOVIE" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: MOVIE
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: MUSIC
+                    secondary: ''
+                    icon: mdi:music-note
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="MUSIC" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: MUSIC
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: GAME
+                    secondary: ''
+                    icon: mdi:gamepad-variant
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="GAME" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: GAME
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: STEREO
+                    secondary: ''
+                    icon: mdi:speaker-multiple
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="STEREO" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: STEREO
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: PURE
+                    secondary: Direct
+                    icon: mdi:music-circle
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="PURE DIRECT" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: PURE DIRECT
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: DIRECT
+                    secondary: ''
+                    icon: mdi:circle-medium
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="DIRECT" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: DIRECT
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: MCH ST
+                    secondary: ''
+                    icon: mdi:speaker-wireless
+                    icon_color: '{{ "cyan" if state_attr("media_player.denon_avr_x3800h_2","sound_mode")=="MCH STEREO" else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: media_player.select_sound_mode
+                      service_data:
+                        sound_mode: MCH STEREO
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+
+              # --- Audyssey Multi-EQ presets ---
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: REFERENCE
+                    secondary: Audyssey
+                    icon: mdi:waveform
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSMULTEQ:AUDYSSEY
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: FLAT
+                    secondary: Audyssey
+                    icon: mdi:waveform
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSMULTEQ:FLAT
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: BYP L+R
+                    secondary: Audyssey
+                    icon: mdi:waveform
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSMULTEQ:BYP.LR
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: 'OFF'
+                    secondary: Audyssey
+                    icon: mdi:close
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSMULTEQ:OFF
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+
+              # --- Dynamic EQ + Dynamic Volume ---
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: DYN EQ ON
+                    secondary: ''
+                    icon: mdi:equalizer
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.set_dynamic_eq
+                      service_data:
+                        dynamic_eq: true
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: DYN EQ OFF
+                    secondary: ''
+                    icon: mdi:equalizer-remove
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.set_dynamic_eq
+                      service_data:
+                        dynamic_eq: false
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: 'OFF'
+                    secondary: Dyn Vol
+                    icon: mdi:volume-off
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDYNVOL OFF
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: LIGHT
+                    secondary: Dyn Vol
+                    icon: mdi:volume-low
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDYNVOL LIT
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: MEDIUM
+                    secondary: Dyn Vol
+                    icon: mdi:volume-medium
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDYNVOL MED
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: HEAVY
+                    secondary: Dyn Vol
+                    icon: mdi:volume-high
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDYNVOL HEV
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+
+              # --- Dirac Live filter slots ---
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: 'OFF'
+                    secondary: Dirac
+                    icon: mdi:close
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDIRAC%20OFF
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: SLOT 1
+                    secondary: Dirac
+                    icon: mdi:numeric-1-box
+                    icon_color: orange
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDIRAC%201
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: SLOT 2
+                    secondary: Dirac
+                    icon: mdi:numeric-2-box
+                    icon_color: orange
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDIRAC%202
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+                  - type: custom:mushroom-template-card
+                    primary: SLOT 3
+                    secondary: Dirac
+                    icon: mdi:numeric-3-box
+                    icon_color: orange
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: denonavr.get_command
+                      service_data:
+                        command: /goform/formiPhoneAppDirect.xml?PSDIRAC%203
+                      target:
+                        entity_id: media_player.denon_avr_x3800h_2
+
+              # --- Refresh state button ---
+              - type: custom:mushroom-template-card
+                primary: REFRESH AUDYSSEY STATE
+                secondary: Pulls current EQ/Dirac state from AVR
+                icon: mdi:refresh
+                icon_color: cyan
+                fill_container: true
+                tap_action:
+                  action: call-service
+                  service: denonavr.update_audyssey
+                  target:
+                    entity_id: media_player.denon_avr_x3800h_2
+
+          # ==================================================================
+          # PROJECTOR CONTROL POPUP — opens when PROJECTOR tile is tapped.
+          # JVC API doesn't support absolute lens-shift positioning; you open the
+
+  show_projector_control_popup:
+    alias: Show Projector Control Popup
+    description: Modal with JVC projector power / input / picture mode / lens menu controls.
+    mode: single
+    sequence:
+      - service: browser_mod.popup
+        data:
+          title: PROJECTOR CONTROL
+          size: normal
+          style: |
+            --popup-background-color: rgba(0,0,0,0.85);
+            --popup-border-radius: 16px;
+            --primary-text-color: #00e5ff;
+            --mdc-dialog-min-width: min(720px, 95vw);
+          content:
+            type: vertical-stack
+            cards:
+              # --- Status chip ---
+              - type: custom:mushroom-template-card
+                primary: |
+                  {{ 'ON · ' + (states('select.jvc_projector_input')|upper) if is_state('remote.jvc_projector','on') else 'OFF' }}
+                secondary: |
+                  {{ states('sensor.jvc_projector_light_time') }}h lamp · {{ states('sensor.jvc_projector_status') }}
+                icon: mdi:projector
+                icon_color: '{{ "cyan" if is_state("remote.jvc_projector","on") else "grey" }}'
+                fill_container: true
+                tap_action:
+                  action: more-info
+                  entity: remote.jvc_projector
+
+              # --- Power + Input row ---
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: POWER
+                    secondary: '{{ "ON" if is_state("remote.jvc_projector","on") else "OFF" }}'
+                    icon: mdi:power
+                    icon_color: '{{ "cyan" if is_state("remote.jvc_projector","on") else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.toggle
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: HDMI 1
+                    secondary: SHIELD
+                    icon: mdi:video-input-hdmi
+                    icon_color: '{{ "cyan" if is_state("select.jvc_projector_input","hdmi1") else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: select.select_option
+                      service_data:
+                        option: hdmi1
+                      target:
+                        entity_id: select.jvc_projector_input
+                  - type: custom:mushroom-template-card
+                    primary: HDMI 2
+                    secondary: ''
+                    icon: mdi:video-input-hdmi
+                    icon_color: '{{ "cyan" if is_state("select.jvc_projector_input","hdmi2") else "grey" }}'
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: select.select_option
+                      service_data:
+                        option: hdmi2
+                      target:
+                        entity_id: select.jvc_projector_input
+
+              # --- Picture mode quick-pick ---
+              - type: custom:mushroom-template-card
+                primary: PICTURE MODE
+                secondary: Direct presets + 5 user memory slots
+                icon: mdi:palette
+                icon_color: orange
+                fill_container: true
+                tap_action:
+                  action: call-service
+                  service: remote.send_command
+                  service_data:
+                    command: picture_mode
+                  target:
+                    entity_id: remote.jvc_projector
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: CINEMA
+                    secondary: ''
+                    icon: mdi:filmstrip
+                    icon_color: orange
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: cinema
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: NATURAL
+                    secondary: ''
+                    icon: mdi:leaf
+                    icon_color: orange
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: natural
+                      target:
+                        entity_id: remote.jvc_projector
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: MEM 1
+                    secondary: ''
+                    icon: mdi:numeric-1-circle
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: mode_1
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: MEM 2
+                    secondary: ''
+                    icon: mdi:numeric-2-circle
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: mode_2
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: MEM 3
+                    secondary: ''
+                    icon: mdi:numeric-3-circle
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: mode_3
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: MEM 4
+                    secondary: ''
+                    icon: mdi:numeric-4-circle
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: mode_4
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: MEM 5
+                    secondary: ''
+                    icon: mdi:numeric-5-circle
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: mode_5
+                      target:
+                        entity_id: remote.jvc_projector
+
+              # --- Lens control: tap LENS to open menu (repeat to cycle Focus→Zoom→Shift), then d-pad ---
+              - type: custom:mushroom-template-card
+                primary: LENS CONTROL
+                secondary: Tap to open lens menu — repeat presses cycle Focus → Zoom → Shift, then use the d-pad below
+                icon: mdi:camera-iris
+                icon_color: orange
+                fill_container: true
+                multiline_secondary: true
+                tap_action:
+                  action: call-service
+                  service: remote.send_command
+                  service_data:
+                    command: lens_control
+                  target:
+                    entity_id: remote.jvc_projector
+
+              # D-pad (also drives any active menu, not just lens)
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: ''
+                    icon: mdi:menu
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: menu
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: ''
+                    icon: mdi:chevron-up
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: up
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: ''
+                    icon: mdi:keyboard-return
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: back
+                      target:
+                        entity_id: remote.jvc_projector
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: ''
+                    icon: mdi:chevron-left
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: left
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: OK
+                    icon: mdi:circle-medium
+                    icon_color: orange
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: ok
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: ''
+                    icon: mdi:chevron-right
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: right
+                      target:
+                        entity_id: remote.jvc_projector
+
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: INFO
+                    icon: mdi:information
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: info
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: ''
+                    icon: mdi:chevron-down
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: down
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: HIDE
+                    icon: mdi:eye-off
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: hide
+                      target:
+                        entity_id: remote.jvc_projector
+
+              # --- Advanced settings entries ---
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-template-card
+                    primary: GAMMA
+                    secondary: ''
+                    icon: mdi:gamma
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: gamma
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: COLOR PRF
+                    secondary: ''
+                    icon: mdi:palette-swatch
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: color_profile
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: APERTURE
+                    secondary: ''
+                    icon: mdi:aperture
+                    icon_color: cyan
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: lens_ap
+                      target:
+                        entity_id: remote.jvc_projector
+                  - type: custom:mushroom-template-card
+                    primary: ADV MENU
+                    secondary: ''
+                    icon: mdi:cog
+                    icon_color: grey
+                    fill_container: true
+                    tap_action:
+                      action: call-service
+                      service: remote.send_command
+                      service_data:
+                        command: advanced_menu
+                      target:
+                        entity_id: remote.jvc_projector

@@ -1,0 +1,130 @@
+title: AdGuard
+views:
+  - title: AdGuard
+    path: home
+    icon: mdi:shield-account
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Status
+            heading_style: title
+            icon: mdi:shield-half-full
+          - type: custom:mushroom-template-card
+            primary: |-
+              {% set p = is_state('input_boolean.adguard_block_paused', 'on') %}
+              {% set in_window = 8 <= now().hour < 19 %}
+              {% if p %}Snoozed / Paused
+              {% elif in_window %}Blocking active
+              {% else %}Outside block window
+              {% endif %}
+            secondary: |-
+              {% set p = is_state('input_boolean.adguard_block_paused', 'on') %}
+              {% set t = states('timer.adguard_snooze') %}
+              {% if p and t == 'active' %}
+                Resumes in {{ (state_attr('timer.adguard_snooze','finishes_at') | as_datetime - now()) | string | replace('0:','') | replace(':00','m') | replace('0:','') }}
+              {% elif p %}
+                Manually paused — toggle off to resume schedule
+              {% elif 8 <= now().hour < 19 %}
+                Block runs 8 AM – 7 PM daily
+              {% else %}
+                Next block starts at 8 AM
+              {% endif %}
+            icon: |-
+              {% set p = is_state('input_boolean.adguard_block_paused', 'on') %}
+              {% if p %}mdi:shield-off
+              {% elif 8 <= now().hour < 19 %}mdi:shield-check
+              {% else %}mdi:shield-outline
+              {% endif %}
+            icon_color: |-
+              {% set p = is_state('input_boolean.adguard_block_paused', 'on') %}
+              {% if p %}orange
+              {% elif 8 <= now().hour < 19 %}green
+              {% else %}grey
+              {% endif %}
+            fill_container: true
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Master pause
+            heading_style: title
+            icon: mdi:toggle-switch-outline
+          - type: custom:mushroom-entity-card
+            entity: input_boolean.adguard_block_paused
+            name: Block paused
+            secondary_info: state
+            icon_color: orange
+            tap_action:
+              action: toggle
+          - type: custom:mushroom-template-card
+            primary: Resume blocking now
+            secondary: Cancels any active snooze
+            icon: mdi:shield-check
+            icon_color: green
+            tap_action:
+              action: perform-action
+              perform_action: script.adguard_resume_now
+            visibility:
+              - condition: state
+                entity: input_boolean.adguard_block_paused
+                state: "on"
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Snooze
+            heading_style: title
+            icon: mdi:timer-sand
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: 15 min
+                secondary: snooze
+                icon: mdi:timer-outline
+                icon_color: blue
+                tap_action:
+                  action: perform-action
+                  perform_action: script.adguard_snooze_15
+              - type: custom:mushroom-template-card
+                primary: 30 min
+                secondary: snooze
+                icon: mdi:timer-outline
+                icon_color: blue
+                tap_action:
+                  action: perform-action
+                  perform_action: script.adguard_snooze_30
+              - type: custom:mushroom-template-card
+                primary: 60 min
+                secondary: snooze
+                icon: mdi:timer-outline
+                icon_color: blue
+                tap_action:
+                  action: perform-action
+                  perform_action: script.adguard_snooze_60
+          - type: entity
+            entity: timer.adguard_snooze
+            name: Snooze remaining
+            icon: mdi:timer-sand
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: How it works
+            heading_style: title
+            icon: mdi:information-outline
+          - type: markdown
+            content: |
+              Block window: **8 AM – 7 PM** daily, applied via AdGuard's
+              blocked-services list. YouTube and Discord are always allowed.
+
+              - **Snooze** flips the master toggle on, starts a timer, and
+                auto-resumes when the timer expires.
+              - **Master pause** stays on until you turn it off — useful for
+                a full day off the schedule.
+              - **Resume now** cancels any active snooze immediately.
+
+              Schedule changes live in `/config/automations.yaml`
+              (`adguard_social_block_on`); pause/snooze controls in
+              `/config/packages/adguard.yaml`.

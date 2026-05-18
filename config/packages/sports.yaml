@@ -1,0 +1,178 @@
+# /config/packages/sports.yaml
+# ESPN-driven live state for Bills + Sabres, plus a generic "wait for entity state
+# then run a script" helper so Claude can schedule deferred actions.
+
+rest:
+  - resource: https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/teams/2
+    scan_interval: 60
+    timeout: 10
+    sensor:
+      - name: "Sabres Game Raw"
+        unique_id: sabres_game_raw
+        value_template: >-
+          {% set ev = value_json.team.nextEvent[0] | default(none) %}
+          {% if ev %}{{ ev.competitions[0].status.type.state }}{% else %}none{% endif %}
+        json_attributes_path: "$.team.nextEvent[0]"
+        json_attributes:
+          - date
+          - competitions
+
+  - resource: https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/2
+    scan_interval: 60
+    timeout: 10
+    sensor:
+      - name: "Bills Game Raw"
+        unique_id: bills_game_raw
+        value_template: >-
+          {% set ev = value_json.team.nextEvent[0] | default(none) %}
+          {% if ev %}{{ ev.competitions[0].status.type.state }}{% else %}none{% endif %}
+        json_attributes_path: "$.team.nextEvent[0]"
+        json_attributes:
+          - date
+          - competitions
+
+template:
+  - sensor:
+      - name: "Sabres Status"
+        unique_id: sabres_status
+        state: >-
+          {% set c = state_attr('sensor.sabres_game_raw', 'competitions') %}
+          {% if c %}{{ c[0].status.type.detail }}{% else %}none{% endif %}
+        icon: mdi:hockey-puck
+
+      - name: "Sabres Period"
+        unique_id: sabres_period
+        state: >-
+          {% set c = state_attr('sensor.sabres_game_raw', 'competitions') %}
+          {% if c %}{{ c[0].status.period | int(0) }}{% else %}0{% endif %}
+        icon: mdi:counter
+
+      - name: "Sabres Clock"
+        unique_id: sabres_clock
+        state: >-
+          {% set c = state_attr('sensor.sabres_game_raw', 'competitions') %}
+          {% if c %}{{ c[0].status.displayClock | default('0:00') }}{% else %}0:00{% endif %}
+        icon: mdi:timer
+
+      - name: "Sabres Score"
+        unique_id: sabres_score
+        state: >-
+          {% set c = state_attr('sensor.sabres_game_raw', 'competitions') %}
+          {% if c %}
+            {% set comps = c[0].competitors %}
+            {% set buf = comps | selectattr('team.abbreviation','eq','BUF') | first | default({}) %}
+            {% set opp = comps | rejectattr('team.abbreviation','eq','BUF') | first | default({}) %}
+            BUF {{ buf.get('score',{}).get('displayValue','-') }} - {{ opp.get('team',{}).get('abbreviation','?') }} {{ opp.get('score',{}).get('displayValue','-') }}
+          {% else %}no game{% endif %}
+        icon: mdi:scoreboard
+
+      - name: "Sabres Opponent"
+        unique_id: sabres_opponent
+        state: >-
+          {% set c = state_attr('sensor.sabres_game_raw', 'competitions') %}
+          {% if c %}
+            {% set opp = c[0].competitors | rejectattr('team.abbreviation','eq','BUF') | first | default({}) %}
+            {{ opp.get('team',{}).get('displayName','none') }}
+          {% else %}none{% endif %}
+
+      - name: "Bills Status"
+        unique_id: bills_status
+        state: >-
+          {% set c = state_attr('sensor.bills_game_raw', 'competitions') %}
+          {% if c %}{{ c[0].status.type.detail }}{% else %}none{% endif %}
+        icon: mdi:football
+
+      - name: "Bills Quarter"
+        unique_id: bills_quarter
+        state: >-
+          {% set c = state_attr('sensor.bills_game_raw', 'competitions') %}
+          {% if c %}{{ c[0].status.period | int(0) }}{% else %}0{% endif %}
+        icon: mdi:counter
+
+      - name: "Bills Clock"
+        unique_id: bills_clock
+        state: >-
+          {% set c = state_attr('sensor.bills_game_raw', 'competitions') %}
+          {% if c %}{{ c[0].status.displayClock | default('0:00') }}{% else %}0:00{% endif %}
+        icon: mdi:timer
+
+      - name: "Bills Score"
+        unique_id: bills_score
+        state: >-
+          {% set c = state_attr('sensor.bills_game_raw', 'competitions') %}
+          {% if c %}
+            {% set comps = c[0].competitors %}
+            {% set buf = comps | selectattr('team.abbreviation','eq','BUF') | first | default({}) %}
+            {% set opp = comps | rejectattr('team.abbreviation','eq','BUF') | first | default({}) %}
+            BUF {{ buf.get('score',{}).get('displayValue','-') }} - {{ opp.get('team',{}).get('abbreviation','?') }} {{ opp.get('score',{}).get('displayValue','-') }}
+          {% else %}no game{% endif %}
+
+  - binary_sensor:
+      - name: "Sabres Is Live"
+        unique_id: sabres_is_live
+        state: "{{ states('sensor.sabres_game_raw') == 'in' }}"
+        device_class: running
+
+      - name: "Bills Is Live"
+        unique_id: bills_is_live
+        state: "{{ states('sensor.bills_game_raw') == 'in' }}"
+        device_class: running
+
+script:
+  # User-facing entry point. Fires-and-forgets the watcher and returns IMMEDIATELY
+  # so Claude can reply "Got it, scheduled" without blocking.
+  schedule_deferred_action:
+    alias: "Schedule deferred action"
+    description: >-
+      Schedule a deferred action. Returns immediately. Use for 'do X when Y happens'
+      like 'switch to YouTube TV when the Sabres second period starts'
+      (entity_id=sensor.sabres_period, target_state=2, run_script=script.shield_open_youtube).
+    icon: mdi:clock-alert
+    fields:
+      entity_id:
+        description: "Entity to watch (e.g. sensor.sabres_period)"
+        required: true
+        example: "sensor.sabres_period"
+      target_state:
+        description: "State value the entity should reach (as a string)"
+        required: true
+        example: "2"
+      run_script:
+        description: "Script entity id to run when the condition is met (e.g. script.shield_open_youtube)"
+        required: true
+        example: "script.shield_open_youtube"
+      timeout_minutes:
+        description: "Max wait time in minutes before giving up (default 240)"
+        required: false
+        example: 240
+    mode: parallel
+    max: 10
+    sequence:
+      # script.turn_on with target.entity_id is async — fires the worker and
+      # this script returns immediately. The caller (Claude) is not blocked.
+      - service: script.turn_on
+        target:
+          entity_id: script.deferred_action_worker
+        data:
+          variables:
+            entity_id: "{{ entity_id }}"
+            target_state: "{{ target_state }}"
+            run_script: "{{ run_script }}"
+            timeout_minutes: "{{ timeout_minutes | default(240) }}"
+
+  # Background worker — does the actual waiting. Not exposed to Claude.
+  deferred_action_worker:
+    alias: "Deferred action worker"
+    description: "Internal: waits for entity state then runs a script. Called by schedule_deferred_action."
+    mode: parallel
+    max: 20
+    sequence:
+      - alias: "Wait for the entity to reach target_state"
+        wait_template: "{{ states(entity_id) == (target_state | string) }}"
+        timeout:
+          minutes: "{{ timeout_minutes | default(240) }}"
+        continue_on_timeout: false
+      - alias: "Fire the target script"
+        service: script.turn_on
+        target:
+          entity_id: "{{ run_script }}"

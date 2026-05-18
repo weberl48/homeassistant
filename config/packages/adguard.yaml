@@ -1,0 +1,83 @@
+input_boolean:
+  adguard_block_paused:
+    name: AdGuard block paused
+    icon: mdi:shield-off-outline
+timer:
+  adguard_snooze:
+    name: AdGuard snooze
+    icon: mdi:timer-sand
+    restore: true
+script:
+  adguard_snooze_15:
+    alias: 'AdGuard: snooze 15 min'
+    icon: mdi:timer-outline
+    sequence:
+    - service: shell_command.py_adguard_snooze
+      data:
+        minutes: 15
+  adguard_snooze_30:
+    alias: 'AdGuard: snooze 30 min'
+    icon: mdi:timer-outline
+    sequence:
+    - service: shell_command.py_adguard_snooze
+      data:
+        minutes: 30
+  adguard_snooze_60:
+    alias: 'AdGuard: snooze 60 min'
+    icon: mdi:timer-outline
+    sequence:
+    - service: shell_command.py_adguard_snooze
+      data:
+        minutes: 60
+  adguard_resume_now:
+    alias: 'AdGuard: resume blocking now'
+    icon: mdi:shield-check
+    sequence:
+    - service: shell_command.py_adguard_resume_now
+automation:
+- id: adguard_pause_on
+  alias: 'AdGuard: apply pause (clear blocked services)'
+  mode: queued
+  trigger:
+  - platform: state
+    entity_id: input_boolean.adguard_block_paused
+    to: 'on'
+  action:
+  - service: rest_command.adguard_set_blocked_services
+    data:
+      ids: []
+- id: adguard_pause_off
+  alias: 'AdGuard: end pause (re-apply schedule)'
+  mode: queued
+  trigger:
+  - platform: state
+    entity_id: input_boolean.adguard_block_paused
+    to: 'off'
+  action:
+  - choose:
+    - conditions:
+      - condition: time
+        after: 08:00:00
+        before: '19:00:00'
+      sequence:
+      - service: automation.trigger
+        target:
+          entity_id: automation.adguard_social_block_on_8am
+        data:
+          skip_condition: true
+    default:
+    - service: rest_command.adguard_set_blocked_services
+      data:
+        ids: []
+- id: adguard_snooze_finished
+  alias: 'AdGuard: snooze timer finished'
+  mode: queued
+  trigger:
+  - platform: event
+    event_type: timer.finished
+    event_data:
+      entity_id: timer.adguard_snooze
+  action:
+  - service: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.adguard_block_paused

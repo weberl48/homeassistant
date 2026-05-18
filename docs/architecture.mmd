@@ -1,0 +1,120 @@
+%% Speakeasy Home Assistant architecture — network + software stack.
+%% Renders to docs/architecture.png via kroki.io:
+%%   curl -X POST https://kroki.io/mermaid/png -H "Content-Type: text/plain" \
+%%     --data-binary @docs/architecture.mmd > docs/architecture.png
+flowchart TB
+  classDef wan fill:#1e2a36,stroke:#7aa,color:#dfe
+  classDef net fill:#2a3645,stroke:#9ab,color:#fff
+  classDef host fill:#1a4b3a,stroke:#7c8,color:#dfe,font-weight:bold
+  classDef addon fill:#2d5a4a,stroke:#8d9,color:#fff
+  classDef custom fill:#5a3a2a,stroke:#d97,color:#fff
+  classDef device fill:#2a2a4a,stroke:#88c,color:#fff
+  classDef ext fill:#4a4a4a,stroke:#aaa,color:#fff
+
+  %% =========== Internet / network ===========
+  WAN([Fios WAN]):::wan
+  FIOS[Verizon CR1000A<br/>Router + firewall<br/>blocks outbound 53/853]:::net
+  NG[Netgear Nighthawk<br/>AP-mode WiFi]:::net
+  LAN((192.168.1.0/24<br/>LAN)):::net
+
+  WAN --> FIOS
+  FIOS --> LAN
+  FIOS -.-> NG -.-> LAN
+
+  %% =========== The Pi ===========
+  HAOS["<b>Home Assistant OS</b><br/>Raspberry Pi 5 (8GB)<br/>Pironman 5 · NVMe boot<br/>4TB USB at /media/hassos-data-medi"]:::host
+
+  LAN --> HAOS
+
+  %% Add-ons grouped 3x3-ish
+  subgraph ADDONS["Supervisor add-ons"]
+    direction TB
+    subgraph A1[" "]
+      direction LR
+      ADG["AdGuard Home<br/>DHCP + DoH DNS"]:::addon
+      MQTT["Mosquitto<br/>MQTT broker"]:::addon
+      Z2M["Zigbee2MQTT<br/>ZBT-2 coordinator"]:::addon
+    end
+    subgraph A2[" "]
+      direction LR
+      ESP[ESPHome]:::addon
+      WHIS["Whisper<br/>local STT"]:::addon
+      PIPER["Piper<br/>local TTS"]:::addon
+    end
+    subgraph A3[" "]
+      direction LR
+      SSHA["SSH + Web Terminal<br/>(Protection OFF)"]:::addon
+      HAMCP["ha-mcp<br/>81 tools"]:::addon
+      OFMCP["official MCP Server<br/>~20 intents"]:::addon
+    end
+  end
+
+  %% Custom HA code
+  subgraph CUSTOM["custom_components / packages / scripts"]
+    direction LR
+    ROUTER["speakeasy_router<br/>conversation agent<br/>local-first → Claude"]:::custom
+    LEARN["learned.yaml<br/>+ custom_sentences"]:::custom
+    PKG["packages/<br/>scenes · sports · jukebox<br/>tablet · alpaca · …"]:::custom
+    PY["scripts/python/<br/>ha_client.py + modules"]:::custom
+  end
+
+  %% Side Docker
+  subgraph DOCKER["Side-by-side Docker (via SSH addon docker.sock)"]
+    direction LR
+    JF["Jellyfin<br/>media server"]:::addon
+    TUN["Tunarr<br/>classic-TV channels"]:::addon
+    ALP["alpaca-bot<br/>FastAPI + APScheduler"]:::addon
+  end
+
+  HAOS --> ADDONS
+  HAOS --> CUSTOM
+  HAOS --> DOCKER
+
+  %% =========== Devices on the LAN ===========
+  subgraph DEVS["Devices on the LAN"]
+    direction TB
+    subgraph D1[" "]
+      direction LR
+      JVC["JVC Projector"]:::device
+      DENON["Denon X3800H AVR"]:::device
+      SHIELD["NVIDIA Shield TV Pro<br/>ADB + Cast + remote"]:::device
+    end
+    subgraph D2[" "]
+      direction LR
+      TAB["Samsung Tab S9 FE<br/>Fully Kiosk Browser"]:::device
+      DIAL["M5Dial<br/>ESPHome controller"]:::device
+      ANK["Anker Prime 250W<br/>charger"]:::device
+    end
+    subgraph D3[" "]
+      direction LR
+      WLED1["WLED A<br/>SK6812 RGBW"]:::device
+      WLED2["WLED B<br/>SK6812 RGBW"]:::device
+      HEAT["Heat Storm heaters<br/>smart_envi"]:::device
+    end
+    subgraph D4[" "]
+      direction LR
+      ZDEV["Zigbee mesh<br/>buttons · sensors · bulbs"]:::device
+    end
+  end
+
+  LAN --> DEVS
+  Z2M -. MQTT .- ZDEV
+  ESP -. OTA .- DIAL
+
+  %% =========== External services ===========
+  subgraph EXT["External / cloud services"]
+    direction LR
+    ANTHRO["Anthropic API<br/>Claude Haiku 4.5 + Opus 4.7"]:::ext
+    SPOT["Spotify Web API"]:::ext
+    ALPACA["Alpaca trading API"]:::ext
+    JFAPI["ESPN · NHL · iperf3<br/>public servers"]:::ext
+  end
+
+  HAMCP -. tools .- ANTHRO
+  OFMCP -. tools .- ANTHRO
+  ROUTER -. fallback .- ANTHRO
+  ALP --> ALPACA
+  PY -. tokens .- SPOT
+  HAOS -. REST .- JFAPI
+  JF -. library .- TUN
+  JF -. streams .- SHIELD

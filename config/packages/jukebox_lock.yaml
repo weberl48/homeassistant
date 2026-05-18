@@ -1,0 +1,111 @@
+# =====================================================================
+# Speakeasy Jukebox Lock — guest mode + PIN gate
+# Loaded via /config/packages/jukebox_lock.yaml
+# =====================================================================
+
+input_text:
+  tablet_admin_pin:
+    name: "Tablet Admin PIN"
+    initial: "1234"
+    mode: password
+    min: 4
+    max: 12
+  tablet_pin_entry:
+    name: "Tablet PIN Entry (live)"
+    initial: ""
+    mode: text
+    max: 12
+
+input_boolean:
+  tablet_admin_unlocked:
+    name: "Tablet Admin Unlocked"
+    icon: mdi:shield-key
+
+timer:
+  tablet_admin_lock:
+    duration: "00:10:00"
+    icon: mdi:timer-lock-outline
+
+script:
+  tablet_pin_append:
+    alias: "Tablet: Append PIN digit"
+    fields:
+      digit:
+        name: Digit
+        required: true
+    sequence:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.tablet_pin_entry
+        data:
+          value: "{{ states('input_text.tablet_pin_entry') }}{{ digit }}"
+      - if:
+          - condition: template
+            value_template: "{{ (states('input_text.tablet_pin_entry') | length) >= (states('input_text.tablet_admin_pin') | length) }}"
+        then:
+          - service: script.tablet_pin_submit
+
+  tablet_pin_clear:
+    alias: "Tablet: Clear PIN entry"
+    sequence:
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.tablet_pin_entry
+        data:
+          value: ""
+
+  tablet_pin_submit:
+    alias: "Tablet: Submit PIN"
+    sequence:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ states('input_text.tablet_pin_entry') == states('input_text.tablet_admin_pin') }}"
+            sequence:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.tablet_admin_unlocked
+              - service: timer.start
+                target:
+                  entity_id: timer.tablet_admin_lock
+              - service: input_text.set_value
+                target:
+                  entity_id: input_text.tablet_pin_entry
+                data:
+                  value: ""
+        default:
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.tablet_pin_entry
+            data:
+              value: ""
+
+  tablet_jukebox_lock:
+    alias: "Tablet: Lock to jukebox now"
+    sequence:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.tablet_admin_unlocked
+      - service: timer.cancel
+        target:
+          entity_id: timer.tablet_admin_lock
+
+automation:
+  - id: tablet_relock_on_timer_finish
+    alias: "Tablet: Auto-relock when timer finishes"
+    trigger:
+      - platform: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.tablet_admin_lock
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.tablet_admin_unlocked
+
+# =====================================================================
+# Guest song search & queue (extends jukebox lock package)
+# =====================================================================
+shell_command:
+  spotify_search_queue: "python3 /config/scripts/spotify_search_queue.py '{{ query | string | replace(\"'\", \"\") }}'"
+

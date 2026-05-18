@@ -1,0 +1,131 @@
+# /config/dashboards/alpaca.yaml
+# Standalone dashboard for the alpaca-bot. Add to /config/configuration.yaml under
+# `lovelace: dashboards:` so it shows in the sidebar as "Alpaca".
+
+title: Alpaca Bot
+
+views:
+  - title: Bot
+    path: bot
+    icon: mdi:chart-line
+    cards:
+      - type: vertical-stack
+        cards:
+          # Hero: equity + mode badge
+          - type: custom:mushroom-template-card
+            primary: "${{ states('sensor.alpaca_equity') }}"
+            secondary: |
+              {{ states('sensor.alpaca_mode') }} ·
+              {% set s = states('sensor.alpaca_circuit_breaker') %}
+              {% if s == 'ok' %}🟢 OK
+              {% elif s == 'halted_daily' %}🟡 daily-loss halt
+              {% elif s == 'halted_consecutive_losses' %}🟡 cooloff (3 losers)
+              {% elif s == 'halted_drawdown' %}🔴 DRAWDOWN HALT
+              {% else %}❓ {{ s }}{% endif %}
+              · {{ states('sensor.alpaca_open_positions') }} open
+            icon: mdi:chart-line
+            icon_color: |
+              {% set s = states('sensor.alpaca_circuit_breaker') %}
+              {% if s == 'ok' %}green
+              {% elif s == 'halted_drawdown' %}red
+              {% else %}orange{% endif %}
+            fill_container: true
+            multiline_secondary: true
+            tap_action:
+              action: url
+              url_path: http://192.168.1.160:9700/journal/today
+
+          # Today's P&L row — color flips based on sign
+          - type: glance
+            title: Today
+            entities:
+              - entity: sensor.alpaca_pnl_today
+                name: Total P/L
+              - entity: sensor.alpaca_realized_pnl_today
+                name: Realized
+              - entity: sensor.alpaca_unrealized_pnl
+                name: Unrealized
+
+          # Account state row
+          - type: glance
+            entities:
+              - entity: sensor.alpaca_actual_equity
+                name: Actual
+              - entity: sensor.alpaca_cash
+                name: Cash
+              - entity: sensor.alpaca_open_positions
+                name: Positions
+              - entity: sensor.alpaca_last_run
+                name: Last run
+
+          # Today's signal scan — ETF (daily bars) + crypto (hourly bars), each with its
+          # own RSI/stretch threshold. Strategy column makes the source obvious.
+          - type: markdown
+            content: |
+              ## Signal scan
+              {% set sigs = state_attr('sensor.alpaca_status_raw', 'latest_signals') or [] %}
+              {% set csigs = state_attr('sensor.alpaca_status_raw', 'latest_signals_crypto') or [] %}
+              {% if sigs or csigs %}
+              | Strategy | Symbol | RSI(2) | Close | Stretch < | Fired |
+              |----------|--------|-------:|------:|----------:|:-----:|
+              {% for s in sigs -%}
+              {% set d = s.data or {} -%}
+              | ETF | {{ s.symbol }} | {{ d.rsi | default('?') }} | ${{ d.last_close | default('?') }} | ${{ d.stretch_threshold | default('?') }} | {% if s.fired %}✅{% else %}❌{% endif %} |
+              {% endfor -%}
+              {% for s in csigs -%}
+              {% set d = s.data or {} -%}
+              | Crypto | {{ s.symbol }} | {{ d.rsi | default('?') }} | ${{ d.last_close | default('?') }} | ${{ d.stretch_threshold | default('?') }} | {% if s.fired %}✅{% else %}❌{% endif %} |
+              {% endfor -%}
+              {% else %}
+              _Signals haven't been computed yet. ETF scan fires at 09:35 ET on weekdays; crypto scan fires every 30 min 24/7._
+              {% endif %}
+
+              _ETF entry: RSI(2) < 10 **and** close < (EMA(20) − 1.5×ATR(14)) on daily bars._
+              _Crypto entry: RSI(2) < 15 **and** close < (EMA(20) − 1.0×ATR(14)) on hourly bars._
+
+          # Open positions list
+          - type: markdown
+            content: |
+              ## Open positions
+              {% set positions = state_attr('sensor.alpaca_open_positions', 'positions') or [] %}
+              {% if positions %}
+              | Symbol | Qty | Entry | Current | P/L |
+              |--------|----:|------:|--------:|----:|
+              {% for p in positions -%}
+              | {{ p.symbol }} | {{ p.qty | round(4) }} | ${{ p.avg_entry_price | round(2) }} | ${{ p.current_price | round(2) if p.current_price else '?' }} | {% if p.unrealized_pl %}{% if p.unrealized_pl >= 0 %}🟢{% else %}🔴{% endif %} ${{ p.unrealized_pl | round(2) }}{% else %}—{% endif %} |
+              {% endfor %}
+              {% else %}
+              _No open positions._
+              {% endif %}
+
+          # Today's journal — Haiku commentary rendered inline
+          - type: markdown
+            content: |
+              {% set md = state_attr('sensor.alpaca_status_raw', 'journal_today_md') %}
+              {% if md %}
+              {{ md }}
+              {% else %}
+              ## Today's journal
+              _Not yet written. EOD job runs at 16:15 ET; commentary appears after that._
+              {% endif %}
+
+          # Heartbeat + scheduler health
+          - type: entities
+            title: Bot health
+            entities:
+              - entity: sensor.alpaca_circuit_breaker
+                name: Circuit breaker
+              - entity: sensor.alpaca_heartbeat_stale_minutes
+                name: Minutes since last run
+              - entity: binary_sensor.alpaca_market_open
+                name: Market open (ETF)
+              - entity: binary_sensor.alpaca_crypto_enabled
+                name: Crypto strategy enabled
+              - type: weblink
+                name: Today's journal
+                url: http://192.168.1.160:9700/journal/today
+                icon: mdi:notebook
+              - type: weblink
+                name: Bot status JSON
+                url: http://192.168.1.160:9700/status
+                icon: mdi:code-json

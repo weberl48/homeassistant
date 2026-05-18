@@ -1,0 +1,30 @@
+version: 5
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://core-mosquitto:1883
+  user: addons
+  # Replace with your Mosquitto user password (see Z2M docs for the addon-user pattern).
+  password: REPLACE_ME_MQTT_PASSWORD
+serial:
+  # Adjust to your coordinator's serial path. Nabu Casa ZBT-2 needs baud 460800 + rtscts.
+  port: /dev/serial/by-id/usb-Nabu_Casa_ZBT-2_E072A1D85300-if00
+  adapter: ember
+  baudrate: 460800
+  rtscts: true
+advanced:
+  log_level: info
+  channel: 11
+  # Regenerate these for your own mesh — DO NOT reuse keys from a public repo.
+  # `network_key` is your Zigbee AES-128 key; expose it and anyone in RF range can
+  # decrypt your traffic. Set to `GENERATE` on first boot to auto-generate, then
+  # back up the value from the Z2M log.
+  network_key: GENERATE
+  pan_id: GENERATE
+  ext_pan_id: GENERATE
+frontend:
+  enabled: true
+  port: 8099
+homeassistant:
+  enabled: true
+onboarding: false
+devices: {}

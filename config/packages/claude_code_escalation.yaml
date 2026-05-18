@@ -1,0 +1,120 @@
+# Speakeasy: Claude Code escalation
+#
+# Voice agent (Haiku) calls `script.escalate_to_claude_code` when it can't handle a request.
+# Script POSTs the transcript to the local claude-proxy container, which spawns a headless
+# `claude -p` Sonnet 4.6 instance with this project's CLAUDE.md, MCP servers, and memory.
+# The dispatched Claude executes, optionally registers a learned phrase for next time, and
+# returns a short TTS-friendly reply.
+#
+# Kill switch: input_boolean.claude_code_escalation (UI toggle).
+
+input_boolean:
+  claude_code_escalation:
+    name: Claude Code escalation enabled
+    icon: mdi:robot-confused
+    initial: true
+
+input_number:
+  claude_code_escalations_today:
+    name: Claude Code escalations today
+    icon: mdi:counter
+    min: 0
+    max: 9999
+    step: 1
+    mode: box
+
+rest_command:
+  claude_dispatch:
+    url: "http://192.168.1.160:9100/dispatch"
+    method: POST
+    headers:
+      X-Auth: !secret claude_proxy_secret
+      Content-Type: application/json
+    payload: '{"transcript": {{ transcript | to_json }}}'
+    timeout: 180
+    content_type: application/json
+
+script:
+  escalate_to_claude_code:
+    alias: "Voice: Escalate to Claude Code"
+    description: >-
+      Use ONLY when you (Haiku) cannot fulfill the user's request with the
+      tools and exposed entities you have. The user's exact transcript is
+      passed to a more capable Claude with full HA access. Reply to the user
+      with whatever this returns; do not paraphrase or wrap.
+    icon: mdi:brain
+    mode: parallel
+    max: 4
+    fields:
+      transcript:
+        description: The user's exact spoken request, verbatim.
+        required: true
+        example: "Lucas asked me to find his lost remote"
+        selector:
+          text:
+      reason:
+        description: One short phrase on why you couldn't handle it natively.
+        required: false
+        example: "no native tool for finding remotes"
+        selector:
+          text:
+    sequence:
+      - alias: "Kill switch check"
+        if:
+          - condition: state
+            entity_id: input_boolean.claude_code_escalation
+            state: "off"
+        then:
+          - variables:
+              reply:
+                speech: "Claude Code escalation is currently disabled."
+          - stop: "escalation disabled"
+            response_variable: reply
+      - alias: "Bump counter"
+        service: input_number.set_value
+        target:
+          entity_id: input_number.claude_code_escalations_today
+        data:
+          value: "{{ (states('input_number.claude_code_escalations_today') | int(0)) + 1 }}"
+      - alias: "Dispatch to proxy"
+        service: rest_command.claude_dispatch
+        data:
+          transcript: "{{ transcript }}"
+        response_variable: dispatch
+      - variables:
+          status_code: "{{ dispatch.status | default(0) }}"
+          reply_text: >-
+            {%- set c = dispatch.content if dispatch.content is mapping else {} -%}
+            {%- if status_code != 200 -%}
+              I tried Claude Code but got HTTP {{ status_code }}.
+            {%- elif c.get('ok') -%}
+              {{ c.get('response') or 'I did it, but had no words.' }}
+            {%- else -%}
+              Claude Code couldn't finish: {{ (c.get('stderr') or 'unknown error') | truncate(120) }}
+            {%- endif -%}
+          reply:
+            speech: "{{ reply_text }}"
+            duration_ms: "{{ dispatch.content.duration_ms | default(0) if dispatch.content is mapping else 0 }}"
+      - stop: "done"
+        response_variable: reply
+
+  reset_claude_code_counter:
+    alias: "Reset Claude Code counter (daily)"
+    mode: single
+    sequence:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.claude_code_escalations_today
+        data:
+          value: 0
+
+automation:
+  - id: reset_claude_code_counter_midnight
+    alias: "Claude Code: reset daily escalation counter"
+    description: Zero the counter every midnight so the daily number stays meaningful.
+    mode: single
+    trigger:
+      - platform: time
+        at: "00:00:00"
+    action:
+      - service: script.reset_claude_code_counter

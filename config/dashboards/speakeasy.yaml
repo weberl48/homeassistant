@@ -1,0 +1,572 @@
+# =====================================================================
+# Speakeasy Cinema Bar — tablet UI v8 (admin + jukebox)
+# View 0 (path: bar) — host/admin dashboard, default.
+# View 1 (path: jukebox) — SpotifyPlus card surface; FK auto-loads it
+# when activity = music (replacing the old native-Spotify-app flow).
+# Auto-flip wiring lives in packages/tablet_kiosk.yaml.
+# =====================================================================
+title: Speakeasy
+
+kiosk_mode:
+  hide_header: true
+  hide_sidebar: true
+  ignore_entity_settings: true
+
+views:
+  - title: Bar
+    path: bar
+    icon: mdi:glass-cocktail
+    panel: true
+    theme: neon_speakeasy
+    cards:
+      - type: vertical-stack
+        cards:
+          # ============================================================
+          # Whole-house admin — the only view (jukebox/PIN gate stripped
+          # since native Spotify is the guest surface during music)
+          # ============================================================
+          # Activity hero
+          - type: custom:mushroom-template-card
+            primary: |
+              {% set act = states('input_select.speakeasy_activity') %}
+              {{ {'idle':'SPEAKEASY','movie':'MOVIE NIGHT','music':'MUSIC + VIZ','retro':'RETRO GAMING','pc_stream':'PC STREAM'}.get(act, act|upper) }}
+            secondary: |
+              {% set act = states('input_select.speakeasy_activity') %}
+              {% set m = states('media_player.shield') %}
+              {% if act == 'idle' %}{{ now().strftime('%-I:%M %p') }} · {{ now().strftime('%A, %b %-d') }} · cinema bar standing by
+              {% elif m == 'playing' and state_attr('media_player.shield','media_title') %}♫ {{ state_attr('media_player.shield','media_title') }}
+              {% else %}mode active{% endif %}
+            icon: |
+              {% set act = states('input_select.speakeasy_activity') %}
+              {{ {'idle':'mdi:glass-cocktail','movie':'mdi:movie-open','music':'mdi:music','retro':'mdi:gamepad-variant','pc_stream':'mdi:monitor-shimmer'}.get(act, 'mdi:glass-cocktail') }}
+            icon_color: |
+              {% set act = states('input_select.speakeasy_activity') %}
+              {{ {'idle':'cyan','movie':'pink','music':'purple','retro':'green','pc_stream':'cyan'}.get(act, 'cyan') }}
+            fill_container: true
+            multiline_secondary: true
+            tap_action: { action: none }
+            card_mod:
+              style: |
+                ha-card { background: linear-gradient(135deg, rgba(0,229,255,0.10), rgba(255,45,146,0.05) 60%, rgba(0,0,0,0.6)) !important; border: 1px solid rgba(0,229,255,0.4) !important; border-radius: 24px !important; box-shadow: 0 0 36px rgba(0,229,255,0.25) !important; position: relative !important; overflow: hidden !important; }
+                ha-card::before { content: '' !important; position: absolute !important; top: 0 !important; left: 0 !important; right: 0 !important; height: 2px !important; background: linear-gradient(90deg, transparent, #00e5ff, #ff2d92, transparent) !important; box-shadow: 0 0 10px #00e5ff !important; }
+                .primary { font-family: 'Orbitron', sans-serif !important; font-size: 32px !important; font-weight: 800 !important; letter-spacing: 0.18em !important; color: #00e5ff !important; text-shadow: 0 0 14px rgba(0,229,255,0.7), 0 0 28px rgba(0,229,255,0.35) !important; }
+                .secondary { font-size: 14px !important; letter-spacing: 0.12em !important; text-transform: uppercase !important; color: #b0b0d0 !important; margin-top: 4px !important; }
+                mushroom-shape-icon { --shape-color: rgba(0,229,255,0.15) !important; --icon-size: 56px !important; }
+
+          # Scene tiles — grid wraps 2-per-row on phone, also 2-per-row on tablet.
+          # 5 cards => 2/2/1 layout, with ALL OFF visually isolated on its own row.
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: custom:mushroom-template-card
+                primary: MOVIE
+                secondary: |
+                  {% set st = states('input_text.speakeasy_action_status') %}
+                  {% if st == 'movie:loading' %}launching…
+                  {% elif st == 'movie:done' %}✓ ready
+                  {% elif st == 'movie:failed' %}check device
+                  {% else %}stremio · projector{% endif %}
+                icon: mdi:movie-open
+                icon_color: pink
+                fill_container: true
+                layout: vertical
+                tap_action: { action: call-service, service: script.speakeasy_movie }
+                card_mod:
+                  style: |
+                    @keyframes loadpulse { 0%,100% { border-color: rgba(255,170,0,0.4) !important; box-shadow: 0 0 18px rgba(255,170,0,0.30) !important; } 50% { border-color: rgba(255,170,0,1.0) !important; box-shadow: 0 0 32px rgba(255,170,0,0.70) !important; } }
+                    ha-card { min-height: 130px !important; background: linear-gradient(135deg, rgba(255,45,146,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,45,146,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,45,146,0.25) !important; transition: border-color 0.4s, box-shadow 0.4s !important;
+                      {% set st = states('input_text.speakeasy_action_status') %}
+                      {% if st == 'movie:loading' %} animation: loadpulse 1.4s ease-in-out infinite !important;
+                      {% elif st == 'movie:done' %} border-color: #00FF88 !important; box-shadow: 0 0 28px rgba(0,255,136,0.65) !important;
+                      {% elif st == 'movie:failed' %} border-color: #FF4444 !important; box-shadow: 0 0 28px rgba(255,68,68,0.65) !important;
+                      {% endif %}
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 16px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ff2d92 !important; text-shadow: 0 0 10px rgba(255,45,146,0.7) !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.08em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                    mushroom-shape-icon { --shape-color: rgba(255,45,146,0.18) !important; --icon-size: 44px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: MUSIC
+                secondary: |
+                  {% set st = states('input_text.speakeasy_action_status') %}
+                  {% if st == 'music:loading' %}launching…
+                  {% elif st == 'music:done' %}✓ ready
+                  {% elif st == 'music:failed' %}check device
+                  {% else %}spotify · viz{% endif %}
+                icon: mdi:music
+                icon_color: purple
+                fill_container: true
+                layout: vertical
+                tap_action: { action: call-service, service: script.speakeasy_music_viz }
+                card_mod:
+                  style: |
+                    @keyframes loadpulse { 0%,100% { border-color: rgba(255,170,0,0.4) !important; box-shadow: 0 0 18px rgba(255,170,0,0.30) !important; } 50% { border-color: rgba(255,170,0,1.0) !important; box-shadow: 0 0 32px rgba(255,170,0,0.70) !important; } }
+                    ha-card { min-height: 130px !important; background: linear-gradient(135deg, rgba(200,80,255,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(200,80,255,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(200,80,255,0.25) !important; transition: border-color 0.4s, box-shadow 0.4s !important;
+                      {% set st = states('input_text.speakeasy_action_status') %}
+                      {% if st == 'music:loading' %} animation: loadpulse 1.4s ease-in-out infinite !important;
+                      {% elif st == 'music:done' %} border-color: #00FF88 !important; box-shadow: 0 0 28px rgba(0,255,136,0.65) !important;
+                      {% elif st == 'music:failed' %} border-color: #FF4444 !important; box-shadow: 0 0 28px rgba(255,68,68,0.65) !important;
+                      {% endif %}
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 16px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #c850ff !important; text-shadow: 0 0 10px rgba(200,80,255,0.7) !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.08em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                    mushroom-shape-icon { --shape-color: rgba(200,80,255,0.18) !important; --icon-size: 44px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: RETRO
+                secondary: |
+                  {% set st = states('input_text.speakeasy_action_status') %}
+                  {% if st == 'retro:loading' %}launching…
+                  {% elif st == 'retro:done' %}✓ ready
+                  {% elif st == 'retro:failed' %}check device
+                  {% else %}romm library{% endif %}
+                icon: mdi:gamepad-variant
+                icon_color: green
+                fill_container: true
+                layout: vertical
+                tap_action: { action: call-service, service: script.speakeasy_retro }
+                card_mod:
+                  style: |
+                    @keyframes loadpulse { 0%,100% { border-color: rgba(255,170,0,0.4) !important; box-shadow: 0 0 18px rgba(255,170,0,0.30) !important; } 50% { border-color: rgba(255,170,0,1.0) !important; box-shadow: 0 0 32px rgba(255,170,0,0.70) !important; } }
+                    ha-card { min-height: 130px !important; background: linear-gradient(135deg, rgba(0,255,136,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(0,255,136,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(0,255,136,0.25) !important; transition: border-color 0.4s, box-shadow 0.4s !important;
+                      {% set st = states('input_text.speakeasy_action_status') %}
+                      {% if st == 'retro:loading' %} animation: loadpulse 1.4s ease-in-out infinite !important;
+                      {% elif st == 'retro:done' %} border-color: #00FF88 !important; box-shadow: 0 0 28px rgba(0,255,136,0.65) !important;
+                      {% elif st == 'retro:failed' %} border-color: #FF4444 !important; box-shadow: 0 0 28px rgba(255,68,68,0.65) !important;
+                      {% endif %}
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 16px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #00ff88 !important; text-shadow: 0 0 10px rgba(0,255,136,0.7) !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.08em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                    mushroom-shape-icon { --shape-color: rgba(0,255,136,0.18) !important; --icon-size: 44px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: PC STREAM
+                secondary: |
+                  {% set st = states('input_text.speakeasy_action_status') %}
+                  {% if st == 'pc_stream:loading' %}launching…
+                  {% elif st == 'pc_stream:done' %}✓ ready
+                  {% elif st == 'pc_stream:failed' %}check device
+                  {% else %}apollo · artemis{% endif %}
+                icon: mdi:monitor-shimmer
+                icon_color: cyan
+                fill_container: true
+                layout: vertical
+                tap_action: { action: call-service, service: script.speakeasy_pc_stream }
+                card_mod:
+                  style: |
+                    @keyframes loadpulse { 0%,100% { border-color: rgba(255,170,0,0.4) !important; box-shadow: 0 0 18px rgba(255,170,0,0.30) !important; } 50% { border-color: rgba(255,170,0,1.0) !important; box-shadow: 0 0 32px rgba(255,170,0,0.70) !important; } }
+                    ha-card { min-height: 130px !important; background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(0,229,255,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(0,229,255,0.25) !important; transition: border-color 0.4s, box-shadow 0.4s !important;
+                      {% set st = states('input_text.speakeasy_action_status') %}
+                      {% if st == 'pc_stream:loading' %} animation: loadpulse 1.4s ease-in-out infinite !important;
+                      {% elif st == 'pc_stream:done' %} border-color: #00FF88 !important; box-shadow: 0 0 28px rgba(0,255,136,0.65) !important;
+                      {% elif st == 'pc_stream:failed' %} border-color: #FF4444 !important; box-shadow: 0 0 28px rgba(255,68,68,0.65) !important;
+                      {% endif %}
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 16px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #00e5ff !important; text-shadow: 0 0 10px rgba(0,229,255,0.7) !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.08em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                    mushroom-shape-icon { --shape-color: rgba(0,229,255,0.18) !important; --icon-size: 44px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: ALL OFF
+                secondary: |
+                  {% set st = states('input_text.speakeasy_action_status') %}
+                  {% if st == 'all_off:loading' %}shutting…
+                  {% elif st == 'all_off:done' %}✓ done
+                  {% elif st == 'all_off:failed' %}check device
+                  {% else %}hold to confirm{% endif %}
+                icon: mdi:power-standby
+                icon_color: amber
+                fill_container: true
+                layout: vertical
+                tap_action: { action: none }
+                hold_action:
+                  action: call-service
+                  service: input_button.press
+                  target: { entity_id: input_button.speakeasy_off }
+                card_mod:
+                  style: |
+                    @keyframes loadpulse { 0%,100% { border-color: rgba(255,170,0,0.4) !important; box-shadow: 0 0 18px rgba(255,170,0,0.30) !important; } 50% { border-color: rgba(255,170,0,1.0) !important; box-shadow: 0 0 32px rgba(255,170,0,0.70) !important; } }
+                    ha-card { min-height: 130px !important; background: linear-gradient(135deg, rgba(255,170,0,0.10), rgba(0,0,0,0.5)) !important; border: 1px solid rgba(255,170,0,0.35) !important; border-radius: 16px !important; box-shadow: 0 0 18px rgba(255,170,0,0.18) !important; transition: box-shadow 0.5s ease-in, border-color 0.5s ease-in, transform 0.1s ease-in;
+                      {% set st = states('input_text.speakeasy_action_status') %}
+                      {% if st == 'all_off:loading' %} animation: loadpulse 1.4s ease-in-out infinite !important;
+                      {% elif st == 'all_off:done' %} border-color: #00FF88 !important; box-shadow: 0 0 28px rgba(0,255,136,0.65) !important;
+                      {% elif st == 'all_off:failed' %} border-color: #FF4444 !important; box-shadow: 0 0 28px rgba(255,68,68,0.65) !important;
+                      {% endif %}
+                    }
+                    ha-card:active { transform: scale(0.96) !important; border: 1px solid rgba(255,68,68,0.9) !important; box-shadow: 0 0 32px rgba(255,68,68,0.85) !important; }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 16px !important; font-weight: 800 !important; letter-spacing: 0.2em !important; color: #ffaa00 !important; text-shadow: 0 0 10px rgba(255,170,0,0.6) !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.08em !important; color: #8a8aa8 !important; text-transform: uppercase !important; }
+                    mushroom-shape-icon { --shape-color: rgba(255,170,0,0.15) !important; --icon-size: 44px !important; }
+
+          # Sliders row — heat + volume only. Spotify cards (player, JAM, transport)
+          # removed; music UX lives in the Jukebox view (auto-flips on activity=music).
+          - type: horizontal-stack
+            cards:
+              - type: custom:slider-button-card
+                entity: climate.smax_b6a6d8_smax_b6a6d8
+                name: BAR HEAT
+                icon: mdi:radiator
+                # Tapping the main button toggles BOTH heaters via the smart toggle script,
+                # not just the bound Heater A entity. (slider-button-card's default tap action
+                # is `toggle` on the bound entity, which would only flip one of two heaters.)
+                tap_action:
+                  action: call-service
+                  service: script.speakeasy_heaters_toggle
+                hold_action:
+                  action: more-info
+                slider:
+                  direction: top-bottom
+                  background: striped
+                  show_track: true
+                  attribute: temperature
+                  min: 50
+                  max: 80
+                  step: 1
+                # State-aware action button: shows fire when heaters off (tap = turn on),
+                # shows power-off when any heater is heating (tap = turn off).
+                # Removes the previous invisible hold-to-off gesture.
+                action_button:
+                  show: true
+                  mode: custom
+                  icon: |-
+                    {% if is_state('climate.smax_b6a6d8_smax_b6a6d8','heat')
+                       or is_state('climate.smax_b6c6f4_smax_b6c6f4','heat') %}mdi:radiator-off
+                    {%- else %}mdi:fire{%- endif %}
+                  tap_action:
+                    action: call-service
+                    service: script.speakeasy_heaters_toggle
+                card_mod:
+                  style: |
+                    ha-card { background: linear-gradient(135deg, rgba(255,90,0,0.10), rgba(0,0,0,0.6)) !important; border: 1px solid rgba(255,90,0,0.35) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(255,90,0,0.20) !important; min-height: 220px !important; height: 220px !important; overflow: hidden !important; }
+
+              - type: custom:slider-button-card
+                entity: media_player.denon_avr_x3800h
+                name: VOLUME
+                icon: mdi:volume-high
+                slider:
+                  direction: top-bottom
+                  background: gradient
+                  show_track: true
+                action_button:
+                  show: true
+                  mode: custom
+                  icon: mdi:volume-mute
+                  tap_action:
+                    action: call-service
+                    service: script.denon_mute_toggle
+                card_mod:
+                  style: |
+                    ha-card { background: linear-gradient(135deg, rgba(0,229,255,0.10), rgba(255,170,0,0.05) 60%, rgba(0,0,0,0.6)) !important; border: 1px solid rgba(0,229,255,0.4) !important; border-radius: 16px !important; box-shadow: 0 0 22px rgba(0,229,255,0.25) !important; min-height: 220px !important; height: 220px !important; overflow: hidden !important; }
+
+          # Status row — 4 tiles in a responsive grid (2x2 on phone, 2x2 on tablet).
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              - type: custom:mushroom-template-card
+                primary: PROJECTOR
+                secondary: |
+                  {% if is_state('remote.jvc_projector','on') %}{{ states('select.jvc_projector_input') | upper }}
+                  {% else %}OFF{% endif %}
+                icon: mdi:projector
+                icon_color: '{{ "cyan" if is_state("remote.jvc_projector","on") else "grey" }}'
+                fill_container: true
+                # Tap = open Projector Control popup. Hold = toggle power.
+                tap_action:
+                  action: call-service
+                  service: script.show_projector_control_popup
+                hold_action:
+                  action: call-service
+                  service: remote.toggle
+                  target: { entity_id: remote.jvc_projector }
+                card_mod:
+                  style: |
+                    ha-card { background: rgba(15,15,28,0.7) !important; border: 1px solid rgba(64,64,96,0.3) !important; border-radius: 12px !important; }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 12px !important; letter-spacing: 0.2em !important; }
+                    .secondary { font-size: 10px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: AVR
+                secondary: |
+                  {% set s = states('media_player.denon_avr_x3800h') %}
+                  {% if s in ['off','standby','unavailable','unknown'] %}OFF
+                  {% else %}{{ state_attr('media_player.denon_avr_x3800h','source') or s | upper }}{% endif %}
+                icon: mdi:audio-video
+                icon_color: >-
+                  {% set s = states('media_player.denon_avr_x3800h') %}
+                  {{ "grey" if s in ['off','standby','unavailable','unknown'] else "cyan" }}
+                fill_container: true
+                # Tap = open Sound Settings popup (Bubble Card). Hold = HA more-info.
+                tap_action:
+                  action: call-service
+                  service: script.show_sound_settings_popup
+                hold_action:
+                  action: more-info
+                  entity: media_player.denon_avr_x3800h
+                card_mod:
+                  style: |
+                    ha-card { background: rgba(15,15,28,0.7) !important; border: 1px solid rgba(64,64,96,0.3) !important; border-radius: 12px !important; }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 12px !important; letter-spacing: 0.2em !important; }
+                    .secondary { font-size: 10px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: SHIELD
+                secondary: |
+                  {% if is_state('media_player.shield','off') %}OFF{% else %}{{ state_attr('media_player.shield','app_name') or 'ON' }}{% endif %}
+                icon: mdi:cast-variant
+                icon_color: '{{ "cyan" if not is_state("media_player.shield","off") else "grey" }}'
+                fill_container: true
+                tap_action: { action: more-info, entity: media_player.shield }
+                card_mod:
+                  style: |
+                    ha-card { background: rgba(15,15,28,0.7) !important; border: 1px solid rgba(64,64,96,0.3) !important; border-radius: 12px !important; }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 12px !important; letter-spacing: 0.2em !important; }
+                    .secondary { font-size: 10px !important; }
+
+              - type: custom:mushroom-template-card
+                primary: '{{ "HOME" if is_state("person.weberle","home") else "AWAY" }}'
+                secondary: lucas
+                icon: '{{ "mdi:home-account" if is_state("person.weberle","home") else "mdi:walk" }}'
+                icon_color: '{{ "green" if is_state("person.weberle","home") else "grey" }}'
+                fill_container: true
+                tap_action: { action: none }
+                card_mod:
+                  style: |
+                    ha-card { background: rgba(15,15,28,0.7) !important; border: 1px solid rgba(64,64,96,0.3) !important; border-radius: 12px !important; }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 12px !important; letter-spacing: 0.2em !important; }
+                    .secondary { font-size: 10px !important; }
+
+          # =========================================================
+          # ROOMS & DEVICES — whole-house tiles in a responsive 2-col grid
+          # (5 tiles => 2/2/1; last room sits alone in the trailing row).
+          # =========================================================
+          - type: grid
+            columns: 2
+            square: false
+            cards:
+              # ---- LIVING ROOM ----
+              - type: custom:mushroom-template-card
+                primary: LIVING ROOM
+                secondary: |
+                  {% set sb = states('media_player.q_series_soundbar') %}
+                  {% set vac = states('vacuum.roborock_q_revo_2') %}
+                  {{ ('soundbar ' ~ sb) if sb != 'off' else 'soundbar idle' }} · vac {{ vac }}
+                icon: mdi:sofa
+                icon_color: '{{ "amber" if states("media_player.q_series_soundbar") not in ["off","unavailable"] else "grey" }}'
+                fill_container: true
+                multiline_secondary: true
+                tap_action:
+                  action: more-info
+                  entity: media_player.q_series_soundbar
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(255,170,0,0.06), rgba(0,0,0,0.5)) !important;
+                      border: 1px solid rgba(255,170,0,0.3) !important;
+                      border-radius: 14px !important;
+                      box-shadow: 0 0 16px rgba(255,170,0,0.12) !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.2em !important; color: #ffaa00 !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #b0b0d0 !important; }
+
+              # ---- BEDROOM ----
+              - type: custom:mushroom-template-card
+                primary: BEDROOM
+                secondary: |
+                  {% set tv = states('media_player.smarttv_4k_ffm') %}
+                  {% if tv == 'off' %}tv off{% else %}{{ state_attr('media_player.smarttv_4k_ffm','app_name') or tv }}{% endif %}
+                icon: mdi:bed
+                icon_color: '{{ "purple" if states("media_player.smarttv_4k_ffm") not in ["off","unavailable"] else "grey" }}'
+                fill_container: true
+                tap_action:
+                  action: more-info
+                  entity: media_player.smarttv_4k_ffm
+                hold_action:
+                  action: call-service
+                  service: media_player.toggle
+                  target: { entity_id: media_player.smarttv_4k_ffm }
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(200,80,255,0.06), rgba(0,0,0,0.5)) !important;
+                      border: 1px solid rgba(200,80,255,0.3) !important;
+                      border-radius: 14px !important;
+                      box-shadow: 0 0 16px rgba(200,80,255,0.12) !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.2em !important; color: #c850ff !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #b0b0d0 !important; }
+
+              # ---- VACUUM ----
+              - type: custom:mushroom-template-card
+                primary: VACUUM
+                secondary: |
+                  {{ states('vacuum.roborock_q_revo_2') }} · {{ states('sensor.roborock_q_revo_2_battery') | default('?') }}%
+                icon: mdi:robot-vacuum
+                icon_color: '{{ "green" if states("vacuum.roborock_q_revo_2") == "cleaning" else "cyan" if states("vacuum.roborock_q_revo_2") == "docked" else "amber" }}'
+                fill_container: true
+                tap_action:
+                  action: more-info
+                  entity: vacuum.roborock_q_revo_2
+                hold_action:
+                  action: call-service
+                  service: vacuum.start
+                  target: { entity_id: vacuum.roborock_q_revo_2 }
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(0,229,255,0.06), rgba(0,0,0,0.5)) !important;
+                      border: 1px solid rgba(0,229,255,0.3) !important;
+                      border-radius: 14px !important;
+                      box-shadow: 0 0 16px rgba(0,229,255,0.12) !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.2em !important; color: #00e5ff !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #b0b0d0 !important; }
+
+              # ---- NETWORK ----
+              - type: custom:mushroom-template-card
+                primary: NETWORK
+                secondary: |
+                  {% set wan = states('binary_sensor.network_wan_down') %}
+                  {% set ad = states('switch.adguard_home_filtering') %}
+                  {% if wan == 'on' %}WAN DOWN
+                  {% else %}adguard {{ ad }} · ↓{{ states('sensor.internet_download_capacity') | float(0) | round }} ↑{{ states('sensor.internet_upload_capacity') | float(0) | round }} mbps
+                  {% endif %}
+                icon: mdi:web
+                icon_color: |
+                  {% if states('binary_sensor.network_wan_down') == 'on' %}red
+                  {% elif states('switch.adguard_home_filtering') == 'on' %}green
+                  {% else %}amber{% endif %}
+                fill_container: true
+                multiline_secondary: true
+                tap_action:
+                  action: more-info
+                  entity: switch.adguard_home_filtering
+                hold_action:
+                  action: call-service
+                  service: switch.toggle
+                  target: { entity_id: switch.adguard_home_filtering }
+                  confirmation:
+                    text: "Toggle AdGuard DNS filtering for the whole house?"
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(0,255,136,0.06), rgba(0,0,0,0.5)) !important;
+                      border: 1px solid rgba(0,255,136,0.3) !important;
+                      border-radius: 14px !important;
+                      box-shadow: 0 0 16px rgba(0,255,136,0.12) !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.2em !important; color: #00ff88 !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #b0b0d0 !important; }
+
+              # ---- HOUSE PEEK — placeholder for future Lock/Garage/Lights ----
+              - type: custom:mushroom-template-card
+                primary: HOUSE
+                secondary: |
+                  {% set heat = is_state('climate.smax_b6a6d8_smax_b6a6d8','heat') or is_state('climate.smax_b6c6f4_smax_b6c6f4','heat') %}
+                  {% set ta = state_attr('climate.smax_b6a6d8_smax_b6a6d8','current_temperature') | float(0) %}
+                  {% set tb = state_attr('climate.smax_b6c6f4_smax_b6c6f4','current_temperature') | float(0) %}
+                  basement {{ ((ta + tb)/2) | round if (ta and tb) else '?' }}°F · {{ 'heating' if heat else 'idle' }}
+                icon: mdi:home-thermometer
+                icon_color: '{{ "orange" if (is_state("climate.smax_b6a6d8_smax_b6a6d8","heat") or is_state("climate.smax_b6c6f4_smax_b6c6f4","heat")) else "grey" }}'
+                fill_container: true
+                multiline_secondary: true
+                tap_action: { action: none }
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(255,90,0,0.06), rgba(0,0,0,0.5)) !important;
+                      border: 1px solid rgba(255,90,0,0.3) !important;
+                      border-radius: 14px !important;
+                      box-shadow: 0 0 16px rgba(255,90,0,0.12) !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.2em !important; color: #ff5a00 !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #b0b0d0 !important; }
+
+  # ==================================================================
+  # JUKEBOX VIEW — guest-facing music surface (path: jukebox).
+  # Shown automatically when activity = music. Powered by SpotifyPlus
+  # (custom HACS integration + frontend card). See packages/tablet_kiosk.yaml
+  # for the FK-flips-to-this-view wiring.
+  # ==================================================================
+  - title: Jukebox
+    path: jukebox
+    icon: mdi:music
+    panel: true
+    theme: neon_speakeasy
+    cards:
+      - type: vertical-stack
+        cards:
+          # Top bar: title + escape hatch back to admin view
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: SPEAKEASY JUKEBOX
+                secondary: |
+                  {% set m = states('media_player.spotifyplus_lucas_weber') %}
+                  {% if m == 'playing' %}now playing — search to add to the queue
+                  {% elif m == 'paused' %}paused — tap a result to resume / queue
+                  {% else %}pick a track to start the night{% endif %}
+                icon: mdi:music-circle
+                icon_color: deep-purple
+                fill_container: true
+                tap_action: { action: none }
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(124,77,255,0.12), rgba(0,0,0,0.55)) !important;
+                      border: 1px solid rgba(124,77,255,0.4) !important;
+                      border-radius: 14px !important;
+                      box-shadow: 0 0 18px rgba(124,77,255,0.18) !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 22px !important; letter-spacing: 0.18em !important; color: #b39dff !important; }
+                    .secondary { font-size: 12px !important; letter-spacing: 0.06em !important; color: #b0b0d0 !important; }
+              - type: custom:mushroom-template-card
+                primary: BACK TO BAR
+                secondary: admin dashboard
+                icon: mdi:arrow-left-circle
+                icon_color: orange
+                fill_container: true
+                tap_action:
+                  action: navigate
+                  navigation_path: /dashboard-speakeasy/0
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: linear-gradient(135deg, rgba(255,90,0,0.08), rgba(0,0,0,0.5)) !important;
+                      border: 1px solid rgba(255,90,0,0.3) !important;
+                      border-radius: 14px !important;
+                      min-height: 90px !important;
+                    }
+                    .primary { font-family: 'Orbitron', sans-serif !important; font-size: 13px !important; letter-spacing: 0.2em !important; color: #ff5a00 !important; }
+                    .secondary { font-size: 10px !important; letter-spacing: 0.05em !important; color: #b0b0d0 !important; }
+
+          # SpotifyPlus card — the actual jukebox.
+          # entity is the SpotifyPlus media_player; sections control which
+          # tabs the card exposes to guests.
+          - type: custom:spotifyplus-card
+            entity: media_player.spotifyplus_lucas_weber
+            sections:
+              - playerdevices
+              - playerqueue
+              - searchmedia
+              - userpresets
+              - recently
+              - playerlibrary
+            sectionDefault: searchmedia
+            playerHeaderHide: false
+            footerBackgroundOpacity: "0.5"
+            footerHide: false
+            cardWideAspectRatio: "16:9"
+            card_mod:
+              style: |
+                ha-card {
+                  min-height: calc(100vh - 130px) !important;
+                  width: 100% !important;
+                }

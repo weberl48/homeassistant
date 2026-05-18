@@ -1,0 +1,245 @@
+# /config/packages/alpaca_bot.yaml
+# Phase 3: HA integration for the alpaca-bot Docker container on the Pi.
+# - REST sensor polls bot's /status every 60s
+# - Template sensors flatten the JSON into individual entities
+# - Automations alert on circuit-breaker trips, stale heartbeats, and position changes
+
+rest:
+  - resource: http://192.168.1.160:9700/status
+    scan_interval: 60
+    timeout: 5
+    sensor:
+      - name: "Alpaca Status Raw"
+        unique_id: alpaca_status_raw
+        value_template: "{{ value_json.account_status | default('unknown') }}"
+        json_attributes:
+          - mode
+          - account_status
+          - actual_equity
+          - managed_equity
+          - cash
+          - open_position_count
+          - open_positions
+          - market_open
+          - circuit_breaker
+          - consecutive_losses
+          - all_time_high
+          - last_run_at
+          - last_job
+          - realized_pnl_today
+          - unrealized_pnl
+          - total_pnl_today
+          - closed_trades_today_count
+          - latest_signals
+          - latest_signals_crypto
+          - strategies
+          - journal_today_md
+
+template:
+  - sensor:
+      - name: "Alpaca Equity"
+        unique_id: alpaca_equity
+        unit_of_measurement: USD
+        device_class: monetary
+        state_class: total
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'managed_equity') | float(0) | round(2) }}"
+        icon: mdi:cash
+
+      - name: "Alpaca Actual Equity"
+        unique_id: alpaca_actual_equity
+        unit_of_measurement: USD
+        device_class: monetary
+        state_class: total
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'actual_equity') | float(0) | round(2) }}"
+        icon: mdi:cash-multiple
+
+      - name: "Alpaca Cash"
+        unique_id: alpaca_cash
+        unit_of_measurement: USD
+        device_class: monetary
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'cash') | float(0) | round(2) }}"
+        icon: mdi:wallet
+
+      - name: "Alpaca Open Positions"
+        unique_id: alpaca_open_positions
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'open_position_count') | int(0) }}"
+        icon: mdi:format-list-numbered
+        attributes:
+          positions: "{{ state_attr('sensor.alpaca_status_raw', 'open_positions') }}"
+
+      - name: "Alpaca Mode"
+        unique_id: alpaca_mode
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'mode') | default('?') | upper }}"
+        icon: >-
+          {% if state_attr('sensor.alpaca_status_raw', 'mode') == 'live' %}mdi:cash-fast{% else %}mdi:test-tube{% endif %}
+
+      - name: "Alpaca Circuit Breaker"
+        unique_id: alpaca_circuit_breaker
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'circuit_breaker') | default('unknown') }}"
+        icon: >-
+          {% set s = state_attr('sensor.alpaca_status_raw', 'circuit_breaker') %}
+          {% if s == 'ok' %}mdi:shield-check
+          {% elif s == 'halted_daily' %}mdi:shield-alert
+          {% elif s == 'halted_consecutive_losses' %}mdi:shield-alert-outline
+          {% elif s == 'halted_drawdown' %}mdi:shield-off
+          {% else %}mdi:shield-question{% endif %}
+
+      - name: "Alpaca Last Run"
+        unique_id: alpaca_last_run
+        device_class: timestamp
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'last_run_at') }}"
+        attributes:
+          last_job: "{{ state_attr('sensor.alpaca_status_raw', 'last_job') }}"
+
+      - name: "Alpaca PnL Today"
+        unique_id: alpaca_pnl_today
+        unit_of_measurement: USD
+        device_class: monetary
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'total_pnl_today') | float(0) | round(2) }}"
+        icon: >-
+          {% set v = state_attr('sensor.alpaca_status_raw', 'total_pnl_today') | float(0) %}
+          {% if v > 0 %}mdi:trending-up
+          {% elif v < 0 %}mdi:trending-down
+          {% else %}mdi:trending-neutral{% endif %}
+
+      - name: "Alpaca Realized PnL Today"
+        unique_id: alpaca_realized_pnl_today
+        unit_of_measurement: USD
+        device_class: monetary
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'realized_pnl_today') | float(0) | round(2) }}"
+
+      - name: "Alpaca Unrealized PnL"
+        unique_id: alpaca_unrealized_pnl
+        unit_of_measurement: USD
+        device_class: monetary
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'unrealized_pnl') | float(0) | round(2) }}"
+
+      - name: "Alpaca Heartbeat Stale Minutes"
+        unique_id: alpaca_heartbeat_stale_minutes
+        unit_of_measurement: min
+        state: >-
+          {% set ts = state_attr('sensor.alpaca_status_raw', 'last_run_at') %}
+          {% if ts %}
+            {{ ((now() - ts | as_datetime).total_seconds() / 60) | round(0) }}
+          {% else %}
+            -1
+          {% endif %}
+        icon: mdi:heart-pulse
+
+  - binary_sensor:
+      - name: "Alpaca Market Open"
+        unique_id: alpaca_market_open
+        state: "{{ state_attr('sensor.alpaca_status_raw', 'market_open') | bool(false) }}"
+        device_class: running
+
+      - name: "Alpaca Crypto Enabled"
+        unique_id: alpaca_crypto_enabled
+        state: >-
+          {% set s = state_attr('sensor.alpaca_status_raw', 'strategies') or {} %}
+          {{ s.get('crypto_mean_reversion', false) | bool(false) }}
+        device_class: running
+
+automation:
+  - alias: "Alpaca: drawdown circuit breaker tripped"
+    id: alpaca_drawdown_alert
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.alpaca_circuit_breaker
+        to: "halted_drawdown"
+    action:
+      - action: notify.send_message
+        target:
+          entity_id: notify.sm_s926u
+        data:
+          title: "🛑 Alpaca: drawdown halt"
+          message: >-
+            Bot halted after >8% drawdown from ATH.
+            Equity ${{ states('sensor.alpaca_actual_equity') }},
+            ATH ${{ state_attr('sensor.alpaca_status_raw', 'all_time_high') }}.
+            Manual reset required.
+
+  - alias: "Alpaca: daily-loss circuit breaker"
+    id: alpaca_daily_loss_alert
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.alpaca_circuit_breaker
+        to: "halted_daily"
+    action:
+      - action: notify.send_message
+        target:
+          entity_id: notify.sm_s926u
+        data:
+          title: "⚠️ Alpaca: daily loss halt"
+          message: "Bot halted new entries — down >3% on the day. Resumes tomorrow."
+
+  - alias: "Alpaca: consecutive-loss cooloff"
+    id: alpaca_consecutive_loss_alert
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.alpaca_circuit_breaker
+        to: "halted_consecutive_losses"
+    action:
+      - action: notify.send_message
+        target:
+          entity_id: notify.sm_s926u
+        data:
+          title: "⏸ Alpaca: 3 losers in a row"
+          message: "Bot in 24h cooloff. Will resume entries automatically."
+
+  - alias: "Alpaca: heartbeat stale (market hours or crypto enabled)"
+    id: alpaca_heartbeat_stale_alert
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.alpaca_heartbeat_stale_minutes
+        above: 30
+        for: "00:01:00"
+    condition:
+      # Fire if either market is open (ETF strategy active) OR crypto is enabled
+      # (bot should be heartbeating 24/7 via crypto_scan every 30m).
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: binary_sensor.alpaca_market_open
+            state: "on"
+          - condition: state
+            entity_id: binary_sensor.alpaca_crypto_enabled
+            state: "on"
+    action:
+      - action: notify.send_message
+        target:
+          entity_id: notify.sm_s926u
+        data:
+          title: "💔 Alpaca: bot heartbeat stale"
+          message: >-
+            No heartbeat for {{ states('sensor.alpaca_heartbeat_stale_minutes') }} min.
+            Last job was '{{ state_attr('sensor.alpaca_last_run', 'last_job') }}'.
+            Container may be down — ssh speakeasy "docker ps | grep alpaca-bot".
+
+  - alias: "Alpaca: position opened or closed"
+    id: alpaca_position_change_alert
+    mode: queued
+    max: 5
+    trigger:
+      - platform: state
+        entity_id: sensor.alpaca_open_positions
+    condition:
+      # Skip the initial unknown -> 0 transition on HA boot
+      - condition: template
+        value_template: "{{ trigger.from_state.state not in ['unknown','unavailable',None] }}"
+    action:
+      - variables:
+          before: "{{ trigger.from_state.state | int(0) }}"
+          after: "{{ trigger.to_state.state | int(0) }}"
+          symbols_now: >-
+            {% set p = state_attr('sensor.alpaca_open_positions', 'positions') or [] %}
+            {{ p | map(attribute='symbol') | list | join(', ') or 'none' }}
+      - action: notify.send_message
+        target:
+          entity_id: notify.sm_s926u
+        data:
+          title: "📈 Alpaca: positions {{ before }} → {{ after }}"
+          message: "Open: {{ symbols_now }}. Equity ${{ states('sensor.alpaca_equity') }}."

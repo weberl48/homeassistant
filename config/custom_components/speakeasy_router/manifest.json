@@ -1,0 +1,11 @@
+{
+  "domain": "speakeasy_router",
+  "name": "Speakeasy Conversation Router",
+  "version": "0.1.0",
+  "documentation": "Local-first phrase lookup with Claude fallback for the Speakeasy assist pipeline.",
+  "dependencies": ["conversation"],
+  "codeowners": [],
+  "iot_class": "local_polling",
+  "config_flow": true,
+  "integration_type": "service"
+}

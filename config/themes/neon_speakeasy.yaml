@@ -1,0 +1,87 @@
+# Neon Speakeasy — cyberpunk-noir for the bar tablet
+# Cyan/magenta neon over jet black, with amber/copper warmth.
+neon_speakeasy:
+  # ====== BASE CANVAS ======
+  primary-color: "#00e5ff"                       # neon cyan
+  accent-color: "#ff2d92"                        # neon magenta
+  primary-background-color: "#05050a"            # near-black canvas
+  secondary-background-color: "#0a0a14"          # next layer
+  divider-color: "rgba(0, 229, 255, 0.15)"
+
+  # ====== TEXT ======
+  primary-text-color: "#f5f5ff"
+  secondary-text-color: "#8a8aa8"
+  text-primary-color: "#f5f5ff"
+  disabled-text-color: "#404060"
+  app-header-text-color: "#00e5ff"
+
+  # ====== HEADER / SIDEBAR ======
+  app-header-background-color: "#000000"
+  sidebar-background-color: "#000000"
+  sidebar-text-color: "#f5f5ff"
+  sidebar-selected-text-color: "#00e5ff"
+  sidebar-selected-icon-color: "#00e5ff"
+
+  # ====== CARDS ======
+  card-background-color: "rgba(15, 15, 28, 0.85)"
+  ha-card-background: "rgba(15, 15, 28, 0.85)"
+  ha-card-border-radius: "18px"
+  ha-card-border-width: "1px"
+  ha-card-border-color: "rgba(0, 229, 255, 0.18)"
+  ha-card-box-shadow: "0 0 24px rgba(0, 229, 255, 0.06), inset 0 0 0 1px rgba(0, 229, 255, 0.08)"
+
+  # ====== ICONS ======
+  paper-item-icon-color: "#00e5ff"
+  paper-item-icon-active-color: "#ff2d92"
+  state-icon-color: "#00e5ff"
+
+  # ====== SLIDERS / TOGGLES ======
+  switch-checked-color: "#00e5ff"
+  switch-unchecked-color: "#404060"
+  paper-slider-knob-color: "#ff2d92"
+  paper-slider-active-color: "#00e5ff"
+  paper-slider-pin-color: "#ff2d92"
+
+  # ====== STATE COLORS — pop ======
+  state-on-color: "#00ff88"
+  state-off-color: "#404060"
+  warning-color: "#ffaa00"
+  error-color: "#ff2d92"
+  success-color: "#00ff88"
+
+  # ====== MUSHROOM CARD COLORS ======
+  mush-rgb-amber: "255, 170, 0"
+  mush-rgb-red: "255, 45, 90"
+  mush-rgb-pink: "255, 45, 146"
+  mush-rgb-purple: "200, 80, 255"
+  mush-rgb-deep-purple: "150, 50, 255"
+  mush-rgb-indigo: "100, 100, 255"
+  mush-rgb-blue: "0, 180, 255"
+  mush-rgb-light-blue: "0, 220, 255"
+  mush-rgb-cyan: "0, 229, 255"
+  mush-rgb-teal: "0, 255, 200"
+  mush-rgb-green: "0, 255, 136"
+  mush-rgb-light-green: "120, 255, 80"
+  mush-rgb-orange: "255, 140, 0"
+  mush-rgb-deep-orange: "255, 90, 0"
+  mush-rgb-grey: "138, 138, 168"
+
+  # ====== TYPOGRAPHY ======
+  primary-font-family: "'Orbitron', 'Rajdhani', system-ui, sans-serif"
+  paper-font-common-base_-_font-family: "'Orbitron', 'Rajdhani', system-ui, sans-serif"
+
+  # ====== CARD-MOD HOOKS — used by dashboard YAML ======
+  neon-cyan: "#00e5ff"
+  neon-magenta: "#ff2d92"
+  neon-amber: "#ffaa00"
+  neon-green: "#00ff88"
+  neon-purple: "#c850ff"
+  neon-glow-cyan: "0 0 12px #00e5ff, 0 0 24px rgba(0,229,255,0.5)"
+  neon-glow-magenta: "0 0 12px #ff2d92, 0 0 24px rgba(255,45,146,0.5)"
+  neon-glow-amber: "0 0 12px #ffaa00, 0 0 24px rgba(255,170,0,0.5)"
+
+  # ====== card-mod hook: load Orbitron font globally ======
+  card-mod-theme: neon_speakeasy
+  card-mod-root-yaml: |
+    .: |
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800&family=Rajdhani:wght@300;400;500;600;700&display=swap');

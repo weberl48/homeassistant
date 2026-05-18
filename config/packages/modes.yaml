@@ -1,0 +1,112 @@
+# /config/packages/modes.yaml
+# Persistent WLED ambient modes. Sets an effect on both controllers and exits;
+# stays on until you switch modes or hit Off. Synchronous (no backgrounding).
+
+script:
+  mode_fireplace:
+    alias: "Fireplace"
+    description: "Warm crackling fire (Fire 2012 effect, fire palette). Persistent."
+    icon: mdi:fireplace
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: fireplace}
+
+  mode_aurora:
+    alias: "Aurora"
+    description: "Northern lights flow (Aurora effect + Aurora palette). Persistent."
+    icon: mdi:waves
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: aurora}
+
+  mode_ocean:
+    alias: "Ocean waves"
+    description: "Slow blue/teal lake ripple with ocean palette. Persistent."
+    icon: mdi:water
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: ocean}
+
+  mode_candle:
+    alias: "Candle flicker"
+    description: "Dim warm candle flicker on the W channel. Cozy. Persistent."
+    icon: mdi:candle
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: candle}
+
+  mode_lounge:
+    alias: "Speakeasy lounge"
+    description: "Slow amber/orange flow (Flow + Orangery palette). Bar-vibe ambient. Persistent."
+    icon: mdi:glass-cocktail
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: lounge}
+
+  mode_movie:
+    alias: "Movie mode"
+    description: "Very dim warm bias (~15% brightness). Won't wash out the screen. Persistent."
+    icon: mdi:movie-open
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: movie}
+
+  mode_reading:
+    alias: "Reading light"
+    description: "Bright steady warm white (~85% on W channel). Task lighting. Persistent."
+    icon: mdi:book-open
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: reading}
+
+  mode_warm_white:
+    alias: "Warm white (max)"
+    description: "Full-brightness pure warm white. Persistent."
+    icon: mdi:lightbulb
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: warm_white}
+
+  mode_police:
+    alias: "Police lights"
+    description: "Red/blue strobe. Persistent novelty."
+    icon: mdi:police-badge
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: police}
+
+  mode_disco:
+    alias: "Disco"
+    description: "Rainbow chase, fast. Persistent."
+    icon: mdi:disc
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: disco}
+
+  mode_lightning:
+    alias: "Lightning storm"
+    description: "Random lightning flashes with dark blue base. Persistent."
+    icon: mdi:weather-lightning
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: lightning}
+
+  mode_off:
+    alias: "WLED off"
+    description: "Turn both WLED strips off."
+    icon: mdi:lightbulb-off
+    mode: parallel
+    sequence:
+      - service: shell_command.py_mode
+        data: {mode: off}

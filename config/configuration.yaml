@@ -1,0 +1,205 @@
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load packages for organized feature bundles (e.g., speakeasy_scenes.yaml)
+homeassistant:
+  packages: !include_dir_named packages
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# Speakeasy Theater helpers
+input_button:
+  speakeasy_off:
+    name: "Speakeasy: Off"
+    icon: mdi:power-off
+
+# SHIELD: unified media_player wrapping Cast + androidtv_remote + ADB integrations
+media_player:
+  - platform: universal
+    name: SHIELD
+    unique_id: shield_universal
+    children:
+      - media_player.shield_adb
+      - media_player.shield_2
+      - media_player.shield_cast
+    attributes:
+      state: media_player.shield_adb
+      app_id: media_player.shield_adb|app_id
+      app_name: media_player.shield_adb|app_name
+      source: media_player.shield_adb|source
+      source_list: media_player.shield_adb|source_list
+      volume_level: media_player.shield_adb|volume_level
+      is_volume_muted: media_player.shield_adb|is_volume_muted
+      media_title: media_player.shield_adb|media_title
+      media_artist: media_player.shield_adb|media_artist
+      media_album_name: media_player.shield_adb|media_album_name
+      media_content_type: media_player.shield_adb|media_content_type
+      device_class: media_player.shield_2|device_class
+    commands:
+      turn_on:
+        action: media_player.turn_on
+        target:
+          entity_id: media_player.shield_2
+      turn_off:
+        action: media_player.turn_off
+        target:
+          entity_id: media_player.shield_2
+      play_media:
+        action: media_player.play_media
+        target:
+          entity_id: media_player.shield_2
+        data:
+          media_content_id: "{{ media_content_id }}"
+          media_content_type: "{{ media_content_type }}"
+      select_source:
+        action: media_player.select_source
+        target:
+          entity_id: media_player.shield_adb
+        data:
+          source: "{{ source }}"
+      volume_up:
+        action: media_player.volume_up
+        target:
+          entity_id: media_player.shield_adb
+      volume_down:
+        action: media_player.volume_down
+        target:
+          entity_id: media_player.shield_adb
+      volume_mute:
+        action: media_player.volume_mute
+        target:
+          entity_id: media_player.shield_adb
+        data:
+          is_volume_muted: "{{ is_volume_muted }}"
+      volume_set:
+        action: media_player.volume_set
+        target:
+          entity_id: media_player.shield_adb
+        data:
+          volume_level: "{{ volume_level }}"
+      media_play:
+        action: media_player.media_play
+        target:
+          entity_id: media_player.shield_adb
+      media_pause:
+        action: media_player.media_pause
+        target:
+          entity_id: media_player.shield_adb
+      media_play_pause:
+        action: media_player.media_play_pause
+        target:
+          entity_id: media_player.shield_adb
+      media_stop:
+        action: media_player.media_stop
+        target:
+          entity_id: media_player.shield_adb
+      media_next_track:
+        action: media_player.media_next_track
+        target:
+          entity_id: media_player.shield_adb
+      media_previous_track:
+        action: media_player.media_previous_track
+        target:
+          entity_id: media_player.shield_adb
+
+# Shell-out for Spotify search-and-play (used by script.shield_play_spotify)
+shell_command:
+  spotify_play_on_shield: "/config/scripts/spotify_play_on_shield.sh '{{ query }}'"
+  stremio_play_on_shield: "/config/scripts/stremio_play_on_shield.sh '{{ query }}'"
+  # Python-converted scripts (2026-05-13 migration). Each py_* shell_command
+  # invokes a Python module under /config/scripts/python/ with a subcommand arg.
+  py_adguard_resume_now: "python3 /config/scripts/python/adguard_resume_now.py"
+  py_adguard_snooze: "python3 /config/scripts/python/adguard_snooze.py {{ minutes }}"
+  py_denon: "python3 /config/scripts/python/denon.py {{ cmd }}"
+  py_speakeasy_controls: "python3 /config/scripts/python/speakeasy_controls.py {{ cmd }}"
+  py_speakeasy_heaters: "python3 /config/scripts/python/speakeasy_heaters.py {{ cmd }}"
+  py_shield_launch_app: "python3 /config/scripts/python/shield_launch_app.py {{ package }}"
+  py_shield_open: "python3 /config/scripts/python/shield_open.py {{ app }}"
+  py_shield_play_spotify: "python3 /config/scripts/python/shield_play_spotify.py '{{ query }}'"
+  py_shield_stremio_search: "python3 /config/scripts/python/shield_stremio.py search '{{ query }}'"
+  py_shield_stremio_play: "python3 /config/scripts/python/shield_stremio.py play '{{ query }}'"
+  py_register_learned_phrase: "python3 /config/scripts/python/register_learned_phrase.py \"{{ phrase }}\" \"{{ target_script }}\" \"{{ done_message }}\" \"{{ script_vars_json }}\""
+  py_tablet_show: "python3 /config/scripts/python/tablet_show.py {{ cmd }}"
+  # WLED multi-phase celebration (sabres/bills/party). Backgrounded so HA returns immediately.
+  py_celebrate: "nohup python3 /config/scripts/python/celebrate.py {{ profile }} > /tmp/celebrate.log 2>&1 &"
+  py_mode: "python3 /config/scripts/python/mode.py {{ mode }}"
+
+# AdGuard Home blocked-services control via the supervisor's local proxy.
+# AdGuard's native schedule can't express two pause windows per day, so the
+# social-media-block automations flip the blocked-services list from HA
+# (8a on / 7p off / startup-sync).
+rest_command:
+  adguard_set_blocked_services:
+    url: "http://127.0.0.1:45158/control/blocked_services/update"
+    method: put
+    content_type: "application/json"
+    payload: '{"ids": {{ ids | tojson }}, "schedule": {"time_zone": "America/New_York"}}'
+
+# WAN capacity (Mbit/s) via public iperf3 server. Saturates the link for
+# ~10s per run; default 60min interval keeps the impact small. The UPnP
+# verizon_router_*_speed sensors stay separate (they show *current* WAN
+# usage, not capacity).
+iperf3:
+  scan_interval:
+    minutes: 60
+  hosts:
+    # Public iperf3 servers are flaky; serverius is more reliable than HE.net
+    # which is constantly oversubscribed. Pi tests both, integration picks
+    # whichever responds.
+    - host: speedtest.serverius.net
+      port: 5002
+      duration: 10
+    - host: iperf.he.net
+      port: 5201
+      duration: 10
+
+# === Homio dashboard ===
+homeassistant:
+  packages: !include_dir_named packages
+
+template: !include sensors.yaml
+
+lovelace:
+  dashboards:
+    dashboard-mushroom:
+      mode: yaml
+      title: "Home"
+      icon: mdi:home
+      show_in_sidebar: true
+      filename: dashboards/mushroom.yaml
+    dashboard-adguard:
+      mode: yaml
+      title: "AdGuard"
+      icon: mdi:shield-account
+      show_in_sidebar: true
+      filename: dashboards/adguard.yaml
+    dashboard-speakeasy:
+      mode: yaml
+      title: "Speakeasy"
+      icon: mdi:glass-cocktail
+      show_in_sidebar: true
+      filename: dashboards/speakeasy.yaml
+    dashboard-alpaca:
+      mode: yaml
+      title: "Alpaca"
+      icon: mdi:chart-line
+      show_in_sidebar: true
+      filename: dashboards/alpaca.yaml
+
+# Spotify Jam invite URL — host pastes here when starting a Jam in Spotify
+input_text:
+  spotify_jam_url:
+    name: "Spotify Jam URL"
+    initial: ""
+    max: 255
+
+
+conversation:
+  intents: {}

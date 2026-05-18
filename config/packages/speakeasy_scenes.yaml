@@ -1,0 +1,700 @@
+shell_command:
+  denon_video_select_shield: python3 -c "import socket; s=socket.create_connection(('192.168.1.56',23),timeout=3);
+    s.sendall(b'SVMPLAY\r'); s.close()"
+  denon_video_select_auto: python3 -c "import socket; s=socket.create_connection(('192.168.1.56',23),timeout=3);
+    s.sendall(b'SVOFF\r'); s.close()"
+  match_video_to_spotify_track: python3 /config/scripts/play_video_for_track.py "{{
+    state_attr('media_player.spotify_lucas_weber', 'media_artist') | string | regex_replace('[\"$`\\\\]',
+    '') }}" "{{ state_attr('media_player.spotify_lucas_weber', 'media_title') | string
+    | regex_replace('[\"$`\\\\]', '') }}" "{{ states('input_text.speakeasy_visualizer_url')
+    | regex_findall('(?:v=|youtu\\.be/|vnd\\.youtube[:/])([A-Za-z0-9_-]{11})') | first
+    | default('') }}" "{% set p = state_attr('media_player.spotify_lucas_weber', 'media_position')
+    | float(0) %}{% set u = state_attr('media_player.spotify_lucas_weber', 'media_position_updated_at')
+    %}{% if u %}{{ (p + (now() - as_datetime(u)).total_seconds()) | int }}{% else
+    %}{{ p | int }}{% endif %}"
+  launch_visualizer: python3 /config/scripts/launch_visualizer.py "{{ states('input_text.speakeasy_visualizer_url')
+    | regex_findall('(?:v=|youtu\\.be/|vnd\\.youtube[:/])([A-Za-z0-9_-]{11})') | first
+    | default('') }}"
+  save_visualizer_state: python3 /config/scripts/save_visualizer_state.py
+  prefetch_upcoming_tracks: python3 /config/scripts/prefetch_next_tracks.py
+input_select:
+  speakeasy_activity:
+    name: 'Speakeasy: Activity'
+    icon: mdi:home-assistant
+    options:
+    - idle
+    - movie
+    - music
+    - retro
+    - pc_stream
+    initial: idle
+input_text:
+  speakeasy_visualizer_url:
+    name: 'Speakeasy: Visualizer YouTube URL'
+    icon: mdi:youtube
+    initial: https://www.youtube.com/watch?v=L1vrPpM4eyM&list=RDL1vrPpM4eyM&start_radio=1&t=1459s
+    max: 255
+  speakeasy_chill_playlist_uri:
+    name: 'Speakeasy: Music+Viz Spotify playlist'
+    icon: mdi:spotify
+    initial: spotify:playlist:37i9dQZF1EJvzweBAWD10L
+    max: 255
+  speakeasy_music_video_playlist_uri:
+    name: 'Speakeasy: Music Videos mode playlist'
+    icon: mdi:movie-music
+    initial: spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+    max: 255
+  speakeasy_action_status:
+    name: 'Speakeasy: Action status'
+    icon: mdi:dots-horizontal-circle
+    initial: idle
+    max: 30
+input_number:
+  speakeasy_heater_target:
+    name: 'Speakeasy: Heater target (°F)'
+    icon: mdi:thermometer-chevron-up
+    min: 60
+    max: 75
+    step: 1
+    initial: 67
+    unit_of_measurement: °F
+  speakeasy_heater_threshold:
+    name: 'Speakeasy: Heat-on threshold (°F)'
+    icon: mdi:thermometer-low
+    min: 50
+    max: 70
+    step: 1
+    initial: 60
+    unit_of_measurement: °F
+input_boolean:
+  speakeasy_heater_preheat:
+    name: 'Speakeasy: Preheat active'
+    icon: mdi:fire-circle
+  speakeasy_music_video_only:
+    name: 'Speakeasy: Music Videos only (skip non-MV tracks)'
+    icon: mdi:movie-music
+script:
+  speakeasy_heaters_on:
+    alias: 'Speakeasy: Both heaters → heat at target'
+    icon: mdi:fire
+    sequence:
+    - service: shell_command.py_speakeasy_heaters
+      data:
+        cmd: 'on'
+  speakeasy_heaters_off:
+    alias: 'Speakeasy: Both heaters → off'
+    icon: mdi:power
+    sequence:
+    - service: shell_command.py_speakeasy_heaters
+      data:
+        cmd: 'off'
+  speakeasy_heaters_toggle:
+    alias: 'Speakeasy: Heaters toggle (smart)'
+    icon: mdi:radiator
+    sequence:
+    - service: shell_command.py_speakeasy_heaters
+      data:
+        cmd: toggle
+  speakeasy_warmup_basement:
+    alias: 'Speakeasy: Warm up basement (idempotent)'
+    icon: mdi:power
+    sequence:
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: binary_sensor.jvc_projector_power
+          state: 'off'
+        sequence:
+        - service: remote.turn_on
+          target:
+            entity_id: remote.jvc_projector
+          continue_on_error: true
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ states(''select.jvc_projector_input'') != ''hdmi1''
+            }}'
+        sequence:
+        - service: select.select_option
+          target:
+            entity_id: select.jvc_projector_input
+          data:
+            option: hdmi1
+          continue_on_error: true
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: media_player.shield
+          state: 'off'
+        sequence:
+        - service: media_player.turn_on
+          target:
+            entity_id: media_player.shield
+        - delay: 00:00:05
+  speakeasy_movie:
+    alias: 'Speakeasy: Movie Mode'
+    icon: mdi:movie-open
+    mode: restart
+    sequence:
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: movie:loading
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.speakeasy_activity
+      data:
+        option: movie
+    - service: script.speakeasy_warmup_basement
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        source: SHIELD
+      continue_on_error: true
+    - service: script.shield_open_stremio
+    - wait_template: "{{ is_state('binary_sensor.jvc_projector_power','on')\n   and\
+        \ states('media_player.shield') not in ['off','unavailable','unknown'] }}"
+      timeout: 00:01:30
+      continue_on_timeout: true
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: '{{ ''movie:done'' if wait.completed else ''movie:failed'' }}'
+  speakeasy_music_viz:
+    alias: 'Speakeasy: Music + Visualizer'
+    icon: mdi:music-circle
+    mode: restart
+    fields:
+      music_video_only:
+        description: If true, only play tracks with a real music video on YouTube
+        example: false
+        default: false
+      status_key:
+        description: 'Prefix for input_text.speakeasy_action_status (e.g. music, mvonly)'
+        example: music
+        default: music
+    sequence:
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: '{{ status_key | default(''music'') }}:loading'
+    - choose:
+      - conditions: '{{ music_video_only | default(false) | bool }}'
+        sequence:
+        - service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.speakeasy_music_video_only
+      default:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.speakeasy_music_video_only
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.speakeasy_activity
+      data:
+        option: music
+    - service: script.speakeasy_warmup_basement
+    - choose:
+      - conditions:
+        - condition: state
+          entity_id: media_player.denon_avr_x3800h_2
+          state: 'off'
+        sequence:
+        - service: media_player.turn_on
+          target:
+            entity_id: media_player.denon_avr_x3800h_2
+        - delay: 00:00:05
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        source: HEOS Music
+      continue_on_error: true
+    - delay: 00:00:02
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.spotify_lucas_weber
+      data:
+        source: Denon AVR-X3800H
+      continue_on_error: true
+    - delay: 00:00:01
+    - service: media_player.shuffle_set
+      target:
+        entity_id: media_player.spotify_lucas_weber
+      data:
+        shuffle: true
+      continue_on_error: true
+    - service: media_player.volume_set
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        volume_level: 0.65
+      continue_on_error: true
+    - delay: 00:00:01
+    - service: media_player.play_media
+      target:
+        entity_id: media_player.spotify_lucas_weber
+      data:
+        media_content_id: "{{ states('input_text.speakeasy_music_video_playlist_uri') if music_video_only | default(false) | bool else states('input_text.speakeasy_chill_playlist_uri') }}"
+        media_content_type: playlist
+      continue_on_error: true
+    - delay: 00:00:03
+    - service: media_player.volume_set
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        volume_level: 0.65
+      continue_on_error: true
+    - service: media_player.volume_set
+      target:
+        entity_id: media_player.spotify_lucas_weber
+      data:
+        volume_level: 0.65
+      continue_on_error: true
+    - service: shell_command.denon_video_select_shield
+      continue_on_error: true
+    - service: shell_command.launch_visualizer
+      continue_on_error: true
+    - delay: 00:00:01
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        source: HEOS Music
+      continue_on_error: true
+    - wait_template: '{{ is_state(''media_player.spotify_lucas_weber'',''playing'')
+        }}'
+      timeout: 00:01:00
+      continue_on_timeout: true
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: '{{ status_key | default(''music'') }}:{{ ''done'' if wait.completed else ''failed'' }}'
+  speakeasy_music_videos_only:
+    alias: 'Speakeasy: Music Videos (skip non-MV tracks)'
+    icon: mdi:movie-music
+    mode: restart
+    sequence:
+    - service: script.speakeasy_music_viz
+      data:
+        music_video_only: true
+        status_key: mvonly
+  speakeasy_retro:
+    alias: 'Speakeasy: Retro Gaming (Romm)'
+    icon: mdi:gamepad-variant
+    mode: restart
+    sequence:
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: retro:loading
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.speakeasy_activity
+      data:
+        option: retro
+    - service: script.speakeasy_warmup_basement
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        source: SHIELD
+      continue_on_error: true
+    - service: androidtv.adb_command
+      data:
+        entity_id: media_player.shield_adb
+        command: am start -a android.intent.action.VIEW -d "http://192.168.1.160:7000"
+    - wait_template: "{{ is_state('binary_sensor.jvc_projector_power','on')\n   and\
+        \ states('media_player.shield') not in ['off','unavailable','unknown'] }}"
+      timeout: 00:01:30
+      continue_on_timeout: true
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: '{{ ''retro:done'' if wait.completed else ''retro:failed'' }}'
+  speakeasy_pc_stream:
+    alias: 'Speakeasy: PC Stream (Apollo + Artemis)'
+    icon: mdi:gamepad-circle
+    mode: restart
+    sequence:
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: pc_stream:loading
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.speakeasy_activity
+      data:
+        option: pc_stream
+    - service: script.speakeasy_warmup_basement
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        source: SHIELD
+      continue_on_error: true
+    - service: script.shield_launch_app
+      data:
+        package: dev.cytonic.artemis
+    - wait_template: "{{ is_state('binary_sensor.jvc_projector_power','on')\n   and\
+        \ states('media_player.shield') not in ['off','unavailable','unknown'] }}"
+      timeout: 00:01:30
+      continue_on_timeout: true
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: '{{ ''pc_stream:done'' if wait.completed else ''pc_stream:failed''
+          }}'
+  speakeasy_off:
+    alias: 'Speakeasy: All Off (shut everything)'
+    icon: mdi:power-standby
+    mode: restart
+    sequence:
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: all_off:loading
+    - service: media_player.media_pause
+      target:
+        entity_id: media_player.spotify_lucas_weber
+      continue_on_error: true
+    - service: media_player.turn_off
+      target:
+        entity_id: media_player.shield
+      continue_on_error: true
+    - service: remote.turn_off
+      target:
+        entity_id: remote.jvc_projector
+      continue_on_error: true
+    - service: media_player.turn_off
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      continue_on_error: true
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.speakeasy_activity
+      data:
+        option: idle
+    - wait_template: "{{ states('media_player.shield') in ['off','unavailable','standby','idle']\n\
+        \   and not is_state('media_player.spotify_lucas_weber','playing') }}"
+      timeout: 00:00:30
+      continue_on_timeout: true
+    - service: input_text.set_value
+      target:
+        entity_id: input_text.speakeasy_action_status
+      data:
+        value: '{{ ''all_off:done'' if wait.completed else ''all_off:failed'' }}'
+automation:
+- id: speakeasy_off_button_fires_script
+  alias: 'Speakeasy: Off button → run all-off script'
+  description: input_button.speakeasy_off (from tablet ALL OFF tile) now routes through
+    script.speakeasy_off so hardware actually shuts down. The script also sets activity
+    → idle internally.
+  mode: single
+  trigger:
+  - platform: state
+    entity_id: input_button.speakeasy_off
+  action:
+  - service: script.speakeasy_off
+- id: speakeasy_action_status_autoreset
+  alias: 'Speakeasy: Reset action status to idle after :done/:failed'
+  description: Holds the tile feedback (green ✓ flash or red 'check device') for 4
+    s, then returns the status helper to 'idle' so tiles go back to normal.
+  mode: queued
+  max: 5
+  trigger:
+  - platform: state
+    entity_id: input_text.speakeasy_action_status
+  condition:
+  - condition: template
+    value_template: "{{ trigger.to_state.state.endswith(':done')\n   or trigger.to_state.state.endswith(':failed')\
+      \ }}"
+  action:
+  - delay: 00:00:04
+  - service: input_text.set_value
+    target:
+      entity_id: input_text.speakeasy_action_status
+    data:
+      value: idle
+- id: speakeasy_match_video_to_spotify_track
+  alias: 'Speakeasy: Match YouTube video to Spotify track'
+  description: 'Visualizer-default mode: on Spotify track change, look up the music
+
+    video for {artist}|{title} (cache or yt-dlp). If found, switch SmartTube
+
+    to the music video. If not, switch back to the visualizer at the
+
+    position we left off (or stay on viz if already there). Spotify is
+
+    never paused — audio plays continuously, video swaps in the background.
+
+    '
+  mode: queued
+  max: 2
+  trigger:
+  - platform: state
+    entity_id: media_player.spotify_lucas_weber
+    attribute: media_content_id
+  condition:
+  - condition: state
+    entity_id: input_select.speakeasy_activity
+    state: music
+  - condition: template
+    value_template: '{{ trigger.to_state.attributes.media_content_id not in [None,
+      '''', trigger.from_state.attributes.media_content_id] }}'
+  - condition: template
+    value_template: '{{ state_attr(''media_player.shield_adb'', ''app_id'') in [''app.smarttube.fdroid'',
+      ''com.google.android.tvlauncher''] }}'
+  action:
+  - service: shell_command.match_video_to_spotify_track
+- id: speakeasy_prefetch_upcoming_tracks
+  alias: 'Speakeasy: Prefetch upcoming track music videos'
+  description: 'After every Spotify track change in Music+Viz, runs in the background:
+
+    queries Spotify queue API and pre-caches yt-dlp lookups for the next ~3
+
+    tracks. Subsequent skips become cache hits (~0.5s lag instead of 3s).
+
+    mode: single — drop new triggers if previous prefetch still running.
+
+    '
+  mode: single
+  trigger:
+  - platform: state
+    entity_id: media_player.spotify_lucas_weber
+    attribute: media_content_id
+  condition:
+  - condition: state
+    entity_id: input_select.speakeasy_activity
+    state: music
+  - condition: template
+    value_template: '{{ trigger.to_state.attributes.media_content_id not in [None,
+      '''', trigger.from_state.attributes.media_content_id] }}'
+  action:
+  - service: shell_command.prefetch_upcoming_tracks
+- id: speakeasy_pause_spotify_on_music_exit
+  alias: 'Speakeasy: Pause Spotify and reset Video Select on music exit'
+  description: When activity transitions away from 'music' (to any other mode or idle),
+    pause Spotify, snapshot visualizer position, and unpin AVR Video Select so the
+    next scene's video routes correctly.
+  mode: single
+  trigger:
+  - platform: state
+    entity_id: input_select.speakeasy_activity
+    from: music
+  action:
+  - service: media_player.media_pause
+    target:
+      entity_id: media_player.spotify_lucas_weber
+    continue_on_error: true
+  - service: shell_command.save_visualizer_state
+    continue_on_error: true
+  - service: shell_command.denon_video_select_auto
+    continue_on_error: true
+  - service: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.speakeasy_music_video_only
+    continue_on_error: true
+- id: speakeasy_heater_target_propagate
+  alias: 'Speakeasy: Push target temp to both heaters'
+  description: When input_number.speakeasy_heater_target changes (via dashboard +/-
+    chips), set both heaters' target_temperature. Preserves current hvac_mode — doesn't
+    turn heaters on if they're off.
+  mode: queued
+  max: 3
+  trigger:
+  - platform: state
+    entity_id: input_number.speakeasy_heater_target
+  action:
+  - service: climate.set_temperature
+    target:
+      entity_id:
+      - climate.smax_b6a6d8_smax_b6a6d8
+      - climate.smax_b6c6f4_smax_b6c6f4
+    data:
+      temperature: '{{ states(''input_number.speakeasy_heater_target'') | float(67)
+        }}'
+- id: speakeasy_heater_b_mirrors_a_on_off
+  alias: 'Speakeasy: Heater B mirrors A on/off (safety net)'
+  description: 'When Heater A flips between heat and off, drive Heater B to match. Catches
+    paths that toggle only one heater (dashboard tile bound to A, voice intent on a
+    single entity, manual swipe in more-info, smart_envi flaking on B). Skips if B
+    is already in the target state. Uses smart_envi quirk: set_hvac_mode FIRST.'
+  mode: queued
+  max: 3
+  trigger:
+  - platform: state
+    entity_id: climate.smax_b6a6d8_smax_b6a6d8
+    to: heat
+  - platform: state
+    entity_id: climate.smax_b6a6d8_smax_b6a6d8
+    to: 'off'
+  condition:
+  - condition: template
+    value_template: >-
+      {{ states('climate.smax_b6c6f4_smax_b6c6f4') != trigger.to_state.state }}
+  action:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state == 'heat' }}"
+      sequence:
+      - service: climate.set_hvac_mode
+        target:
+          entity_id: climate.smax_b6c6f4_smax_b6c6f4
+        data:
+          hvac_mode: heat
+      - service: climate.set_temperature
+        target:
+          entity_id: climate.smax_b6c6f4_smax_b6c6f4
+        data:
+          temperature: "{{ states('input_number.speakeasy_heater_target') | float(67) }}"
+    - conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state == 'off' }}"
+      sequence:
+      - service: climate.turn_off
+        target:
+          entity_id: climate.smax_b6c6f4_smax_b6c6f4
+- id: speakeasy_heater_management
+  alias: 'Speakeasy: Heater auto-on/off based on activity + temp'
+  description: Heat to target when active (scene or manual preheat) AND avg temp <
+    threshold. Off when idle/no-preheat or temp ≥ threshold+2 (hysteresis).
+  mode: single
+  trigger:
+  - platform: state
+    entity_id: input_select.speakeasy_activity
+  - platform: state
+    entity_id: input_boolean.speakeasy_heater_preheat
+  - platform: time_pattern
+    minutes: /5
+  variables:
+    active: "{{ states('input_select.speakeasy_activity') != 'idle'\n   or is_state('input_boolean.speakeasy_heater_preheat',\
+      \ 'on') }}"
+  action:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ not active }}'
+      sequence:
+      - service: climate.turn_off
+        target:
+          entity_id:
+          - climate.smax_b6a6d8_smax_b6a6d8
+          - climate.smax_b6c6f4_smax_b6c6f4
+    - conditions:
+      - condition: template
+        value_template: '{{ active }}'
+      - condition: template
+        value_template: '{% set a = state_attr(''climate.smax_b6a6d8_smax_b6a6d8'',
+          ''current_temperature'') | float(99) %} {% set b = state_attr(''climate.smax_b6c6f4_smax_b6c6f4'',
+          ''current_temperature'') | float(99) %} {% set thresh = states(''input_number.speakeasy_heater_threshold'')
+          | float(60) %} {{ ((a + b) / 2) < thresh }}'
+      sequence:
+      - service: climate.set_hvac_mode
+        target:
+          entity_id:
+          - climate.smax_b6a6d8_smax_b6a6d8
+          - climate.smax_b6c6f4_smax_b6c6f4
+        data:
+          hvac_mode: heat
+      - service: climate.set_temperature
+        target:
+          entity_id:
+          - climate.smax_b6a6d8_smax_b6a6d8
+          - climate.smax_b6c6f4_smax_b6c6f4
+        data:
+          temperature: '{{ states(''input_number.speakeasy_heater_target'') | float(67)
+            }}'
+    - conditions:
+      - condition: template
+        value_template: '{{ active }}'
+      - condition: template
+        value_template: '{% set a = state_attr(''climate.smax_b6a6d8_smax_b6a6d8'',
+          ''current_temperature'') | float(0) %} {% set b = state_attr(''climate.smax_b6c6f4_smax_b6c6f4'',
+          ''current_temperature'') | float(0) %} {% set thresh = states(''input_number.speakeasy_heater_threshold'')
+          | float(60) %} {{ ((a + b) / 2) >= thresh + 2 }}'
+      sequence:
+      - service: climate.turn_off
+        target:
+          entity_id:
+          - climate.smax_b6a6d8_smax_b6a6d8
+          - climate.smax_b6c6f4_smax_b6c6f4
+- id: speakeasy_preheat_timeout
+  alias: 'Speakeasy: Preheat auto-off after 90 min'
+  description: 'Safety net: if manual preheat stays on for 90 min without a scene
+    engaging, clear the flag + shut heaters.'
+  mode: single
+  trigger:
+  - platform: state
+    entity_id: input_boolean.speakeasy_heater_preheat
+    to: 'on'
+    for: 01:30:00
+  action:
+  - service: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.speakeasy_heater_preheat
+  - service: script.speakeasy_heaters_off
+- id: speakeasy_preheat_clear_on_scene
+  alias: 'Speakeasy: Clear preheat when a scene takes over'
+  description: When activity leaves idle (Movie/Music/etc. launched), clear the preheat
+    flag — scene-driven heater logic owns it from here.
+  mode: single
+  trigger:
+  - platform: state
+    entity_id: input_select.speakeasy_activity
+    from: idle
+  condition:
+  - condition: state
+    entity_id: input_boolean.speakeasy_heater_preheat
+    state: 'on'
+  action:
+  - service: input_boolean.turn_off
+    target:
+      entity_id: input_boolean.speakeasy_heater_preheat
+command_line:
+- sensor:
+    name: Speakeasy Shield Mode
+    unique_id: speakeasy_shield_mode
+    command: cat /config/scripts/visualizer_state.json 2>/dev/null || echo '{}'
+    value_template: '{{ value_json.current | default(''off'') }}'
+    json_attributes:
+    - display_title
+    - viz_position
+    scan_interval: 3
+template:
+- binary_sensor:
+  - name: Network WAN Down
+    unique_id: speakeasy_net_wan_down
+    device_class: problem
+    state: '{{ is_state(''binary_sensor.verizon_router_wan_status'', ''off'') }}'
+    delay_on: 00:00:30
+  - name: Network High DNS Latency
+    unique_id: speakeasy_net_high_dns_latency
+    device_class: problem
+    state: '{{ states(''sensor.adguard_home_average_processing_speed'') | float(0)
+      > 100 }}'
+    delay_on: 00:00:30
+  - name: Network Has Warning
+    unique_id: speakeasy_net_has_warning
+    device_class: problem
+    state: "{{ is_state('binary_sensor.network_wan_down', 'on')\n   or is_state('binary_sensor.network_high_dns_latency',\
+      \ 'on') }}"
+- sensor:
+  - name: Speakeasy Basement Avg Temp
+    unique_id: speakeasy_basement_avg_temp
+    unit_of_measurement: °F
+    device_class: temperature
+    state: '{% set a = state_attr(''climate.smax_b6a6d8_smax_b6a6d8'', ''current_temperature'')
+      | float(0) %} {% set b = state_attr(''climate.smax_b6c6f4_smax_b6c6f4'', ''current_temperature'')
+      | float(0) %} {{ ((a + b) / 2) | round(1) }}'

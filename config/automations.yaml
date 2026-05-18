@@ -1,0 +1,187 @@
+# Speakeasy Theater Automations
+# Phase 7 of speakeasy_server_setup_plan.md
+# Entities (verified live):
+#   - media_player.denon_avr_x3800h  (Denon HEOS integration)
+#   - media_player.shield            (auto-discovered NVIDIA Shield)
+#   - input_button.speakeasy_off     (configured in configuration.yaml)
+
+- id: speakeasy_shield_on_movie_mode
+  alias: "Speakeasy: Shield On → Movie Mode"
+  description: "When Shield turns on, switch Denon to its input"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: media_player.shield
+      to: "on"
+  action:
+    - service: media_player.turn_on
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+    - delay: "00:00:03"
+    - service: media_player.select_source
+      target:
+        entity_id: media_player.denon_avr_x3800h_2
+      data:
+        source: "SHIELD"  # ⚠ See note in setup plan: receiver's input source name needs to be verified/renamed
+
+- id: speakeasy_everything_off
+  alias: "Speakeasy: Everything Off"
+  description: "Power off all theater equipment with one button"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: input_button.speakeasy_off
+  action:
+    - service: media_player.turn_off
+      target:
+        entity_id:
+          - media_player.denon_avr_x3800h_2
+          - media_player.shield
+    - service: remote.turn_off
+      target:
+        entity_id: remote.jvc_projector
+      continue_on_error: true
+
+- id: shield_adb_fast_poll
+  alias: "Shield: Fast-poll ADB state every 5s"
+  description: "Forces media_player.shield_adb refresh every 5s for snappier 'what's playing' answers (default integration polling is 10s)"
+  mode: single
+  trigger:
+    - platform: time_pattern
+      seconds: "/5"
+  condition:
+    - condition: state
+      entity_id: media_player.shield_adb
+      state:
+        - "playing"
+        - "paused"
+        - "on"
+        - "idle"
+  action:
+    - service: homeassistant.update_entity
+      target:
+        entity_id: media_player.shield_adb
+
+# Social-media block (8a-7p daily). YouTube intentionally excluded.
+# Implemented via rest_command.adguard_set_blocked_services because AdGuard
+# native schedule can't express two pause windows per day.
+- id: adguard_social_block_on
+  alias: "AdGuard: social block ON (8am)"
+  mode: single
+  trigger:
+    - platform: time
+      at: "08:00:00"
+  condition:
+    # Skip the schedule when manually paused/snoozed (packages/adguard.yaml).
+    - condition: state
+      entity_id: input_boolean.adguard_block_paused
+      state: "off"
+  action:
+    - service: rest_command.adguard_set_blocked_services
+      data:
+        ids: &social_ids
+          - facebook
+          - instagram
+          - tiktok
+          - twitter
+          - snapchat
+          - pinterest
+          - linkedin
+          - tumblr
+          - bluesky
+          - mastodon
+          - 4chan
+          - 9gag
+          - imgur
+          - vk
+          - weibo
+          - xiaohongshu
+          - amazon
+          - reddit
+
+- id: adguard_social_block_off
+  alias: "AdGuard: social block OFF (7pm)"
+  mode: single
+  trigger:
+    - platform: time
+      at: "19:00:00"
+  action:
+    - service: rest_command.adguard_set_blocked_services
+      data:
+        ids: []
+
+- id: adguard_social_block_startup_sync
+  alias: "AdGuard: sync social block on HA startup"
+  mode: single
+  trigger:
+    - platform: homeassistant
+      event: start
+  action:
+    - choose:
+        # Manual pause overrides the schedule.
+        - conditions:
+            - condition: state
+              entity_id: input_boolean.adguard_block_paused
+              state: "on"
+          sequence:
+            - service: rest_command.adguard_set_blocked_services
+              data:
+                ids: []
+        - conditions:
+            - condition: time
+              after: "08:00:00"
+              before: "19:00:00"
+          sequence:
+            - service: rest_command.adguard_set_blocked_services
+              data:
+                ids: *social_ids
+      default:
+        - service: rest_command.adguard_set_blocked_services
+          data:
+            ids: []
+
+
+- id: speakeasy_denon_volume_cap_85
+  alias: "Speakeasy: Denon volume cap 85%"
+  description: "Hard ceiling. Snaps Denon back if anything (Spotify, scripts, manual UI, dial) drives volume past 0.85."
+  mode: single
+  max_exceeded: silent
+  trigger:
+    - platform: state
+      entity_id: media_player.denon_avr_x3800h_2
+      attribute: volume_level
+    - platform: state
+      entity_id: media_player.denon_avr_x3800h
+      attribute: volume_level
+  condition:
+    - condition: template
+      value_template: >
+        {{ (state_attr(trigger.entity_id, "volume_level") | float(0)) > 0.85 }}
+  action:
+    - service: media_player.volume_set
+      target:
+        entity_id: "{{ trigger.entity_id }}"
+      data:
+        volume_level: 0.85
+
+- id: speakeasy_heater_a_mirrors_to_b_and_input_number
+  alias: "Speakeasy: Heater A target mirrors to B + input_number"
+  description: "When Heater A target temperature changes (e.g. via dashboard slider), sync Heater B and input_number.speakeasy_heater_target. Avoids loop with push automation by checking delta."
+  trigger:
+    - platform: state
+      entity_id: climate.smax_b6a6d8_smax_b6a6d8
+      attribute: temperature
+  condition:
+    - "{{ trigger.to_state.attributes.temperature is not none }}"
+    - "{{ (trigger.to_state.attributes.temperature | float(0)) != (states(\"input_number.speakeasy_heater_target\") | float(-1)) }}"
+  action:
+    - service: input_number.set_value
+      target:
+        entity_id: input_number.speakeasy_heater_target
+      data:
+        value: "{{ trigger.to_state.attributes.temperature | float }}"
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.smax_b6c6f4_smax_b6c6f4
+      data:
+        temperature: "{{ trigger.to_state.attributes.temperature | float }}"

@@ -1,0 +1,69 @@
+# Fully Kiosk Browser REST API. Replace the placeholder URLs with your tablet's
+# IP, port, and admin password. The admin password is set under
+# Settings → Remote Administration in FKB. Consider storing it in secrets.yaml
+# and templating it in via `!secret fk_password`.
+rest_command:
+  fk_load_dashboard:
+    url: http://TABLET_IP:2323/?cmd=loadURL&url=http%3A%2F%2FHA_IP%3A8123%2Fdashboard-speakeasy%2F0&password=FK_PASSWORD
+    method: get
+    timeout: 6
+  fk_load_jukebox:
+    url: http://TABLET_IP:2323/?cmd=loadURL&url=http%3A%2F%2FHA_IP%3A8123%2Fdashboard-speakeasy%2F1&password=FK_PASSWORD
+    method: get
+    timeout: 6
+  fk_bring_to_foreground:
+    url: http://TABLET_IP:2323/?cmd=toForeground&password=FK_PASSWORD
+    method: get
+    timeout: 6
+  fk_start_spotify:
+    url: http://TABLET_IP:2323/?cmd=startApplication&package=com.spotify.music&password=FK_PASSWORD
+    method: get
+    timeout: 6
+automation:
+- id: tablet_load_jukebox_on_music
+  alias: 'Tablet: load jukebox view when activity becomes music'
+  description: 'Activity → music: webview navigates to /dashboard-speakeasy/1 so guests
+    land on the SpotifyPlus jukebox surface. Auto-fires on every scene activation
+    (mode: restart).
+
+    '
+  mode: restart
+  trigger:
+  - platform: state
+    entity_id: input_select.speakeasy_activity
+    to: music
+  action:
+  - service: rest_command.fk_load_jukebox
+  - service: rest_command.fk_bring_to_foreground
+- id: tablet_return_to_dashboard_on_non_music
+  alias: 'Tablet: return to dashboard when activity leaves music'
+  description: 'Any non-music activity (or off) flips the tablet back to the speakeasy
+    dashboard so the next person sees admin controls.
+
+    '
+  mode: restart
+  trigger:
+  - platform: state
+    entity_id: input_select.speakeasy_activity
+    from: music
+  condition:
+  - condition: template
+    value_template: '{{ trigger.to_state.state != ''music'' }}'
+  action:
+  - service: rest_command.fk_load_dashboard
+  - service: rest_command.fk_bring_to_foreground
+script:
+  tablet_show_jukebox_now:
+    alias: 'Tablet: show jukebox view now'
+    icon: mdi:music-circle
+    sequence:
+    - service: shell_command.py_tablet_show
+      data:
+        cmd: jukebox
+  tablet_show_dashboard_now:
+    alias: 'Tablet: show admin dashboard now'
+    icon: mdi:tablet-dashboard
+    sequence:
+    - service: shell_command.py_tablet_show
+      data:
+        cmd: dashboard

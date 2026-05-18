@@ -1,0 +1,85 @@
+# /config/packages/celebrations.yaml
+# Multi-phase WLED celebrations. Each runs ~30s (strobe/fireworks/chase), then off.
+# Backgrounded via shell_command.py_celebrate so HA returns immediately.
+
+script:
+  celebrate_sabres_goal:
+    alias: "Celebrate Sabres goal"
+    description: "Gold + royal blue + white. Goal horn strobe -> Fireworks Starburst -> chase outro."
+    icon: mdi:hockey-puck
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: sabres}
+
+  celebrate_bills_td:
+    alias: "Celebrate Bills touchdown"
+    description: "Bills red + royal blue + white. Strobe -> fireworks -> chase outro."
+    icon: mdi:football
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: bills}
+
+  celebrate_party:
+    alias: "Party mode"
+    description: "Generic rainbow + fireworks (~30s) for any moment."
+    icon: mdi:party-popper
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: party}
+
+  celebrate_christmas:
+    alias: "Christmas celebration"
+    description: "Red + green + white twinkle -> Fireworks Starburst -> chase. ~30s."
+    icon: mdi:pine-tree
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: christmas}
+
+  celebrate_halloween:
+    alias: "Halloween spook"
+    description: "Orange/purple fire -> Halloween eyes -> lightning + fireworks. ~30s."
+    icon: mdi:halloween
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: halloween}
+
+  celebrate_july4:
+    alias: "4th of July fireworks"
+    description: "Red/white/blue strobe -> fireworks barrage -> chase. ~35s."
+    icon: mdi:flag
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: july4}
+
+  celebrate_birthday:
+    alias: "Birthday celebration"
+    description: "Rainbow burst -> party-palette fireworks -> glitter shower. ~30s."
+    icon: mdi:cake-variant
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: birthday}
+
+  celebrate_new_year:
+    alias: "New Year countdown"
+    description: "Color-cycle countdown -> fireworks finale -> glitter. ~45s."
+    icon: mdi:firework
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: new_year}
+
+  celebrate_penalty:
+    alias: "Penalty (opponent score)"
+    description: "Sad red breathe for 8s when the other team scores. Quiet, brief."
+    icon: mdi:emoticon-sad
+    mode: parallel
+    sequence:
+      - service: shell_command.py_celebrate
+        data: {profile: penalty}

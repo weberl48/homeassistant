@@ -8,3 +8,64 @@ __pycache__/
 data/
 logs/
 .DS_Store
+
+# Home Assistant — never commit secrets, tokens, registries, db, backups, etc.
+config/.storage/
+config/.cache/
+config/.cloud
+config/.uuid
+config/.HA_VERSION
+config/.ha_token
+config/.ha_run.lock
+config/.shell_history
+config/secrets.yaml
+config/secrets.yaml.bak*
+config/*.bak.*
+config/*.bak-pre-*
+config/*.bak
+config/*.db
+config/*.db-*
+config/*.log
+config/*.log.*
+config/backups/
+config/deps/
+config/tts/
+config/home-assistant.log*
+
+# ADB keys / TLS certs / private keys
+config/androidtv_adbkey*
+config/**/*_key.pem
+config/**/*_cert.pem
+config/**/*.crt
+config/**/*.key
+config/**/*.pem
+
+# Z2M state (device link keys, paired-device PII)
+config/zigbee2mqtt/database.db*
+config/zigbee2mqtt/coordinator_backup.json
+config/zigbee2mqtt/state.json
+config/zigbee2mqtt/log/
+
+# HACS-installed third-party custom_components (reinstallable, not ours)
+config/custom_components/hacs/
+config/custom_components/anker_solix/
+config/custom_components/browser_mod/
+config/custom_components/smart_envi/
+config/custom_components/spotifyplus/
+
+# ESPHome build artifacts and binaries
+config/esphome/.esphome/
+config/esphome/build/
+config/esphome/*.bin
+config/esphome/*.elf
+config/esphome/*.gif
+config/esphome/meme*.png
+config/esphome/nyan*.png
+config/esphome/secrets.yaml
+
+# Lovelace community resources (HACS managed)
+config/www/community/
+
+# Misc HA runtime state
+config/SpotifyWebApiPython_config.json
+config/application_credentials

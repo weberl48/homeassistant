@@ -1,0 +1,1212 @@
+# M5Stack Dial — Speakeasy Theater Control
+# Navigation:
+#  screen 0 = HOME (volume + scene icons + transport + heater).
+#  screen 1-4 = scene menus (Movie/Music/Retro/PC) — encoder navigates list, press confirms.
+#  screen 5 = HEATER adjust (encoder rotates target temp, auto-revert 5 s).
+# Tap a scene icon on home → opens that scene's menu. Tap "X" top-right → back to home.
+
+esphome:
+  name: speakeasy-dial
+  friendly_name: Speakeasy Dial
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+
+external_components:
+  - source: github://dgaust/esphome@gc9a01
+    components: [ ft3267 ]
+    refresh: 0s
+
+i2c:
+  - id: bus_internal
+    sda: GPIO11
+    scl: GPIO12
+    scan: false
+
+globals:
+  - id: target_volume
+    type: float
+    restore_value: false
+    initial_value: "0.5"
+  - id: last_encoder_steps
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: last_spin_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: last_activity_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: is_dimmed
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: highlight_icon
+    type: int
+    restore_value: false
+    initial_value: "-1"
+  - id: highlight_until_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  # screen: 0=home, 1=movie menu, 2=music menu, 3=retro menu, 4=pc menu, 5=heater
+  - id: screen
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: menu_index
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: screen_until_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  # Touch ripple feedback (HomePod-style)
+  - id: touch_x
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: touch_y
+    type: int
+    restore_value: false
+    initial_value: "0"
+  - id: touch_at_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  # Scene-launch spinner: when set, draw a 3 s loading overlay
+  - id: launch_at_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  # Hold-to-confirm panic-off (screen 6 overlay)
+  - id: button_press_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: button_held
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: prev_screen
+    type: int
+    restore_value: false
+    initial_value: "0"
+  # Smooth backlight lerp for tiered idle dim
+  - id: current_brightness
+    type: float
+    restore_value: false
+    initial_value: "1.0"
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Speakeasy-Dial Hotspot"
+    password: !secret ota_password
+
+captive_portal:
+
+spi:
+  clk_pin: GPIO6
+  mosi_pin: GPIO5
+
+output:
+  - platform: ledc
+    pin: GPIO9
+    id: lcd_backlight
+    frequency: 1000Hz
+  - platform: ledc
+    pin: GPIO3
+    id: buzzer_out
+    channel: 2
+
+light:
+  - platform: monochromatic
+    output: lcd_backlight
+    name: "Dial Backlight"
+    id: lcd_backlight_light
+    restore_mode: ALWAYS_ON
+
+rtttl:
+  output: buzzer_out
+  id: buzzer
+
+image:
+  # Repurposed icons: TOP = Denon AVR menu, RIGHT = Projector menu.
+  # icon_movie/music/retro/pc kept for compatibility but no longer rendered on HOME.
+  - id: icon_avr
+    file: "mdi:amplifier"
+    resize: 44x44
+    type: BINARY
+  - id: icon_projector
+    file: "mdi:projector"
+    resize: 44x44
+    type: BINARY
+  # BOTTOM home icon — heater preheat toggle (tap = script.speakeasy_heaters_toggle)
+  - id: icon_heater
+    file: "mdi:radiator"
+    resize: 44x44
+    type: BINARY
+  # LEFT home icon — Denon mute toggle (tap = script.denon_mute_toggle)
+  - id: icon_mute
+    file: "mdi:volume-mute"
+    resize: 44x44
+    type: BINARY
+  - id: icon_movie
+    file: "mdi:movie-roll"
+    resize: 44x44
+    type: BINARY
+  - id: icon_music
+    file: "mdi:spotify"
+    resize: 44x44
+    type: BINARY
+  - id: icon_retro
+    file: "mdi:controller-classic"
+    resize: 44x44
+    type: BINARY
+  - id: icon_pc
+    file: "mdi:gamepad-square"
+    resize: 44x44
+    type: BINARY
+  - id: icon_thermometer
+    file: "mdi:thermometer-lines"
+    resize: 26x26
+    type: BINARY
+  - id: icon_prev
+    file: "mdi:skip-previous-circle"
+    resize: 28x28
+    type: BINARY
+  - id: icon_next
+    file: "mdi:skip-next-circle"
+    resize: 28x28
+    type: BINARY
+  - id: icon_play
+    file: "mdi:play-circle"
+    resize: 24x24
+    type: BINARY
+  - id: icon_pause
+    file: "mdi:pause-circle"
+    resize: 24x24
+    type: BINARY
+  - id: icon_back
+    file: "mdi:close"
+    resize: 28x28
+    type: BINARY
+
+  # Screensaver animation frames — bopping cat (meme1) + Nyan Cat (nyan),
+  # 4 frames each at 200x200 RGB565 = ~80 KB/frame, 640 KB total in flash.
+  # Pre-extracted via /config/esphome/_anim_process.py. Lambda below cycles them.
+  # We avoid ESPHome's `animation:` block here because RGB565 multi-frame baking
+  # silently collapses to 1 frame in this version.
+  - id: meme1_f0
+    file: "meme1_f0.png"
+    type: RGB565
+  - id: meme1_f1
+    file: "meme1_f1.png"
+    type: RGB565
+  - id: meme1_f2
+    file: "meme1_f2.png"
+    type: RGB565
+  - id: meme1_f3
+    file: "meme1_f3.png"
+    type: RGB565
+  - id: nyan_f0
+    file: "nyan_f0.png"
+    type: RGB565
+  - id: nyan_f1
+    file: "nyan_f1.png"
+    type: RGB565
+  - id: nyan_f2
+    file: "nyan_f2.png"
+    type: RGB565
+  - id: nyan_f3
+    file: "nyan_f3.png"
+    type: RGB565
+
+display:
+  - platform: ili9xxx
+    model: GC9A01A
+    cs_pin: GPIO7
+    dc_pin: GPIO4
+    reset_pin: GPIO8
+    invert_colors: true
+    rotation: 0
+    update_interval: 100ms
+    lambda: |-
+      it.fill(Color::BLACK);
+      const int cx = 120, cy = 120;
+      const int scr = id(screen);
+      const bool heater_screen = (scr == 5);
+      const bool home_screen = (scr == 0);
+      const bool menu_screen = (scr >= 1 && scr <= 4);
+      const bool offconfirm_screen = (scr == 6);
+
+      // Per-scene accent palette (matches menu screens 1-4)
+      const Color SCENE_COLORS[] = {
+        Color(0xFF, 0xB4, 0x3A),  // 0 movie  — warm amber
+        Color(0x1D, 0xB9, 0x54),  // 1 music  — Spotify green
+        Color(0x4F, 0xD1, 0xC5),  // 2 retro  — teal
+        Color(0xA8, 0xA0, 0xE8)   // 3 pc     — soft lavender
+      };
+      const Color VOL_ARC = Color(0xFF, 0x9E, 0x2C);
+      const Color HEATER_ARC = Color(0x6E, 0xB5, 0xFF);
+      const Color RIM_DIM = Color(0x18, 0x18, 0x1E);
+
+      uint32_t now_ms = millis();
+      float pulse_phase = (now_ms % 1600) / 1600.0f;
+      float pulse = 0.89f + 0.11f * sinf(pulse_phase * 2.0f * 3.14159265f);
+
+      // ====================================================================
+      // SCREENSAVER: 90s idle → alternates bopping cat ↔ Nyan Cat every 4s.
+      // Each is animated by cycling through 4 pre-baked frames at 100ms/frame.
+      // Images are 200x200 centered on 240x240 (20px ring sits in bezel area).
+      // ====================================================================
+      uint32_t idle_ms = now_ms - id(last_activity_ms);
+      if (idle_ms > 90000) {
+        uint32_t saver_t = idle_ms - 90000;
+        int which = (saver_t / 4000) % 2;            // which anim (0 = bopping cat, 1 = nyan)
+        int frame = (saver_t / 100) % 4;             // current frame within anim (10 fps)
+        if (which == 0) {
+          switch (frame) {
+            case 0: it.image(20, 20, id(meme1_f0)); break;
+            case 1: it.image(20, 20, id(meme1_f1)); break;
+            case 2: it.image(20, 20, id(meme1_f2)); break;
+            case 3: it.image(20, 20, id(meme1_f3)); break;
+          }
+        } else {
+          switch (frame) {
+            case 0: it.image(20, 20, id(nyan_f0)); break;
+            case 1: it.image(20, 20, id(nyan_f1)); break;
+            case 2: it.image(20, 20, id(nyan_f2)); break;
+            case 3: it.image(20, 20, id(nyan_f3)); break;
+          }
+        }
+
+        // Touch ripple still draws on top so wake-tap shows feedback
+        uint32_t since_touch = now_ms - id(touch_at_ms);
+        if (since_touch < 400) {
+          int radius = 6 + (int)(since_touch * 55 / 400);
+          uint8_t fade = 230 - (uint8_t)(since_touch * 230 / 400);
+          it.circle(id(touch_x), id(touch_y), radius, Color(fade, fade, fade));
+        }
+        return;  // SCREENSAVER FULLY OWNS THE FRAME
+      }
+
+      // Determine active icon for HOME pulse + arc tint
+      // TOP (idx 0) = Denon AVR; pulses if receiver is awake (state != off/idle/standby)
+      // RIGHT (idx 1) = Projector; pulses if projector power is on
+      // Tap-flash override (idx from highlight_icon for 600ms) trumps live state.
+      bool flash_active = (now_ms < id(highlight_until_ms));
+      int active_idx = -1;
+      bool denon_awake = false;
+      bool projector_on = false;
+      if (id(denon_state).has_state()) {
+        std::string s = id(denon_state).state;
+        denon_awake = (s != "off" && s != "idle" && s != "standby" && s != "unavailable" && s != "unknown");
+      }
+      if (id(projector_state).has_state()) {
+        projector_on = (id(projector_state).state == "on");
+      }
+      if (flash_active) {
+        active_idx = id(highlight_icon);
+      } else if (denon_awake) {
+        active_idx = 0;
+      } else if (projector_on) {
+        active_idx = 1;
+      }
+
+      // ----- Arc gauge around the rim (purpose depends on screen) -----
+      const int total = 80;
+      const int r_outer = 117, r_inner = 104;
+      int filled;
+      Color arc_active;
+      if (heater_screen) {
+        uint32_t remaining = (now_ms < id(screen_until_ms)) ? (id(screen_until_ms) - now_ms) : 0;
+        filled = (int)((uint64_t)total * remaining / 5000);
+        arc_active = HEATER_ARC;
+      } else if (offconfirm_screen) {
+        // Hold-to-confirm progress: fills red as button is held past 500ms toward 2500ms
+        uint32_t held = id(button_held) ? (now_ms - id(button_press_ms)) : 0;
+        float progress = (held > 500) ? ((held - 500) / 2000.0f) : 0;
+        if (progress > 1.0f) progress = 1.0f;
+        filled = (int)(total * progress);
+        arc_active = Color(0xFF, 0x44, 0x44);
+      } else if (menu_screen) {
+        // Arc shows position through the menu list (filled = (idx+1)/size)
+        // size resolved below; default 1 here, adjusted later if needed
+        filled = total / 4; // dim arc, mostly decorative
+        arc_active = SCENE_COLORS[scr - 1];
+      } else {
+        filled = (int)(total * id(target_volume));
+        arc_active = (active_idx >= 0) ? SCENE_COLORS[active_idx] : VOL_ARC;
+      }
+      if (filled < 0) filled = 0;
+      if (filled > total) filled = total;
+      for (int i = 0; i < total; i++) {
+        float deg = -90.0f + (360.0f * i / total);
+        float rad = deg * 3.14159265f / 180.0f;
+        float c = cosf(rad), s = sinf(rad);
+        Color col = (i < filled) ? arc_active : RIM_DIM;
+        it.line(cx + (int)(r_inner*c), cy + (int)(r_inner*s),
+                cx + (int)(r_outer*c), cy + (int)(r_outer*s), col);
+      }
+
+      // ----- Back X button (top-right) — red X on dark-red circle so it clearly reads as "close" -----
+      if (!home_screen && !offconfirm_screen) {
+        Color circle_col = Color(0x40, 0x14, 0x14);   // dark red button background
+        Color x_col      = Color(0xFF, 0x55, 0x55);   // bright red X
+        it.filled_circle(214, 26, 20, circle_col);
+        it.image(214 - 14, 26 - 14, id(icon_back), x_col, circle_col);
+      }
+
+      // ====================================================================
+      // HOME SCREEN
+      // ====================================================================
+      if (home_screen) {
+        // Scene icons with breathing pulse on active + rotating orbit
+        auto draw_scene = [&](int idx, int x, int y, esphome::image::Image *img) {
+          bool active = (idx == active_idx);
+          Color accent = SCENE_COLORS[idx];
+          if (active) {
+            // Rotating orbit dots: 5 dots circling at radius 32, 1 turn per 2 s
+            float orbit_t = now_ms * 0.003f;
+            for (int i = 0; i < 5; i++) {
+              float a = orbit_t + i * (2.0f * 3.14159265f / 5.0f);
+              int dx = x + (int)(32.0f * cosf(a));
+              int dy = y + (int)(32.0f * sinf(a));
+              uint8_t db = (uint8_t)(80 + 80.0f * sinf(a + orbit_t));
+              it.filled_circle(dx, dy, 2, Color(
+                (accent.red   * db) / 255,
+                (accent.green * db) / 255,
+                (accent.blue  * db) / 255));
+            }
+            // Halo + ring (existing breathing pulse)
+            uint8_t hr = (uint8_t)(accent.red   * pulse * 0.30f);
+            uint8_t hg = (uint8_t)(accent.green * pulse * 0.30f);
+            uint8_t hb = (uint8_t)(accent.blue  * pulse * 0.30f);
+            it.filled_circle(x, y, 27, Color(hr, hg, hb));
+            uint8_t ar = (uint8_t)(accent.red   * pulse);
+            uint8_t ag = (uint8_t)(accent.green * pulse);
+            uint8_t ab = (uint8_t)(accent.blue  * pulse);
+            it.filled_circle(x, y, 23, Color(ar, ag, ab));
+            it.image(x - 22, y - 22, img, Color::BLACK, Color(ar, ag, ab));
+          } else {
+            it.image(x - 22, y - 22, img, Color(0xB8, 0xB8, 0xC2), Color::BLACK);
+          }
+        };
+        // All 4 quadrants wired: AVR menu (top), Projector menu (right),
+        // heater preheat toggle (bottom), Denon mute toggle (left).
+        draw_scene(0, 120,  38, id(icon_avr));
+        draw_scene(1, 202, 120, id(icon_projector));
+
+        // ---- BOTTOM (heater) ----
+        {
+          bool flashing = flash_active && (id(highlight_icon) == 2);
+          bool heating = id(heater_state).has_state() && id(heater_state).state == "heat";
+          Color base = flashing ? Color(0xFF, 0xFF, 0xFF)
+                     : heating  ? Color(0xFF, 0xA8, 0x4A)
+                                : Color(0x88, 0x88, 0x9C);
+          if (heating) {
+            uint8_t hr = (uint8_t)(base.red   * pulse * 0.30f);
+            uint8_t hg = (uint8_t)(base.green * pulse * 0.30f);
+            uint8_t hb = (uint8_t)(base.blue  * pulse * 0.30f);
+            it.filled_circle(120, 202, 27, Color(hr, hg, hb));
+          }
+          it.image(120 - 22, 202 - 22, id(icon_heater), base, Color::BLACK);
+        }
+
+        // ---- LEFT (mute) ----
+        {
+          bool flashing = flash_active && (id(highlight_icon) == 3);
+          bool muted = id(denon_mute).has_state() &&
+                       (id(denon_mute).state == "true" || id(denon_mute).state == "True" || id(denon_mute).state == "on");
+          Color base = flashing ? Color(0xFF, 0xFF, 0xFF)
+                     : muted    ? Color(0xFF, 0x55, 0x55)
+                                : Color(0x88, 0x88, 0x9C);
+          it.image(38 - 22, 120 - 22, id(icon_mute), base, Color::BLACK);
+        }
+
+        // Corner micro-icons
+        Color corner_col = Color(0x88, 0x88, 0x9C);
+        // NE thermo chip — heating-aware color + room temp digit below the icon
+        bool heating = id(heater_target).has_state() && id(room_temp).has_state()
+                       && (int)id(heater_target).state > (int)id(room_temp).state;
+        Color thermo_col = heating ? Color(0xFF, 0xA8, 0x4A)    // warm amber when heating
+                                   : Color(0xA8, 0xC4, 0xFF);   // cool blue otherwise
+        it.image(200 - 13, 48 - 13, id(icon_thermometer), thermo_col, Color::BLACK);
+        if (id(room_temp).has_state()) {
+          it.printf(200, 70, id(roboto_xs), thermo_col, TextAlign::CENTER,
+                    "%d", (int)id(room_temp).state);
+        }
+        it.image( 48 - 14, 198 - 14, id(icon_prev), corner_col, Color::BLACK);
+        it.image(198 - 14, 198 - 14, id(icon_next), corner_col, Color::BLACK);
+
+        // (heater text ribbon dropped — chip + digit conveys it more compactly)
+
+        // Play/pause glyph
+        bool playing = (id(spotify_state).has_state() && id(spotify_state).state == "playing")
+                    || (id(shield_state).has_state()  && id(shield_state).state == "playing");
+        auto *pp = playing ? id(icon_pause) : id(icon_play);
+        Color pp_col = playing ? Color(0x1D, 0xB9, 0x54) : Color(0x88, 0x88, 0x9C);
+        it.image(cx - 12, 84, pp, pp_col, Color::BLACK);
+
+        // Volume number — flash on rotation
+        uint32_t since_spin = now_ms - id(last_spin_ms);
+        if (since_spin < 350) {
+          uint8_t glow_b = (uint8_t)(180 - since_spin * 180 / 350);
+          it.filled_circle(cx, 130, 50, Color(glow_b/8, glow_b/8, glow_b/4));
+        }
+        it.printf(cx, 138, id(roboto_xl), Color(0xFF, 0xFF, 0xFF), TextAlign::CENTER,
+                  "%d", (int)(id(target_volume) * 100));
+
+        // Encoder mode label (E)
+        it.print(cx, 164, id(roboto_xs), Color(0x66, 0x66, 0x80), TextAlign::CENTER, "VOL");
+
+        // Now-playing
+        std::string np = "";
+        Color np_col = Color(0x55, 0x55, 0x60);
+        if (id(spotify_state).has_state() && id(spotify_state).state == "playing" && id(spotify_title).has_state()) {
+          np = id(spotify_title).state;
+          np_col = Color(0x66, 0x88, 0x6C);
+        } else if (id(shield_state).has_state() && id(shield_state).state == "playing" && id(shield_title).has_state()) {
+          np = id(shield_title).state;
+          np_col = Color(0x6E, 0x80, 0xA0);
+        }
+        if (!np.empty()) {
+          if (np.size() > 18) np = np.substr(0, 17) + "…";
+          it.printf(cx, 175, id(roboto_xs), np_col, TextAlign::CENTER, "%s", np.c_str());
+
+          // Equalizer bars under the now-playing line — 5 sine-driven bars
+          int eq_y = 192;
+          int bar_w = 4;
+          int bar_gap = 6;
+          int bars_total_w = 5 * bar_w + 4 * bar_gap;
+          int eq_x0 = cx - bars_total_w / 2;
+          for (int i = 0; i < 5; i++) {
+            float phase = i * 0.7f;
+            float speed = 0.012f + i * 0.002f;
+            float h = 4.0f + 7.0f + 7.0f * sinf(now_ms * speed + phase);
+            int bx = eq_x0 + i * (bar_w + bar_gap);
+            int height = (int)h;
+            if (height < 2) height = 2;
+            it.filled_rectangle(bx, eq_y - height, bar_w, height, np_col);
+          }
+        }
+      }
+
+      // ====================================================================
+      // HEATER SCREEN (5)
+      // ====================================================================
+      else if (heater_screen) {
+        Color temp_color = Color(0xFF, 0xFF, 0xFF);
+        bool heating = id(heater_target).has_state() && id(room_temp).has_state()
+                       && (int)id(heater_target).state > (int)id(room_temp).state;
+        if (heating) {
+          float warm_pulse = 0.92f + 0.08f * sinf(pulse_phase * 2.0f * 3.14159265f);
+          temp_color = Color((uint8_t)(0xFF * warm_pulse),
+                             (uint8_t)(0xA8 * warm_pulse),
+                             (uint8_t)(0x4A * warm_pulse));
+
+          // Heat-wave animation: 3 sine ribbons rising upward through the temp number
+          for (int row = 0; row < 3; row++) {
+            float yshift = fmodf(now_ms * 0.04f + row * 25.0f, 75.0f);
+            int base_y = 200 - (int)yshift;
+            uint8_t alpha = (uint8_t)(140.0f * (1.0f - yshift / 75.0f));
+            for (int x = 50; x < 190; x += 4) {
+              int wy = base_y + (int)(4.0f * sinf((x + now_ms * 0.005f) * 0.18f));
+              it.filled_rectangle(x, wy, 3, 2, Color(alpha, alpha/3, 0));
+            }
+          }
+        }
+        it.print(cx, 60, id(roboto_xs), Color(0x6E, 0xB5, 0xFF), TextAlign::CENTER, "TARGET");
+        if (id(heater_target).has_state()) {
+          it.printf(cx, 122, id(roboto_temp), temp_color, TextAlign::CENTER,
+                    "%d°", (int)id(heater_target).state);
+        }
+        if (id(room_temp).has_state()) {
+          it.printf(cx, 180, id(roboto_small), Color(0x7E, 0x9C, 0xC4), TextAlign::CENTER,
+                    "now %d°", (int)id(room_temp).state);
+        }
+      }
+
+      // ====================================================================
+      // SCENE MENU SCREENS (1=Movie, 2=Music, 3=Retro, 4=PC)
+      // ====================================================================
+      else if (menu_screen) {
+        // Static menu data
+        // Screen 1 = Denon source picker (TOP icon)
+        // Screen 2 = Projector control      (RIGHT icon)
+        // Screens 3 & 4 are reserved for future use; their tap zones are no-ops.
+        static const char* DENON_ITEMS[] = {
+          "CBL/SAT", "SHIELD", "Blu-ray", "Game", "AUX1", "AUX2", "TV Audio", "CD"
+        };
+        static const char* PROJECTOR_ITEMS[] = {
+          "Power On", "Power Off", "HDMI 1", "HDMI 2"
+        };
+        static const char* PLACEHOLDER_ITEMS[] = { "(empty)" };
+        static const char* TITLES[] = { "", "DENON", "PROJECTOR", "—", "—" };
+
+        const char** items;
+        int sz;
+        switch (scr) {
+          case 1: items = DENON_ITEMS;       sz = 8; break;
+          case 2: items = PROJECTOR_ITEMS;   sz = 4; break;
+          case 3: items = PLACEHOLDER_ITEMS; sz = 1; break;
+          case 4: items = PLACEHOLDER_ITEMS; sz = 1; break;
+          default: items = PLACEHOLDER_ITEMS; sz = 1; break;
+        }
+
+        Color accent = SCENE_COLORS[scr - 1];
+        int idx = id(menu_index);
+        if (idx < 0) idx = 0;
+        if (idx >= sz) idx = sz - 1;
+
+        // Title
+        it.printf(cx, 38, id(roboto_med), accent, TextAlign::CENTER, "%s", TITLES[scr]);
+
+        // Position counter
+        it.printf(cx, 60, id(roboto_xs), Color(0x66, 0x66, 0x80), TextAlign::CENTER,
+                  "%d / %d", idx + 1, sz);
+
+        // Drum-roll: prev (small dim) → current (big bright accent) → next (small dim)
+        int prev_i = (idx - 1 + sz) % sz;
+        int next_i = (idx + 1) % sz;
+
+        if (sz > 1) {
+          it.printf(cx, 92, id(roboto_small), Color(0x55, 0x55, 0x65), TextAlign::CENTER,
+                    "%s", items[prev_i]);
+        }
+
+        // Current item — accent color, breathing pulse for visibility
+        uint8_t ar = (uint8_t)(accent.red   * pulse);
+        uint8_t ag = (uint8_t)(accent.green * pulse);
+        uint8_t ab = (uint8_t)(accent.blue  * pulse);
+        it.printf(cx, 134, id(roboto_lg), Color(ar, ag, ab), TextAlign::CENTER,
+                  "%s", items[idx]);
+
+        if (sz > 1) {
+          it.printf(cx, 178, id(roboto_small), Color(0x55, 0x55, 0x65), TextAlign::CENTER,
+                    "%s", items[next_i]);
+        }
+
+        // Hint
+        it.print(cx, 208, id(roboto_xs), Color(0x44, 0x44, 0x55), TextAlign::CENTER,
+                 "press to confirm");
+      }
+
+      // ====================================================================
+      // OFFCONFIRM OVERLAY (screen 6) — hold-to-confirm panic-off
+      // Arc already drawn red above; this paints headline + countdown + hint
+      // ====================================================================
+      else if (offconfirm_screen) {
+        uint32_t held = id(button_held) ? (now_ms - id(button_press_ms)) : 0;
+        it.print(cx, 78, id(roboto_med), Color(0xFF, 0x55, 0x55), TextAlign::CENTER, "ALL OFF?");
+        float remaining = 2.5f - (held / 1000.0f);
+        if (remaining < 0) remaining = 0;
+        it.printf(cx, 138, id(roboto_xl), Color(0xFF, 0xFF, 0xFF), TextAlign::CENTER,
+                  "%.1f", remaining);
+        it.print(cx, 178, id(roboto_xs), Color(0x88, 0x88, 0x88), TextAlign::CENTER,
+                 "release to cancel");
+      }
+
+      // ----- Scene-launch spinner overlay (~3 s) -----
+      uint32_t since_launch = now_ms - id(launch_at_ms);
+      if (id(launch_at_ms) > 0 && since_launch < 3000) {
+        // Translucent dim background (fake by re-drawing dark over center)
+        it.filled_circle(cx, cy, 70, Color(0x05, 0x05, 0x08));
+        // Rotating arc — 6 segments going around once per 800 ms
+        float spinner_t = since_launch * 0.0078f;  // ~1.25 turns/sec
+        for (int i = 0; i < 12; i++) {
+          float a = spinner_t + i * (2.0f * 3.14159265f / 12.0f);
+          int px = cx + (int)(45.0f * cosf(a));
+          int py = cy + (int)(45.0f * sinf(a));
+          uint8_t b = (uint8_t)(255 * (1.0f - (float)i / 12.0f));
+          it.filled_circle(px, py, 4, Color(b, b/2, 0));  // amber gradient
+        }
+        // "LAUNCHING" label
+        it.print(cx, cy, id(roboto_small), Color(0xFF, 0xFF, 0xFF), TextAlign::CENTER, "LAUNCHING");
+      }
+
+      // ----- Boot splash (first 2.5 s of uptime): animated accent rings -----
+      if (now_ms < 2500) {
+        float boot_alpha;
+        if (now_ms < 800) {
+          boot_alpha = now_ms / 800.0f;
+        } else if (now_ms > 1800) {
+          boot_alpha = 1.0f - (now_ms - 1800) / 700.0f;
+        } else {
+          boot_alpha = 1.0f;
+        }
+        if (boot_alpha < 0) boot_alpha = 0;
+        it.filled_circle(cx, cy, 120, Color::BLACK);
+        uint8_t b = (uint8_t)(255 * boot_alpha);
+        // Three concentric pulsing rings, each in a different scene accent
+        for (int i = 0; i < 3; i++) {
+          int r = 18 + i * 14 + (int)(6.0f * sinf((now_ms + i * 200) * 0.006f));
+          Color c = SCENE_COLORS[i + 1];  // music, retro, pc accents
+          it.circle(cx, cy, r, Color((c.red * b) / 255, (c.green * b) / 255, (c.blue * b) / 255));
+        }
+        // Subtle expanding outer ring
+        int outer_r = 60 + (int)(40.0f * (now_ms % 1500) / 1500.0f);
+        uint8_t fade = (uint8_t)(b * (1.0f - (float)(now_ms % 1500) / 1500.0f));
+        it.circle(cx, cy, outer_r, Color(fade/2, fade/2, fade));
+      }
+
+      // ----- Touch ripple feedback (rendered LAST so it overlays everything) -----
+      uint32_t since_touch = now_ms - id(touch_at_ms);
+      if (since_touch < 400) {
+        int radius = 6 + (int)(since_touch * 55 / 400);
+        uint8_t fade = 230 - (uint8_t)(since_touch * 230 / 400);
+        Color outer(fade, fade, fade);
+        Color inner(fade/2, fade/2, fade/2);
+        it.circle(id(touch_x), id(touch_y), radius, outer);
+        if (radius > 10) it.circle(id(touch_x), id(touch_y), radius - 6, inner);
+      }
+
+touchscreen:
+  - platform: ft3267
+    i2c_id: bus_internal
+    on_touch:
+      - lambda: |-
+          int tx = touch.x;
+          int ty = touch.y;
+          id(touch_x) = tx;
+          id(touch_y) = ty;
+          id(touch_at_ms) = millis();
+          // Highlight icon flash on home tap — all 4 quadrants wired:
+          // 0=TOP(Denon menu), 1=RIGHT(Projector menu), 2=BOTTOM(heater toggle),
+          // 3=LEFT(mute toggle).
+          if (id(screen) == 0) {
+            int idx = -1;
+            if      (ty < 70  && tx > 60  && tx < 180) idx = 0;  // TOP (Denon)
+            else if (tx > 165 && ty > 60  && ty < 180) idx = 1;  // RIGHT (Projector)
+            else if (ty > 170 && tx > 60  && tx < 180) idx = 2;  // BOTTOM (heater)
+            else if (tx < 75  && ty > 60  && ty < 180) idx = 3;  // LEFT (mute)
+            if (idx >= 0) {
+              id(highlight_icon) = idx;
+              id(highlight_until_ms) = millis() + 600;
+            }
+          }
+          id(last_activity_ms) = millis();
+          // Extend any non-home screen's auto-revert timer to 10 s on touch
+          if (id(screen) >= 1 && id(screen) <= 4) {
+            id(screen_until_ms) = millis() + 10000;
+          }
+      - rtttl.play: "blip:d=16,o=7,b=200:c,e"
+
+# Tick: auto-revert non-home screens + auto-dim backlight
+# Plus 100 ms tick to advance the skeleton GIF frames in screensaver mode 0.
+interval:
+  # Frame cycling for the screensaver is computed inside the display lambda
+  # from idle_ms — no animation.next_frame interval needed.
+  - interval: 250ms
+    then:
+      - lambda: |-
+          // (A) Hold-to-confirm escalation: at 500ms, switch to overlay screen 6
+          if (id(button_held)) {
+            uint32_t held = millis() - id(button_press_ms);
+            if (held >= 500 && id(screen) != 6) {
+              id(screen) = 6;
+            }
+          }
+          // Auto-exit timed screens (skip overlay; it's release-driven)
+          if (id(screen) != 0 && id(screen) != 6 && millis() > id(screen_until_ms)) {
+            id(screen) = 0;
+            id(menu_index) = 0;
+          }
+          // (F) Tiered idle dim: 100% → 70% (5s) → 30% (30s, sticks so screensaver stays visible)
+          uint32_t idle = id(button_held) ? 0 : (millis() - id(last_activity_ms));
+          float target;
+          if      (idle <  5000)  target = 1.00f;
+          else if (idle < 30000)  target = 0.70f;
+          else                    target = 0.30f;
+          float current = id(current_brightness);
+          current += (target - current) * 0.10f;
+          if (fabs(target - current) < 0.005f) current = target;
+          id(current_brightness) = current;
+          auto bcall = id(lcd_backlight_light).turn_on();
+          bcall.set_brightness(current);
+          bcall.perform();
+      # (A) All-off fires AT the 2.5s threshold (not on release) — feels immediate
+      - if:
+          condition:
+            lambda: |-
+              return id(button_held) && (millis() - id(button_press_ms)) >= 2500;
+          then:
+            - lambda: |-
+                id(button_held) = false;
+                id(screen) = 0;
+                id(menu_index) = 0;
+            - homeassistant.service:
+                service: script.speakeasy_off
+            - rtttl.play: "off:d=16,o=6,b=180:e,c"
+
+sensor:
+  - platform: rotary_encoder
+    name: "Volume Encoder"
+    id: volume_encoder
+    pin_a:
+      number: GPIO40
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: GPIO41
+      mode:
+        input: true
+        pullup: true
+    resolution: 1
+    publish_initial_value: true
+    on_value:
+      then:
+        - lambda: |-
+            int new_val = (int)x;
+            int delta = new_val - id(last_encoder_steps);
+            id(last_encoder_steps) = new_val;
+            id(last_spin_ms) = millis();
+            id(last_activity_ms) = millis();
+            int scr = id(screen);
+            if (scr == 5) {
+              // Heater: each rotation extends 5 s window
+              id(screen_until_ms) = millis() + 5000;
+            } else if (scr >= 1 && scr <= 4) {
+              // Menu navigation: cycle menu_index by delta
+              // Sizes must match the switch in the display lambda's menu_screen branch
+              int sz = (scr == 1) ? 8 : (scr == 2) ? 4 : 1;
+              int idx = id(menu_index) + delta;
+              // wrap around
+              while (idx < 0) idx += sz;
+              idx = idx % sz;
+              id(menu_index) = idx;
+              id(screen_until_ms) = millis() + 10000;  // extend menu timeout
+            } else {
+              // Home: volume target. Hard cap 0.85 (matches HA cap automation).
+              float v = id(target_volume) + delta * 0.02f;
+              if (v < 0.0f) v = 0.0f;
+              if (v > 0.85f) v = 0.85f;
+              id(target_volume) = v;
+            }
+    on_clockwise:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.denon_volume_step_up
+      - if:
+          condition:
+            lambda: 'return id(screen) == 5;'
+          then:
+            - homeassistant.service:
+                service: script.speakeasy_heater_target_up
+    on_anticlockwise:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.denon_volume_step_down
+      - if:
+          condition:
+            lambda: 'return id(screen) == 5;'
+          then:
+            - homeassistant.service:
+                service: script.speakeasy_heater_target_down
+
+  - platform: homeassistant
+    id: denon_volume
+    entity_id: media_player.denon_avr_x3800h
+    attribute: volume_level
+    on_value:
+      then:
+        - lambda: |-
+            if (millis() - id(last_spin_ms) > 800 && id(screen) == 0) {
+              float v = x;
+              if (v > 0.85f) v = 0.85f;  // mirror cap so dial never displays > 85
+              if (v < 0.0f)  v = 0.0f;
+              id(target_volume) = v;
+            }
+
+  - platform: homeassistant
+    id: heater_target
+    entity_id: input_number.speakeasy_heater_target
+
+  - platform: homeassistant
+    id: room_temp
+    entity_id: sensor.speakeasy_basement_avg_temp
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO42
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Dial Button"
+    on_press:
+      - lambda: |-
+          id(last_activity_ms) = millis();
+          id(button_press_ms) = millis();
+          id(button_held) = true;
+          // Capture pre-press screen so the offconfirm overlay can restore it on cancel
+          if (id(screen) != 6) id(prev_screen) = id(screen);
+    on_release:
+      - lambda: |-
+          id(button_held) = false;
+          id(last_activity_ms) = millis();
+      # Cancel: held into overlay (≥500ms) but released before the 2.5s threshold
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held >= 500 && held < 2500 && id(screen) == 6;
+          then:
+            - lambda: |-
+                id(screen) = id(prev_screen);
+                id(screen_until_ms) = millis() + 10000;
+            - rtttl.play: "cancel:d=24,o=5,b=200:c"
+      # Short press on HOME → mute
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 0;
+          then:
+            - homeassistant.service:
+                service: script.denon_mute_toggle
+      # Short press in DENON menu (screen 1) → select source on the AVR
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 1;
+          then:
+            - homeassistant.service:
+                service: media_player.select_source
+                data:
+                  entity_id: media_player.denon_avr_x3800h
+                  source: !lambda |-
+                    const char* sources[] = {"CBL/SAT", "SHIELD", "Blu-ray", "Game", "AUX1", "AUX2", "TV Audio", "CD"};
+                    int idx = id(menu_index);
+                    if (idx < 0 || idx >= 8) idx = 0;
+                    return std::string(sources[idx]);
+            - lambda: |-
+                id(launch_at_ms) = millis();
+                id(screen) = 0;
+                id(menu_index) = 0;
+            - rtttl.play: "ok:d=16,o=7,b=200:e,g"
+      # Short press in PROJECTOR menu (screen 2) → dispatch per item
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 2 && id(menu_index) == 0;
+          then:
+            - homeassistant.service:
+                service: remote.turn_on
+                data:
+                  entity_id: remote.jvc_projector
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 2 && id(menu_index) == 1;
+          then:
+            - homeassistant.service:
+                service: remote.turn_off
+                data:
+                  entity_id: remote.jvc_projector
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 2 && id(menu_index) == 2;
+          then:
+            - homeassistant.service:
+                service: select.select_option
+                data:
+                  entity_id: select.jvc_projector_input
+                  option: hdmi1
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 2 && id(menu_index) == 3;
+          then:
+            - homeassistant.service:
+                service: select.select_option
+                data:
+                  entity_id: select.jvc_projector_input
+                  option: hdmi2
+      # Projector cleanup (fires after whichever projector dispatch ran above)
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 2;
+          then:
+            - lambda: |-
+                id(launch_at_ms) = millis();
+                id(screen) = 0;
+                id(menu_index) = 0;
+            - rtttl.play: "ok:d=16,o=7,b=200:e,g"
+      # Placeholder screens 3 & 4 (no menus wired) → just dismiss
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) >= 3 && id(screen) <= 4;
+          then:
+            - lambda: |-
+                id(screen) = 0;
+                id(menu_index) = 0;
+            - rtttl.play: "blip:d=16,o=7,b=200:c"
+      # Short press in heater → confirm tone + back (G: same "ok" tone as menus)
+      - if:
+          condition:
+            lambda: |-
+              uint32_t held = millis() - id(button_press_ms);
+              return held < 500 && id(screen) == 5;
+          then:
+            - lambda: 'id(screen) = 0;'
+            - rtttl.play: "ok:d=16,o=7,b=200:e,g"
+      # All-off itself fires from the interval handler at the 2.5s mark, so a release
+      # past threshold is a no-op here (button_held has already been cleared).
+
+  # ---- Touch zones (no overlaps; round-screen geometry) ----
+
+  # NE corner: HOME → heater quick-adjust; ANY other screen → BACK to home
+  - platform: touchscreen
+    name: "Tap NE"
+    x_min: 175
+    x_max: 240
+    y_min: 0
+    y_max: 60
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            # On HOME → open heater
+            - lambda: |-
+                id(screen) = 5;
+                id(screen_until_ms) = millis() + 5000;
+                id(last_activity_ms) = millis();
+            - rtttl.play: "thermo:d=16,o=6,b=180:c,e,g"
+          else:
+            # On any non-home screen → back to home
+            - lambda: |-
+                id(screen) = 0;
+                id(menu_index) = 0;
+            - rtttl.play: "back:d=24,o=6,b=200:g,d"
+
+  # Top: Movie scene → screen 1
+  - platform: touchscreen
+    name: "Tap Movie"
+    x_min: 80
+    x_max: 160
+    y_min: 0
+    y_max: 60
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - lambda: |-
+                id(screen) = 1;
+                id(menu_index) = 0;
+                id(screen_until_ms) = millis() + 10000;
+
+  # Right: Music scene → screen 2
+  - platform: touchscreen
+    name: "Tap Music"
+    x_min: 175
+    x_max: 240
+    y_min: 70
+    y_max: 175
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - lambda: |-
+                id(screen) = 2;
+                id(menu_index) = 0;
+                id(screen_until_ms) = millis() + 10000;
+
+  # Bottom: heater preheat toggle. Mirrors the BAR HEAT tile on the tablet —
+  # fires script.speakeasy_heaters_toggle which flips input_boolean.speakeasy_heater_preheat
+  # and turns the heaters on/off accordingly.
+  - platform: touchscreen
+    name: "Tap Retro"
+    x_min: 80
+    x_max: 160
+    y_min: 180
+    y_max: 240
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.speakeasy_heaters_toggle
+            - rtttl.play: "thermo:d=16,o=6,b=180:c,e,g"
+
+  # Left: Denon mute toggle. Same script as the encoder short-press; this zone
+  # gives a no-look option for hands-full muting (e.g. doorbell during a movie).
+  - platform: touchscreen
+    name: "Tap PC"
+    x_min: 0
+    x_max: 65
+    y_min: 70
+    y_max: 175
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.denon_mute_toggle
+            - rtttl.play: "mute:d=16,o=6,b=200:e"
+
+  # SE corner: home → skip next; non-home → no-op
+  - platform: touchscreen
+    name: "Tap Skip Next"
+    x_min: 180
+    x_max: 240
+    y_min: 180
+    y_max: 240
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.speakeasy_skip_next
+
+  # SW corner: home → skip prev; non-home → no-op
+  - platform: touchscreen
+    name: "Tap Skip Prev"
+    x_min: 0
+    x_max: 60
+    y_min: 180
+    y_max: 240
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.speakeasy_skip_prev
+
+  # Center body: home → play/pause; menu screens → confirm
+  - platform: touchscreen
+    name: "Tap Center"
+    x_min: 65
+    x_max: 175
+    y_min: 65
+    y_max: 180
+    on_press:
+      - if:
+          condition:
+            lambda: 'return id(screen) == 0;'
+          then:
+            - homeassistant.service:
+                service: script.speakeasy_play_pause_smart
+      - if:
+          condition:
+            lambda: 'return id(screen) >= 1 && id(screen) <= 4;'
+          then:
+            - homeassistant.service:
+                service: script.dial_menu_confirm
+                data:
+                  screen: !lambda 'return to_string(id(screen));'
+                  item: !lambda 'return to_string(id(menu_index));'
+            - lambda: |-
+                id(screen) = 0;
+                id(menu_index) = 0;
+            - rtttl.play: "ok:d=16,o=7,b=200:e,g"
+
+text_sensor:
+  - platform: homeassistant
+    id: denon_source
+    entity_id: media_player.denon_avr_x3800h
+    attribute: source
+  - platform: homeassistant
+    id: spotify_state
+    entity_id: media_player.spotify_lucas_weber
+  - platform: homeassistant
+    id: spotify_title
+    entity_id: media_player.spotify_lucas_weber
+    attribute: media_title
+  - platform: homeassistant
+    id: spotify_artist
+    entity_id: media_player.spotify_lucas_weber
+    attribute: media_artist
+  - platform: homeassistant
+    id: shield_state
+    entity_id: media_player.shield
+  - platform: homeassistant
+    id: shield_title
+    entity_id: media_player.shield
+    attribute: media_title
+  - platform: homeassistant
+    id: shield_app
+    entity_id: media_player.shield
+    attribute: app_name
+  - platform: homeassistant
+    id: activity_state
+    entity_id: input_select.speakeasy_activity
+  # New: direct hardware state for contextual home highlight
+  - platform: homeassistant
+    id: denon_state
+    entity_id: media_player.denon_avr_x3800h
+  - platform: homeassistant
+    id: projector_state
+    entity_id: binary_sensor.jvc_projector_power
+  # BOTTOM icon — reflects climate state ("heat" vs "off") for the preheat indicator
+  - platform: homeassistant
+    id: heater_state
+    entity_id: climate.smax_b6a6d8_smax_b6a6d8
+  # LEFT icon — Denon mute attribute (string "true"/"false"); coloured red when muted
+  - platform: homeassistant
+    id: denon_mute
+    entity_id: media_player.denon_avr_x3800h
+    attribute: is_volume_muted
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto_xs
+    size: 11
+  - file: "gfonts://Roboto"
+    id: roboto_small
+    size: 14
+  - file: "gfonts://Roboto"
+    id: roboto_med
+    size: 20
+  - file: "gfonts://Roboto"
+    id: roboto_lg
+    size: 30
+  - file: "gfonts://Roboto"
+    id: roboto_xl
+    size: 60
+  - file: "gfonts://Roboto"
+    id: roboto_temp
+    size: 72
