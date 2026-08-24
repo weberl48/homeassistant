@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 import httpx
@@ -21,7 +22,10 @@ FP_ECR_URLS = {
     "std": "https://www.fantasypros.com/nfl/rankings/cheatsheets.php",
 }
 FP_PROJECTIONS_URL = "https://api.fantasypros.com/public/v2/json/nfl/{year}/projections"
-FP_UA = "Mozilla/5.0 (X11; Linux x86_64) bootlegger/0.1"
+FP_UA = "Mozilla/5.0 (X11; Linux x86_64) bootlegger/0.1"  # page scrape only
+# Their WAF sporadically 403s browser-ish UAs on the API host; an honest tool
+# UA passes cleanly (verified 2026-08-24: 6/6 vs random refusals).
+FP_API_UA = "bootlegger/0.1 (personal use)"
 # ESPN's fantasy API is keyless; leaguedefaults/3 is their PPR default league.
 ESPN_PROJ_URL = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{year}/segments/0/leaguedefaults/3"
 ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DEF"}
@@ -96,29 +100,47 @@ def fetch_fp_ecr(scoring: str = "ppr", timeout: float = 20.0) -> dict[str, Any]:
 
 
 def fetch_fantasypros_projections(api_key: str, year: int, scoring: str = "PPR",
-                                  timeout: float = 20.0) -> list[dict[str, Any]]:
-    """FantasyPros aggregate season point projections via the public v2 API.
-    Needs a personal key (request at fantasypros.com/apis). Response shape is
-    parsed defensively — verify on first keyed run."""
+                                  week: int = 0,
+                                  timeout: float = 20.0) -> dict[str, Any]:
+    """FantasyPros aggregate point projections via the public v2 API (personal
+    key from fantasypros.com/apis). Verified shape 2026-08-24: every row
+    carries stats.points (STD), stats.points_ppr, stats.points_half — the
+    scoring query param does NOT reshape the payload, so pick the field here.
+    Week 0 = season; a short pause between positions stays under burst limits."""
+    field = {"PPR": "points_ppr", "HALF": "points_half", "STD": "points"}.get(scoring, "points_ppr")
     out = []
-    for pos in ("QB", "RB", "WR", "TE", "K", "DST"):
-        r = httpx.get(FP_PROJECTIONS_URL.format(year=year),
-                      params={"position": pos, "week": 0, "scoring": scoring},
-                      headers={"x-api-key": api_key, "User-Agent": FP_UA},
-                      timeout=timeout)
-        r.raise_for_status()
+    failed = []
+    # Their gateway answers sporadic 403s (~1 in 5 observed on a fresh key,
+    # any position, any UA — edge-node key propagation). Retry each position
+    # independently and never let one position sink the batch.
+    for i, pos in enumerate(("QB", "RB", "WR", "TE", "K", "DST")):
+        if i:
+            time.sleep(0.8)
+        r = None
+        for backoff in (0, 2, 5, 10):
+            if backoff:
+                time.sleep(backoff)
+            r = httpx.get(FP_PROJECTIONS_URL.format(year=year),
+                          params={"position": pos, "week": week, "scoring": scoring},
+                          headers={"x-api-key": api_key, "User-Agent": FP_API_UA},
+                          timeout=timeout)
+            if r.status_code == 200:
+                break
+        if r is None or r.status_code != 200:
+            failed.append(pos)
+            continue
         for p in r.json().get("players", []):
             stats = p.get("stats") or {}
-            pts = stats.get("points") or stats.get("fpts") or p.get("fpts")
+            pts = stats.get(field) or stats.get("points")
             if not pts:
                 continue
             out.append({
-                "name": p.get("name") or p.get("player_name", ""),
+                "name": p.get("name", ""),
                 "position": "DEF" if pos == "DST" else pos,
-                "team": p.get("team_id") or p.get("team"),
+                "team": p.get("team_id"),
                 "pts": float(pts),
             })
-    return out
+    return {"rows": out, "failed": failed}
 
 
 def fetch_espn_projections(year: int, week: int = 0,

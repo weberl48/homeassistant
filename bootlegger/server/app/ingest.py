@@ -270,29 +270,31 @@ def etl_espn_projections(conn: sqlite3.Connection, week: int = 0) -> int:
     return n
 
 
-def etl_fp_projections(conn: sqlite3.Connection) -> int:
+def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
     """FantasyPros aggregate point projections -> projections table (source
-    fantasypros). No-ops without FANTASYPROS_API_KEY."""
+    fantasypros). No-ops without FANTASYPROS_API_KEY. Partial position
+    failures are reported, not fatal."""
     if not settings.fantasypros_api_key:
-        return 0
+        return {"rows": 0, "failed": []}
     scoring = {"ppr": "PPR", "half": "HALF", "std": "STD"}[_league_scoring(conn)]
     lookup = {}
     for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
+    fetched = fetch_fantasypros_projections(settings.fantasypros_api_key,
+                                            settings.season, scoring, week=week)
     n = 0
-    for p in fetch_fantasypros_projections(settings.fantasypros_api_key,
-                                           settings.season, scoring):
+    for p in fetched["rows"]:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
         if not pid:
             continue
         conn.execute(
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
             "VALUES(?,?,?,?,?,?)",
-            (pid, 0, "fantasypros", p["pts"], None, None),
+            (pid, week, "fantasypros", p["pts"], None, None),
         )
         n += 1
     conn.commit()
-    return n
+    return {"rows": n, "failed": fetched["failed"]}
 
 
 def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: str) -> int:
@@ -351,7 +353,11 @@ def nightly(conn: sqlite3.Connection) -> dict:
         out["espn"] = etl_espn_projections(conn)
     except Exception as e:
         out["espn"] = f"failed: {e}"
-    out["fp_projections"] = etl_fp_projections(conn)
+    try:
+        # 403 until FantasyPros enables Projections on the key — never fatal.
+        out["fp_projections"] = etl_fp_projections(conn)
+    except Exception as e:
+        out["fp_projections"] = f"failed: {e}"
     out["consensus"] = compute_consensus(conn, week=0)
     # In-season: weekly projections feed the Sunday lineup card.
     state = client.nfl_state() or {}
@@ -362,6 +368,10 @@ def nightly(conn: sqlite3.Connection) -> dict:
             out[f"espn_w{wk}"] = etl_espn_projections(conn, week=wk)
         except Exception as e:
             out[f"espn_w{wk}"] = f"failed: {e}"
+        try:
+            out[f"fp_w{wk}"] = etl_fp_projections(conn, week=wk)
+        except Exception as e:
+            out[f"fp_w{wk}"] = f"failed: {e}"
         out[f"consensus_w{wk}"] = compute_consensus(conn, week=wk)
     ping_healthchecks(ok=True)
     return out
