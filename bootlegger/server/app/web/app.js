@@ -234,6 +234,8 @@ function renderCall(board) {
     return;
   }
   const top = s[0];
+  const sheet = board.experts_call;
+  const disagree = sheet && sheet.id !== top.id;
   const runners = s.slice(1, 5).map((r) => `
     <li><span class="pos pos-${posOf(r)}">${posOf(r)}</span>
       <span>${r.name}</span>
@@ -248,6 +250,9 @@ function renderCall(board) {
         <span class="stat"><span>survives</span>${fmtSurv(top.survival ?? 0)}</span>
       </div>
       <p class="call-reason">${top.reason}</p>
+      ${disagree ? `<p class="call-sheet">The experts' sheet says
+        <b>${sheet.name}</b> <span class="pos pos-${posOf(sheet)}">${posOf(sheet)}</span>
+        <span class="sheet-ecr">ECR ${sheet.ecr}</span></p>` : ""}
     </div>
     <ul class="runners">${runners}</ul>`;
 }

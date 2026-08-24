@@ -221,6 +221,13 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .call-meta .stat span { display: block; font-family: var(--font-ui); font-size: .68rem;
   letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
 .call-reason { margin-top: 9px; color: var(--ink-dim); font-size: .92rem; }
+/* the second opinion: shown only when the room and the experts disagree */
+.call-sheet {
+  margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line-soft);
+  color: var(--ink-faint); font-size: .84rem;
+}
+.call-sheet b { color: var(--ink-dim); font-weight: 600; }
+.call-sheet .sheet-ecr { font-family: var(--font-ledger); font-size: .78rem; margin-left: 4px; }
 .runners { list-style: none; padding-top: 10px; display: grid; gap: 6px; }
 .runners li { display: flex; align-items: baseline; gap: 8px; font-size: .9rem; }
 .runners .r-score { margin-left: auto; font-family: var(--font-ledger); color: var(--ink-dim); font-size: .84rem; }

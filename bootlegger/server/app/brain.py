@@ -75,13 +75,35 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     # takes the widest stdev any source reports: disagreement is information.
     _adp_pref = {"sleeper": 0, "demo": 1, "ffc": 2, "fp_ecr": 3}
     _adp_rows: dict[str, list] = {}
+    ecr_rank: dict[str, float] = {}
     for r in conn.execute("SELECT * FROM adp"):
         _adp_rows.setdefault(r["player_id"], []).append(r)
+        if r["source"] == "fp_ecr":
+            ecr_rank[r["player_id"]] = r["adp"]
     adp: dict[str, dict] = {}
     for pid, rows in _adp_rows.items():
         rows.sort(key=lambda r: _adp_pref.get(r["source"], 9))
         stds = [r["stdev"] for r in rows if r["stdev"]]
         adp[pid] = {"adp": rows[0]["adp"], "stdev": max(stds) if stds else None}
+
+    # Expert-blended value. Projections-VBD and the 106-expert consensus rank
+    # are two independent value signals; ranks carry what projections can't
+    # (injury risk, floor). Map each ECR rank through OUR overall value curve
+    # so expert opinion enters in VBD units, then average. Displayed vbd stays
+    # the raw projections stat; only the decision value blends.
+    vbd_curve = sorted((r["vbd"] or 0.0 for r in cons.values()), reverse=True)
+
+    def _curve_value(rank: float) -> float:
+        if not vbd_curve:
+            return 0.0
+        i = max(0.0, min(rank - 1.0, len(vbd_curve) - 1.0))
+        lo = int(i)
+        hi = min(lo + 1, len(vbd_curve) - 1)
+        return vbd_curve[lo] + (vbd_curve[hi] - vbd_curve[lo]) * (i - lo)
+
+    def blended_value(pid: str, vbd: float) -> float:
+        r = ecr_rank.get(pid)
+        return 0.5 * vbd + 0.5 * _curve_value(r) if r else vbd
 
     my_picks = [p for p in picks if p["draft_slot"] == my_slot]
     my_counts: dict[str, int] = {}
@@ -115,7 +137,7 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             wait_surv = (draft_engine.survival_prob(a["adp"], a["stdev"], my_after)
                          if my_after else 0.0)
             pools.setdefault(p["pos"], []).append(
-                Candidate(pid, p["pos"], c["vbd"] or 0.0, wait_surv))
+                Candidate(pid, p["pos"], blended_value(pid, c["vbd"] or 0.0), wait_surv))
         board_rows.append(row)
 
     # Suggestion scores for available players.
@@ -137,6 +159,14 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     suggestions = [
         {**r, "reason": reasons.get(r["id"], "")} for r in available[:SUGGESTION_COUNT]
     ]
+
+    # The experts' best available — shown on The Call when the room disagrees.
+    experts_call = None
+    ranked_avail = [(ecr_rank[r["id"]], r) for r in available if r["id"] in ecr_rank]
+    if ranked_avail:
+        er, erow = min(ranked_avail, key=lambda t: t[0])
+        experts_call = {"id": erow["id"], "name": erow["name"],
+                        "pos": erow["pos"], "ecr": round(er, 1)}
 
     recent = [
         {
@@ -172,12 +202,15 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         "recent_picks": recent,
         "my_roster": my_roster,
         "roster_positions": rp,
+        "experts_call": experts_call,
     }
 
 
 def _reason(cand: Candidate, e_next: float, mult: float) -> str:
     gap = cand.vbd - e_next
-    surv = f"{cand.survival:.0%} odds he survives to your next pick"
+    # cand.survival is the WAIT horizon (my pick after this one) — the row's
+    # meter shows the nearer "reaches this pick" number; word them apart.
+    surv = f"{cand.survival:.0%} odds he lasts until your next turn"
     if gap > 15:
         return f"Cliff at {cand.pos} — expect {gap:.0f} VBD gone if you wait. {surv}."
     if cand.survival < 0.35:
