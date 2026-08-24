@@ -154,6 +154,42 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             scores[cand.player_id] = s
             e_next = cand.vbd - (s / mult if mult else 0)
             reasons[cand.player_id] = _reason(cand, e_next, mult)
+
+    # Endgame starvation guard. Regret math says "wait" forever on positions
+    # that survive (QB/K/DEF always survive) — but with S open starter slots
+    # and R of my picks left, waiting stops being an option. Ramp open-slot
+    # positions up as slack (R − S) shrinks. The h2h harness caught a draft
+    # finishing with no QB and no K without this.
+    if my_next and status != "complete":
+        remaining = len([p for p in draft_engine.snake_pick_numbers(my_slot, teams, rounds)
+                         if p >= my_next])
+        dedicated = {p: rp.count(p) for p in ("QB", "RB", "WR", "TE", "K", "DEF")}
+        flex_total = sum(1 for s_ in rp if s_ in ("FLEX", "SUPER_FLEX", "SUPERFLEX",
+                                                  "WRRB_FLEX", "REC_FLEX"))
+        flex_used = sum(max(0, my_counts.get(p, 0) - dedicated.get(p, 0))
+                        for p in ("RB", "WR", "TE"))
+        open_dedicated = {p for p, w in dedicated.items() if w and my_counts.get(p, 0) < w}
+        open_slots = (sum(w - min(my_counts.get(p, 0), w) for p, w in dedicated.items())
+                      + max(0, flex_total - flex_used))
+        slack = remaining - open_slots
+        if slack <= 3 and open_dedicated:
+            # A nudge loses to late-round scarcity scores; the endgame rule
+            # must dominate. Slack 3: strong lean toward the starving slots.
+            # Slack ≤2: luxury picks are off the menu — fill the slots only
+            # one position can fill (flex refills itself once they're closed).
+            for pos, pool in pools.items():
+                if pos in open_dedicated:
+                    urgency = 0.5 if slack >= 3 else 1.0
+                    for cand in pool:
+                        scores[cand.player_id] = scores.get(cand.player_id, 0.0) \
+                            + urgency * max(cand.vbd, 0.0)
+                        reasons[cand.player_id] = (
+                            f"The shelf still needs a {pos} and the draft is closing — "
+                            f"{remaining} of your picks left.")
+                elif slack <= 2:
+                    for cand in pool:
+                        if cand.player_id in scores:
+                            scores[cand.player_id] *= 0.05
     for row in board_rows:
         if row["id"] in scores:
             row["score"] = round(scores[row["id"]], 1)
