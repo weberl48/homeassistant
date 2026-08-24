@@ -239,23 +239,31 @@ def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
     return {"experts": data["experts"], "matched": matched, "byes": byes}
 
 
-def etl_espn_projections(conn: sqlite3.Connection) -> int:
-    """ESPN season projections -> projections table (source espn). ESPN's
-    keyless default league is PPR-scored, so only run for PPR leagues."""
+def etl_espn_projections(conn: sqlite3.Connection, week: int = 0) -> int:
+    """ESPN projections -> projections table (source espn). ESPN's keyless
+    default league is PPR-scored, so only run for PPR leagues. DST joins by
+    team nickname (ESPN "Ravens D/ST" vs Sleeper "Baltimore Ravens")."""
     if _league_scoring(conn) != "ppr":
         return 0
     lookup = {}
+    def_by_nickname = {}
     for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
+        if row["pos"] == "DEF" and row["name"]:
+            def_by_nickname[row["name"].split()[-1].lower()] = row["sleeper_id"]
     n = 0
-    for p in fetch_espn_projections(settings.season):
-        pid = lookup.get((normalize_name(p["name"]), p["position"]))
+    for p in fetch_espn_projections(settings.season, week):
+        if p["position"] == "DEF":
+            nick = p["name"].split(" D/ST")[0].split()[-1].lower()
+            pid = def_by_nickname.get(nick)
+        else:
+            pid = lookup.get((normalize_name(p["name"]), p["position"]))
         if not pid:
             continue
         conn.execute(
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
             "VALUES(?,?,?,?,?,?)",
-            (pid, 0, "espn", p["pts"], None, None),
+            (pid, week, "espn", p["pts"], None, None),
         )
         n += 1
     conn.commit()
@@ -350,6 +358,10 @@ def nightly(conn: sqlite3.Connection) -> dict:
     wk = state.get("week") or 0
     if state.get("season_type") == "regular" and wk:
         out[f"projections_w{wk}"] = etl_projections(client, conn, week=wk)
+        try:
+            out[f"espn_w{wk}"] = etl_espn_projections(conn, week=wk)
+        except Exception as e:
+            out[f"espn_w{wk}"] = f"failed: {e}"
         out[f"consensus_w{wk}"] = compute_consensus(conn, week=wk)
     ping_healthchecks(ok=True)
     return out

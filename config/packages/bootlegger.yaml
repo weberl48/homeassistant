@@ -77,6 +77,35 @@ automation:
               - action: "BOOTLEGGER_SNOOZE_{{ rid }}"
                 title: "Snooze 30m"
 
+  # Dead-man switch, in-house: the product promise is "never a silent failure",
+  # so HA itself alarms when the board stops answering. No external service.
+  - id: bootlegger_wire_down_alert
+    alias: "Bootlegger: wire down alert"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.bootlegger_status
+        to:
+          - unavailable
+          - unknown
+        for: "00:10:00"
+      - platform: state
+        entity_id: sensor.bootlegger_status
+        to: trouble
+        for: "00:05:00"
+    action:
+      - service: notify.mobile_app_sm_s926u
+        data:
+          title: "Bootlegger — WIRE DOWN"
+          message: >-
+            The board at 192.168.1.160:8484 has been
+            {{ states('sensor.bootlegger_status') }} for several minutes.
+            Never a silent failure — check the Pi.
+          data:
+            tag: bootlegger_wire_down
+            channel: Bootlegger
+            importance: high
+
   - id: bootlegger_handle_push_action
     alias: "Bootlegger: handle push approval tap"
     mode: queued

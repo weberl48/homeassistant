@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import sqlite3
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from . import brain, db, demo, recs
 from .config import settings
 from .engines import trades as trades_engine
 from .engines import waivers as waivers_engine
+from .sleeper import SleeperClient
 
 log = logging.getLogger("bootlegger.api")
 WEB_DIR = Path(__file__).parent / "web"
@@ -117,6 +119,8 @@ def snooze_rec(rec_id: int):
         recs.snooze(get_conn(), rec_id)
     except recs.BadTransition as e:
         raise HTTPException(409, str(e))
+    except KeyError as e:
+        raise HTTPException(404, str(e))
     return {"ok": True}
 
 
@@ -126,6 +130,8 @@ def ignore_rec(rec_id: int):
         recs.ignore(get_conn(), rec_id)
     except recs.BadTransition as e:
         raise HTTPException(409, str(e))
+    except KeyError as e:
+        raise HTTPException(404, str(e))
     return {"ok": True}
 
 
@@ -156,10 +162,27 @@ def toggle_rule(rule_id: int):
     return {"ok": True, "enabled": not row["enabled"]}
 
 
+# The street's pulse: Sleeper trending adds, cached 15 min so the 15s waiver
+# poll never hammers the wire. Failure means heat goes quiet, never the endpoint.
+_trending: dict = {"ts": 0.0, "counts": {}}
+
+
+def _trending_counts() -> dict[str, int]:
+    if time.time() - _trending["ts"] > 900:
+        try:
+            _trending["counts"] = {t["player_id"]: t["count"]
+                                   for t in SleeperClient().trending_adds(hours=24, limit=50)}
+        except Exception:
+            pass
+        _trending["ts"] = time.time()
+    return _trending["counts"]
+
+
 @app.get("/api/waivers")
 def waiver_targets(week: int = 1):
     """Free agents ranked by FA score with sized bids (design doc §4)."""
     conn = get_conn()
+    heat = _trending_counts()
     rostered: set[str] = set()
     for r in conn.execute("SELECT players_json FROM rosters"):
         rostered |= set(json.loads(r["players_json"]))
@@ -211,6 +234,7 @@ def waiver_targets(week: int = 1):
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
             "fa_score": round(score, 1), "bid": advice.bid,
             "hard_confirm": advice.hard_confirm, "tier": c["tier"],
+            "heat": heat.get(pid, 0),
         })
     out.sort(key=lambda r: -r["fa_score"])
     return {"targets": out[:20], "history_n": len(bids_hist),

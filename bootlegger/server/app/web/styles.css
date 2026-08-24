@@ -498,6 +498,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .wtable tr:last-child td { border-bottom: none; }
 .wtable tr:hover td { background: var(--panel-2); }
 .wtable .num { font-family: var(--font-ledger); text-align: right; }
+.wtable .street { color: var(--ink-faint); white-space: nowrap; }
 .bid {
   font-family: var(--font-ledger); font-weight: 700; color: var(--ground);
   background: var(--brass); border-radius: 3px; padding: 2px 8px; display: inline-block;

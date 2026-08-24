@@ -24,7 +24,7 @@ FP_PROJECTIONS_URL = "https://api.fantasypros.com/public/v2/json/nfl/{year}/proj
 FP_UA = "Mozilla/5.0 (X11; Linux x86_64) bootlegger/0.1"
 # ESPN's fantasy API is keyless; leaguedefaults/3 is their PPR default league.
 ESPN_PROJ_URL = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{year}/segments/0/leaguedefaults/3"
-ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K"}  # 16=DST skipped: name join mismatch
+ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DEF"}
 
 
 def normalize_name(name: str) -> str:
@@ -121,12 +121,13 @@ def fetch_fantasypros_projections(api_key: str, year: int, scoring: str = "PPR",
     return out
 
 
-def fetch_espn_projections(year: int, timeout: float = 25.0) -> list[dict[str, Any]]:
-    """ESPN season fantasy-point projections (PPR default league), keyless.
-    The season-total projection row in a player's stats is statId f"10{year}"
-    (statSourceId 1 = projection, statSplitTypeId 0 = season)."""
+def fetch_espn_projections(year: int, week: int = 0,
+                           timeout: float = 25.0) -> list[dict[str, Any]]:
+    """ESPN fantasy-point projections (PPR default league), keyless. Stat row
+    ids: season total = f"10{year}" (source 1, split 0); a single week's
+    projection = f"11{year}{week}" (source 1, split 1)."""
     out = []
-    want = f"10{year}"
+    want = f"10{year}" if not week else f"11{year}{week}"
     for offset in (0, 400):
         flt = json.dumps({"players": {"limit": 400, "offset": offset,
                           "sortPercOwned": {"sortAsc": False, "sortPriority": 1}}})
