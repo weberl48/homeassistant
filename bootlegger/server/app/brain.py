@@ -59,6 +59,13 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     else:
         on_clock_slot = slot_for_pick(current_pick)
         my_next = draft_engine.next_pick_after(current_pick - 1, my_slot, teams, rounds)
+    # The wait-decision horizon. The Call advises the pick at my_next, so "what
+    # if I pass?" means the snake's NEXT return (my_after) — scoring against
+    # my_next itself lets nearly everyone "survive" one pick and collapses the
+    # cliff math into now-vs-second-best-now, which overrates steep positions
+    # (the Josh-Allen-at-#2 bug). Row meters still show survival to my_next.
+    my_after = (draft_engine.next_pick_after(my_next, my_slot, teams, rounds)
+                if my_next else None)
 
     players = _players_index(conn)
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
@@ -105,8 +112,10 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         elif my_next and a:
             surv = draft_engine.survival_prob(a["adp"], a["stdev"], my_next)
             row["survival"] = round(surv, 3)
+            wait_surv = (draft_engine.survival_prob(a["adp"], a["stdev"], my_after)
+                         if my_after else 0.0)
             pools.setdefault(p["pos"], []).append(
-                Candidate(pid, p["pos"], c["vbd"] or 0.0, surv))
+                Candidate(pid, p["pos"], c["vbd"] or 0.0, wait_surv))
         board_rows.append(row)
 
     # Suggestion scores for available players.

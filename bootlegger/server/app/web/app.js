@@ -462,11 +462,14 @@ async function loadWaivers() {
       <td class="num">${t.fa_score}</td>
       <td class="num"><span class="bid">$${t.bid}</span></td>
       <td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>
+      <td class="num">${t.lineup_gain == null ? "–"
+        : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}</td>
       <td>${t.hard_confirm ? `<span class="confirm-flag">${icon.flag}BIG SWING — CONFIRM TWICE</span>` : ""}</td></tr>`).join("");
     $("#waivers-body").innerHTML = data.targets.length ? `
       <table class="wtable">
         <thead><tr><th>Player</th><th style="text-align:right">FA score</th>
         <th style="text-align:right">Bid</th><th style="text-align:right">The street</th>
+        <th style="text-align:right">Your lineup</th>
         <th></th></tr></thead>
         <tbody>${rows}</tbody></table>
       <p class="optimal-note">Sized at the P70 of the league's bids for each value tier (${data.history_n} on the books), +$1 over round numbers.</p>`

@@ -74,8 +74,11 @@ def expected_best_vbd(pool: list[Candidate]) -> float:
 
 def suggestion_score(candidate: Candidate, position_pool: list[Candidate],
                      need_mult: float) -> float:
-    others = [c for c in position_pool if c.player_id != candidate.player_id]
-    return need_mult * (candidate.vbd - expected_best_vbd(others))
+    """Regret avoided by taking him now. The wait-alternative INCLUDES the
+    candidate himself — passing only costs value to the extent he might be
+    gone, so a high-survival star correctly scores ~0 ("wait on him") while a
+    vanishing one scores his full cliff."""
+    return need_mult * (candidate.vbd - expected_best_vbd(position_pool))
 
 
 def roster_need_multiplier(pos: str, my_pos_counts: dict[str, int],

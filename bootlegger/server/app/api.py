@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from . import brain, db, demo, recs
 from .config import settings
+from .engines import lineup as lineup_engine
 from .engines import trades as trades_engine
 from .engines import waivers as waivers_engine
 from .sleeper import SleeperClient
@@ -237,7 +238,33 @@ def waiver_targets(week: int = 1):
             "heat": heat.get(pid, 0),
         })
     out.sort(key=lambda r: -r["fa_score"])
-    return {"targets": out[:20], "history_n": len(bids_hist),
+    top = out[:20]
+
+    # "Would he start?" — the signal FA score alone can't give. Adding the
+    # candidate to my roster and re-optimizing tells whether he cracks the
+    # lineup (gain > 0) or is depth. Twenty Hungarian solves, trivial.
+    my = brain.my_roster_row(conn)
+    my_ids = json.loads(my["players_json"]) if my else []
+    if my_ids:
+        rp = brain.roster_positions(conn)
+        base = [lineup_engine.PlayerProj(
+                    pid, players[pid]["pos"],
+                    (cons.get(pid) or {"pts_robust": 0})["pts_robust"] or 0.0,
+                    players[pid]["name"], players[pid]["injury_status"])
+                for pid in my_ids if pid in players]
+        base_total = lineup_engine.optimize(base, rp).total
+        for t in top:
+            cand = lineup_engine.PlayerProj(
+                t["id"], t["pos"],
+                (cons.get(t["id"]) or {"pts_robust": 0})["pts_robust"] or 0.0,
+                t["name"], players[t["id"]]["injury_status"])
+            gain = lineup_engine.optimize(base + [cand], rp).total - base_total
+            t["lineup_gain"] = round(gain, 1)
+    else:
+        for t in top:
+            t["lineup_gain"] = None
+
+    return {"targets": top, "history_n": len(bids_hist),
             "note": "Advisory only — waivers have no actuation path."}
 
 
@@ -265,7 +292,33 @@ def analyze_trade(body: TradeBody):
             })
         return out
 
-    return trades_engine.analyze(rows(body.give), rows(body.receive))
+    result = trades_engine.analyze(rows(body.give), rows(body.receive))
+
+    # Roster context — the question a raw value delta can't answer: does MY
+    # best lineup actually improve? A trade can win VBD and hand me a third TE.
+    def _projs(ids: list[str]) -> list[lineup_engine.PlayerProj]:
+        return [lineup_engine.PlayerProj(
+                    pid, players[pid]["pos"],
+                    (cons.get(pid) or {"pts_robust": 0})["pts_robust"] or 0.0,
+                    players[pid]["name"], players[pid]["injury_status"])
+                for pid in ids if pid in players]
+
+    my = brain.my_roster_row(conn)
+    my_ids = json.loads(my["players_json"]) if my else []
+    if my_ids:
+        rp = brain.roster_positions(conn)
+        before = lineup_engine.optimize(_projs(my_ids), rp).total
+        after_ids = [i for i in my_ids if i not in set(body.give)] + list(body.receive)
+        after = lineup_engine.optimize(_projs(after_ids), rp).total
+        result["lineup_impact"] = {
+            "ros_points_before": round(before, 1),
+            "ros_points_after": round(after, 1),
+            "starters_delta": round(after - before, 1),
+            "note": "Season-total consensus points of your optimal lineup, before and after.",
+        }
+    else:
+        result["lineup_impact"] = None
+    return result
 
 
 class DeviceBody(BaseModel):
