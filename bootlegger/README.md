@@ -15,8 +15,12 @@ nonexistent — and the hands worker rejects any job that smuggles one in.
 cd bootlegger/server
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest                       # 25 tests, whole loop covered
-.venv/bin/python -m uvicorn app.api:app --port 8484
+.venv/bin/python -m uvicorn app.api:app --host 0.0.0.0 --port 8484
 ```
+
+(`--host 0.0.0.0` makes it reachable from the rest of the LAN/Tailscale —
+e.g. http://192.168.1.160:8484 from the couch; leave it off to keep the
+server local to the box.)
 
 Open http://localhost:8484 — demo mode seeds a labeled synthetic 12-team
 full-PPR league and starts a simulated live snake draft:
