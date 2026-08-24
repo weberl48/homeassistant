@@ -17,7 +17,8 @@ from .engines import consensus as cx
 from .engines import tiers as tiers_engine
 from .engines import vbd as vbd_engine
 from .sleeper import SleeperClient
-from .sources import fetch_fantasycalc_values, fetch_ffc_adp, normalize_name
+from .sources import (fetch_fantasycalc_values, fetch_fantasypros_projections,
+                      fetch_ffc_adp, fetch_fp_ecr, normalize_name)
 
 # Tiering pools per position: deep enough to cover draftable players, shallow
 # enough that the GMM sees structure instead of a waiver-wire tail.
@@ -163,27 +164,99 @@ def etl_values(conn: sqlite3.Connection) -> int:
     return n
 
 
-def etl_projections(client: SleeperClient, conn: sqlite3.Connection, week: int = 0) -> int:
-    """Sleeper public projections -> projections table. The points field follows
-    the league's PPR setting when known (rec 1.0 -> pts_ppr, .5 -> half, 0 -> std)."""
-    field = "pts_ppr"
+def _league_scoring(conn: sqlite3.Connection) -> str:
+    """'ppr' | 'half' | 'std', from the league's rec scoring (default ppr)."""
     row = conn.execute("SELECT scoring_json FROM league").fetchone()
     if row and row["scoring_json"]:
         rec = (json.loads(row["scoring_json"]) or {}).get("rec")
         if rec == 0.5:
-            field = "pts_half_ppr"
-        elif rec == 0:
-            field = "pts_std"
+            return "half"
+        if rec == 0:
+            return "std"
+    return "ppr"
+
+
+def etl_projections(client: SleeperClient, conn: sqlite3.Connection, week: int = 0) -> int:
+    """Sleeper public projections -> projections table, points field per league
+    scoring. Week 0 also captures Sleeper's own ADP from the same blob — the
+    league drafts ON Sleeper, so platform ADP is the best predictor of how this
+    room actually picks (999/1000 are Sleeper's no-data placeholders)."""
+    scoring = _league_scoring(conn)
+    pts_field = {"ppr": "pts_ppr", "half": "pts_half_ppr", "std": "pts_std"}[scoring]
+    adp_field = {"ppr": "adp_ppr", "half": "adp_half_ppr", "std": "adp_std"}[scoring]
     have = {r["sleeper_id"] for r in conn.execute("SELECT sleeper_id FROM players")}
     n = 0
+    now = db.utcnow()
     for pid, v in client.projections(settings.season, week).items():
-        pts = v.get(field) or v.get("pts_ppr")
-        if not pts or pid not in have:
+        if pid not in have:
+            continue
+        pts = v.get(pts_field) or v.get("pts_ppr")
+        if pts:
+            conn.execute(
+                "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
+                "VALUES(?,?,?,?,?,?)",
+                (pid, week, "sleeper", float(pts), None, None),
+            )
+            n += 1
+        if week == 0:
+            adp = v.get(adp_field) or v.get("adp_ppr")
+            if adp and float(adp) < 900:
+                conn.execute(
+                    "INSERT INTO adp(player_id,source,adp,stdev,updated_at) VALUES(?,?,?,?,?) "
+                    "ON CONFLICT(player_id,source) DO UPDATE SET adp=excluded.adp,"
+                    "stdev=excluded.stdev,updated_at=excluded.updated_at",
+                    (pid, "sleeper", float(adp), None, now),
+                )
+    conn.commit()
+    return n
+
+
+def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
+    """FantasyPros expert-consensus ranks -> adp table (source fp_ecr), and bye
+    weeks backfilled onto players (the Sleeper feed leaves byes null)."""
+    data = fetch_fp_ecr(scoring=_league_scoring(conn))
+    lookup = {}
+    for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
+        lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
+    now = db.utcnow()
+    matched = byes = 0
+    for p in data["players"]:
+        pid = lookup.get((normalize_name(p["name"]), p["position"]))
+        if not pid:
+            continue
+        conn.execute(
+            "INSERT INTO adp(player_id,source,adp,stdev,updated_at) VALUES(?,?,?,?,?) "
+            "ON CONFLICT(player_id,source) DO UPDATE SET adp=excluded.adp,"
+            "stdev=excluded.stdev,updated_at=excluded.updated_at",
+            (pid, "fp_ecr", p["rank_ave"], p["rank_std"], now),
+        )
+        matched += 1
+        if p["bye"]:
+            conn.execute("UPDATE players SET bye=? WHERE sleeper_id=?", (p["bye"], pid))
+            byes += 1
+    conn.commit()
+    return {"experts": data["experts"], "matched": matched, "byes": byes}
+
+
+def etl_fp_projections(conn: sqlite3.Connection) -> int:
+    """FantasyPros aggregate point projections -> projections table (source
+    fantasypros). No-ops without FANTASYPROS_API_KEY."""
+    if not settings.fantasypros_api_key:
+        return 0
+    scoring = {"ppr": "PPR", "half": "HALF", "std": "STD"}[_league_scoring(conn)]
+    lookup = {}
+    for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
+        lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
+    n = 0
+    for p in fetch_fantasypros_projections(settings.fantasypros_api_key,
+                                           settings.season, scoring):
+        pid = lookup.get((normalize_name(p["name"]), p["position"]))
+        if not pid:
             continue
         conn.execute(
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
             "VALUES(?,?,?,?,?,?)",
-            (pid, week, "sleeper", float(pts), None, None),
+            (pid, 0, "fantasypros", p["pts"], None, None),
         )
         n += 1
     conn.commit()
@@ -238,6 +311,11 @@ def nightly(conn: sqlite3.Connection) -> dict:
     out["adp"] = etl_adp(conn)
     out["values"] = etl_values(conn)
     out["projections"] = etl_projections(client, conn, week=0)
+    try:
+        out["fp_ecr"] = etl_fp_ecr(conn)
+    except Exception as e:  # a scrape may break; the board must not
+        out["fp_ecr"] = f"failed: {e}"
+    out["fp_projections"] = etl_fp_projections(conn)
     out["consensus"] = compute_consensus(conn, week=0)
     # In-season: weekly projections feed the Sunday lineup card.
     state = client.nfl_state() or {}

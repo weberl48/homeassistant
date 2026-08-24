@@ -47,6 +47,7 @@ class Settings:
     approve_required: bool = True          # actuation gate (design doc §5.5)
     hands_dry_run: bool = True             # dry-run applies swaps to the local mirror only
     healthchecks_url: str = ""             # dead-man ping target, empty = disabled
+    fantasypros_api_key: str = ""          # unlocks FP point projections (fantasypros.com/apis)
     expo_push_tokens: list[str] = field(default_factory=list)
 
     @classmethod
@@ -67,6 +68,7 @@ class Settings:
         s.approve_required = _env("BOOTLEGGER_APPROVE_REQUIRED", "1") not in ("0", "false", "no")
         s.hands_dry_run = _env("HANDS_DRY_RUN", "1") not in ("0", "false", "no")
         s.healthchecks_url = _env("HEALTHCHECKS_URL", s.healthchecks_url)
+        s.fantasypros_api_key = _env("FANTASYPROS_API_KEY", s.fantasypros_api_key)
         tokens = _env("EXPO_PUSH_TOKENS", "")
         s.expo_push_tokens = [t.strip() for t in tokens.split(",") if t.strip()]
         return s

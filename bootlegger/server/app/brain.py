@@ -62,7 +62,19 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
 
     players = _players_index(conn)
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
-    adp = {r["player_id"]: r for r in conn.execute("SELECT * FROM adp")}
+    # ADP composition across sources: the MEAN should track how this room
+    # drafts (they draft on Sleeper, so platform ADP first; FFC mocks next;
+    # FantasyPros expert consensus last — experts aren't the room). The SIGMA
+    # takes the widest stdev any source reports: disagreement is information.
+    _adp_pref = {"sleeper": 0, "demo": 1, "ffc": 2, "fp_ecr": 3}
+    _adp_rows: dict[str, list] = {}
+    for r in conn.execute("SELECT * FROM adp"):
+        _adp_rows.setdefault(r["player_id"], []).append(r)
+    adp: dict[str, dict] = {}
+    for pid, rows in _adp_rows.items():
+        rows.sort(key=lambda r: _adp_pref.get(r["source"], 9))
+        stds = [r["stdev"] for r in rows if r["stdev"]]
+        adp[pid] = {"adp": rows[0]["adp"], "stdev": max(stds) if stds else None}
 
     my_picks = [p for p in picks if p["draft_slot"] == my_slot]
     my_counts: dict[str, int] = {}
