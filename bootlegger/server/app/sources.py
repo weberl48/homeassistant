@@ -22,6 +22,9 @@ FP_ECR_URLS = {
 }
 FP_PROJECTIONS_URL = "https://api.fantasypros.com/public/v2/json/nfl/{year}/projections"
 FP_UA = "Mozilla/5.0 (X11; Linux x86_64) bootlegger/0.1"
+# ESPN's fantasy API is keyless; leaguedefaults/3 is their PPR default league.
+ESPN_PROJ_URL = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{year}/segments/0/leaguedefaults/3"
+ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K"}  # 16=DST skipped: name join mismatch
 
 
 def normalize_name(name: str) -> str:
@@ -115,6 +118,34 @@ def fetch_fantasypros_projections(api_key: str, year: int, scoring: str = "PPR",
                 "team": p.get("team_id") or p.get("team"),
                 "pts": float(pts),
             })
+    return out
+
+
+def fetch_espn_projections(year: int, timeout: float = 25.0) -> list[dict[str, Any]]:
+    """ESPN season fantasy-point projections (PPR default league), keyless.
+    The season-total projection row in a player's stats is statId f"10{year}"
+    (statSourceId 1 = projection, statSplitTypeId 0 = season)."""
+    out = []
+    want = f"10{year}"
+    for offset in (0, 400):
+        flt = json.dumps({"players": {"limit": 400, "offset": offset,
+                          "sortPercOwned": {"sortAsc": False, "sortPriority": 1}}})
+        r = httpx.get(ESPN_PROJ_URL.format(year=year),
+                      params={"view": "kona_player_info"},
+                      headers={"x-fantasy-filter": flt, "User-Agent": FP_UA},
+                      timeout=timeout)
+        r.raise_for_status()
+        for row in r.json().get("players", []):
+            p = row.get("player") or {}
+            pos = ESPN_POS.get(p.get("defaultPositionId"))
+            if not pos:
+                continue
+            pts = next((s.get("appliedTotal") for s in (p.get("stats") or [])
+                        if s.get("id") == want), None)
+            if not pts:
+                continue
+            out.append({"name": p.get("fullName", ""), "position": pos,
+                        "pts": float(pts)})
     return out
 
 

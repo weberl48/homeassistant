@@ -167,8 +167,22 @@ def waiver_targets(week: int = 1):
     my_ids = json.loads(my["players_json"]) if my else []
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
     players = {r["sleeper_id"]: r for r in conn.execute("SELECT * FROM players")}
-    bids_hist = [r["faab"] for r in conn.execute(
-        "SELECT faab FROM transactions WHERE type='waiver' AND faab IS NOT NULL")]
+    # Bid history bucketed by value tier (the engine's contract). Demo history
+    # labels each txn's tier in adds_json; unlabeled (live) bids bucket by bid
+    # size, mirroring the demo generator's bands (hot 18+, solid 6+, dart <6).
+    hist_by_tier: dict[str, list[float]] = {"hot": [], "solid": [], "dart": []}
+    bids_hist: list[float] = []
+    for r in conn.execute(
+            "SELECT faab, adds_json FROM transactions WHERE type='waiver' AND faab IS NOT NULL"):
+        faab = r["faab"]
+        bids_hist.append(faab)
+        try:
+            tier = (json.loads(r["adds_json"] or "{}") or {}).get("tier")
+        except (ValueError, TypeError):
+            tier = None
+        if tier not in hist_by_tier:
+            tier = "hot" if faab >= 18 else "solid" if faab >= 6 else "dart"
+        hist_by_tier[tier].append(faab)
 
     worst_by_pos: dict[str, float] = {}
     for pid in my_ids:
@@ -187,7 +201,12 @@ def waiver_targets(week: int = 1):
                                         worst_by_pos.get(p["pos"], 0))
         if score <= 0:
             continue
-        advice = waivers_engine.size_bid(score, bids_hist, settings.faab_budget)
+        band = "hot" if score >= 30 else "solid" if score >= 10 else "dart"
+        tier_hist = hist_by_tier[band]
+        # thin tier history (< 3 bids) falls back to the whole book
+        advice = waivers_engine.size_bid(
+            score, tier_hist if len(tier_hist) >= 3 else bids_hist,
+            settings.faab_budget)
         out.append({
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
             "fa_score": round(score, 1), "bid": advice.bid,

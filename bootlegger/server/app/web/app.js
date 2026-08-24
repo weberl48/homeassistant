@@ -467,7 +467,7 @@ async function loadWaivers() {
         <thead><tr><th>Player</th><th style="text-align:right">FA score</th>
         <th style="text-align:right">Bid</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table>
-      <p class="optimal-note">Sized at the P70 of ${data.history_n} historical bids in this league, +$1 over round numbers.</p>`
+      <p class="optimal-note">Sized at the P70 of the league's bids for each value tier (${data.history_n} on the books), +$1 over round numbers.</p>`
       : `<p class="muted">Nobody on the street worth a dollar this week.</p>`;
     wireOK();
   } catch { wireFail(); }

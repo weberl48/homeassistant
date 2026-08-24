@@ -17,8 +17,9 @@ from .engines import consensus as cx
 from .engines import tiers as tiers_engine
 from .engines import vbd as vbd_engine
 from .sleeper import SleeperClient
-from .sources import (fetch_fantasycalc_values, fetch_fantasypros_projections,
-                      fetch_ffc_adp, fetch_fp_ecr, normalize_name)
+from .sources import (fetch_espn_projections, fetch_fantasycalc_values,
+                      fetch_fantasypros_projections, fetch_ffc_adp,
+                      fetch_fp_ecr, normalize_name)
 
 # Tiering pools per position: deep enough to cover draftable players, shallow
 # enough that the GMM sees structure instead of a waiver-wire tail.
@@ -238,6 +239,29 @@ def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
     return {"experts": data["experts"], "matched": matched, "byes": byes}
 
 
+def etl_espn_projections(conn: sqlite3.Connection) -> int:
+    """ESPN season projections -> projections table (source espn). ESPN's
+    keyless default league is PPR-scored, so only run for PPR leagues."""
+    if _league_scoring(conn) != "ppr":
+        return 0
+    lookup = {}
+    for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
+        lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
+    n = 0
+    for p in fetch_espn_projections(settings.season):
+        pid = lookup.get((normalize_name(p["name"]), p["position"]))
+        if not pid:
+            continue
+        conn.execute(
+            "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
+            "VALUES(?,?,?,?,?,?)",
+            (pid, 0, "espn", p["pts"], None, None),
+        )
+        n += 1
+    conn.commit()
+    return n
+
+
 def etl_fp_projections(conn: sqlite3.Connection) -> int:
     """FantasyPros aggregate point projections -> projections table (source
     fantasypros). No-ops without FANTASYPROS_API_KEY."""
@@ -315,6 +339,10 @@ def nightly(conn: sqlite3.Connection) -> dict:
         out["fp_ecr"] = etl_fp_ecr(conn)
     except Exception as e:  # a scrape may break; the board must not
         out["fp_ecr"] = f"failed: {e}"
+    try:
+        out["espn"] = etl_espn_projections(conn)
+    except Exception as e:
+        out["espn"] = f"failed: {e}"
     out["fp_projections"] = etl_fp_projections(conn)
     out["consensus"] = compute_consensus(conn, week=0)
     # In-season: weekly projections feed the Sunday lineup card.
