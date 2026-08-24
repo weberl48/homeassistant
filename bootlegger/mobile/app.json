@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Bootlegger",
+    "slug": "bootlegger",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#17120e",
+    "android": {
+      "package": "house.speakeasy.bootlegger",
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "recommendations"
+        }
+      ]
+    ],
+    "extra": {
+      "apiBase": "http://100.64.0.1:8484"
+    }
+  }
+}

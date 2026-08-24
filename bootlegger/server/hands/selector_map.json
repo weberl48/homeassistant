@@ -1,0 +1,13 @@
+{
+  "_comment": "Accessibility-first locators for Sleeper's tap-to-swap lineup editor. These are placeholders until the rehearsal league calibration (design doc §5.8) records the real roles/names; the Wednesday canary diffs this file against the live page so UI redeploys break loudly midweek, not silently on Sunday.",
+  "version": 1,
+  "calibrated": false,
+  "team_page_url": "https://sleeper.com/leagues/{league_id}/team",
+  "locators": {
+    "logged_in_probe": {"role": "button", "name_re": "(?i)my team|roster"},
+    "starter_row": {"role": "button", "name_re": "(?i){player_name}"},
+    "bench_row": {"role": "button", "name_re": "(?i){player_name}"},
+    "confirm_swap": {"role": "button", "name_re": "(?i)confirm|save"}
+  },
+  "pacing_seconds": {"min": 0.8, "max": 2.5}
+}

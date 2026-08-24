@@ -69,3 +69,7 @@ config/www/community/
 # Misc HA runtime state
 config/SpotifyWebApiPython_config.json
 config/application_credentials
+
+# Bootlegger session artifacts (review captures live outside the app)
+/.impeccable/
+/.claude/

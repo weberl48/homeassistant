@@ -1,0 +1,17 @@
+# Bare-metal alternative to compose for the api process.
+# install: sudo cp *.service *.timer /etc/systemd/system/ && sudo systemctl enable --now bootlegger-api
+[Unit]
+Description=Bootlegger API + web board
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/homeassistant/bootlegger/server
+EnvironmentFile=-/home/pi/homeassistant/bootlegger/.env
+ExecStart=/home/pi/homeassistant/bootlegger/server/.venv/bin/python -m uvicorn app.api:app --host 0.0.0.0 --port 8484
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

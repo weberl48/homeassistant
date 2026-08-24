@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Bootlegger nightly ETL at 04:15 local
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=600
+Persistent=true
+
+[Install]
+WantedBy=timers.target

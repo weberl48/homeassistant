@@ -1,0 +1,8 @@
+[Unit]
+Description=Bootlegger nightly SQLite snapshot + audit rsync to the NAS
+
+[Service]
+Type=oneshot
+User=pi
+# Adjust the NAS target to the household share (design doc §6).
+ExecStart=/bin/sh -c 'sqlite3 /home/pi/homeassistant/bootlegger/data/bootlegger.db ".backup /home/pi/homeassistant/bootlegger/data/backup-$(date +%%F).db" && rsync -a --delete /home/pi/homeassistant/bootlegger/data/ /mnt/nas/bootlegger/data/ && rsync -a /home/pi/homeassistant/bootlegger/audit/ /mnt/nas/bootlegger/audit/'

@@ -1,0 +1,9 @@
+[Unit]
+Description=Bootlegger nightly ETL (players, ADP, values, consensus)
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/homeassistant/bootlegger/server
+EnvironmentFile=-/home/pi/homeassistant/bootlegger/.env
+ExecStart=/home/pi/homeassistant/bootlegger/server/.venv/bin/python -m app.ingest nightly

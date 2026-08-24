@@ -1,0 +1,24 @@
+{
+  "name": "bootlegger-mobile",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "private": true,
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "build:apk": "eas build -p android --profile preview"
+  },
+  "dependencies": {
+    "expo": "~54.0.0",
+    "expo-constants": "~18.0.2",
+    "expo-device": "~8.0.1",
+    "expo-notifications": "~0.32.4",
+    "expo-status-bar": "~3.0.1",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.0"
+  }
+}

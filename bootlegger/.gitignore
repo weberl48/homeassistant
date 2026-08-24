@@ -1,0 +1,10 @@
+data/
+audit/
+server/.venv/
+__pycache__/
+*.pyc
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+.env
+storageState.json

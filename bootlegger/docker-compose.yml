@@ -1,0 +1,38 @@
+# Bootlegger on the Pi. In demo mode `api` runs everything in-process, so
+# `docker compose up api` is the whole show. Live mode adds the ingest pollers
+# and the hands worker as separate services (design doc §2).
+services:
+  api:
+    build: ./server
+    ports:
+      - "8484:8484"
+    env_file: [.env]
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  ingest:
+    build: ./server
+    command: python -m app.ingest draft-poll
+    env_file: [.env]
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    profiles: [live]
+
+  hands:
+    build: ./server
+    command: python -m hands.worker
+    env_file: [.env]
+    volumes:
+      - ./data:/data
+      - ./audit:/data/audit
+    secrets:
+      - sleeper_storage_state
+    mem_limit: 1g            # Pi 5: memory-capped, single job at a time (§5.9)
+    restart: unless-stopped
+    profiles: [live]
+
+secrets:
+  sleeper_storage_state:
+    file: ./storageState.json   # exported once from a desktop login; never committed
