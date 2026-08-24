@@ -175,3 +175,17 @@ def test_suggestion_score_survival_scales_regret():
     # 50% survival: E[best at next turn] = .5*100 + .5*40 = 70 -> regret 30
     pool = [Candidate("a", "RB", 100.0, 0.5), Candidate("b", "RB", 40.0, 1.0)]
     assert math.isclose(draft.suggestion_score(pool[0], pool, 1.0), 30.0)
+
+
+def test_consolidated_stud_premium():
+    # one 100-worth stud beats two 50s: finite roster slots, KTC-school curve
+    from app.engines import trades
+    assert trades.consolidated([100.0]) > trades.consolidated([50.0, 50.0])
+    # but not absurdly — the premium is a margin, not a cliff
+    assert trades.consolidated([100.0]) < trades.consolidated([50.0, 50.0]) * 1.5
+
+
+def test_consolidated_monotonic():
+    from app.engines import trades
+    assert trades.consolidated([60.0, 20.0]) > trades.consolidated([50.0, 20.0])
+    assert trades.consolidated([]) == 0.0

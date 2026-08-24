@@ -291,6 +291,7 @@ def waiver_targets(week: int = 1):
 class TradeBody(BaseModel):
     give: list[str]
     receive: list[str]
+    their_roster_id: int | None = None  # grade their side's lineup too
 
 
 @app.post("/api/trades/analyze", dependencies=MUTATES)
@@ -312,7 +313,10 @@ def analyze_trade(body: TradeBody):
             })
         return out
 
-    result = trades_engine.analyze(rows(body.give), rows(body.receive))
+    vbd_scale = max([(r["vbd"] or 0.0) for r in cons.values()] or [1.0]) or 1.0
+    mkt_scale = max([(r["redraft_value"] or 0.0) for r in vals.values()] or [1.0]) or 1.0
+    result = trades_engine.analyze(rows(body.give), rows(body.receive),
+                                   vbd_scale=vbd_scale, market_scale=mkt_scale)
 
     # Roster context — the question a raw value delta can't answer: does MY
     # best lineup actually improve? A trade can win VBD and hand me a third TE.
@@ -338,7 +342,29 @@ def analyze_trade(body: TradeBody):
         }
     else:
         result["lineup_impact"] = None
+
+    result["their_lineup_impact"] = None
+    if body.their_roster_id is not None:
+        tr = conn.execute("SELECT * FROM rosters WHERE roster_id=?",
+                          (body.their_roster_id,)).fetchone()
+        their_ids = json.loads(tr["players_json"]) if tr else []
+        if their_ids:
+            rp = brain.roster_positions(conn)
+            t_before = lineup_engine.optimize(_projs(their_ids), rp).total
+            t_after_ids = [i for i in their_ids if i not in set(body.receive)] + list(body.give)
+            t_after = lineup_engine.optimize(_projs(t_after_ids), rp).total
+            result["their_lineup_impact"] = {
+                "ros_points_before": round(t_before, 1),
+                "ros_points_after": round(t_after, 1),
+                "starters_delta": round(t_after - t_before, 1),
+            }
     return result
+
+
+@app.get("/api/trades/suggest")
+def trade_suggestions(limit: int = 8):
+    """The parlor: mutually beneficial deals scanned across every roster."""
+    return brain.suggest_trades(get_conn(), limit=max(1, min(limit, 20)))
 
 
 class DeviceBody(BaseModel):

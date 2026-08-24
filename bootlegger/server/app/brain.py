@@ -12,8 +12,9 @@ from . import db
 from .config import DEMO_ROSTER_POSITIONS, settings
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import draft as draft_engine
+from .engines import trades as trades_engine
 from .engines.draft import Candidate
-from .engines.lineup import INactive, PlayerProj, diff_lineup
+from .engines.lineup import INactive, PlayerProj, diff_lineup, optimize
 
 SUGGESTION_COUNT = 5
 
@@ -329,3 +330,122 @@ def rationale_for_swaps(conn: sqlite3.Connection, card: dict) -> str:
         parts.append("; ".join(why) + ".")
     parts.append(f"Net {card['delta']:+.1f} projected points.")
     return " ".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# The Parlor — trade suggestions
+# ---------------------------------------------------------------------------
+
+def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
+    """Scan every opposing roster for deals that help BOTH starting lineups —
+    mutual benefit is what actually gets accepted (the trade-finder lesson
+    from FantasyPros/Dynasty Daddy). Candidates come from surplus-for-need:
+    each side's best bench pieces and weakest starters, in 1-for-1 and
+    consolidation (2-for-1) shapes, package-checked with the KTC-school
+    curve, then graded by both sides' optimal-lineup deltas."""
+    rp = roster_positions(conn)
+    players = _players_index(conn)
+    cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
+    vals = {r["player_id"]: r for r in conn.execute("SELECT * FROM player_values")}
+    my = my_roster_row(conn)
+    my_ids = json.loads(my["players_json"]) if my else []
+    if not my_ids:
+        return {"trades": [], "note": "The parlor opens once rosters exist."}
+
+    vbd_scale = max([(r["vbd"] or 0.0) for r in cons.values()] or [1.0]) or 1.0
+    mkt_scale = max([(r["redraft_value"] or 0.0) for r in vals.values()] or [1.0]) or 1.0
+
+    _worth: dict[str, float] = {}
+
+    def worth(pid: str) -> float:
+        if pid not in _worth:
+            v = (cons[pid]["vbd"] or 0.0) if pid in cons else 0.0
+            m = (vals[pid]["redraft_value"] or 0.0) if pid in vals else 0.0
+            _worth[pid] = 50.0 * max(0.0, v) / vbd_scale + 50.0 * max(0.0, m) / mkt_scale
+        return _worth[pid]
+
+    def projs(ids: list[str]) -> list[PlayerProj]:
+        return [PlayerProj(pid, players[pid]["pos"],
+                           ((cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0),
+                           players[pid]["name"], players[pid]["injury_status"])
+                for pid in ids if pid in players]
+
+    def best(ids: list[str]):
+        return optimize(projs(ids), rp)
+
+    def row(pid: str) -> dict:
+        return {"player_id": pid, "name": players[pid]["name"], "pos": players[pid]["pos"],
+                "vbd": (cons[pid]["vbd"] or 0.0) if pid in cons else 0.0,
+                "market_value": (vals[pid]["redraft_value"] or 0.0) if pid in vals else 0.0}
+
+    base_mine = best(my_ids)
+    proposals: dict[tuple, dict] = {}
+
+    for r in conn.execute("SELECT * FROM rosters"):
+        if my and r["roster_id"] == my["roster_id"]:
+            continue
+        their_ids = json.loads(r["players_json"] or "[]")
+        if not their_ids:
+            continue
+        base_theirs = best(their_ids)
+
+        def pools(ids: list[str], starters: set[str]) -> tuple[list[str], list[str]]:
+            bench = sorted((i for i in ids if i not in starters and i in players),
+                           key=lambda i: -worth(i))[:4]
+            weak = sorted((i for i in starters if i in players), key=worth)[:2]
+            return bench, weak
+
+        my_bench, my_weak = pools(my_ids, base_mine.starter_ids)
+        th_bench, th_weak = pools(their_ids, base_theirs.starter_ids)
+        their_studs = sorted((i for i in base_theirs.starter_ids if i in players),
+                             key=lambda i: -worth(i))[:2]
+        my_studs = sorted((i for i in base_mine.starter_ids if i in players),
+                          key=lambda i: -worth(i))[:2]
+
+        cands: list[tuple[list[str], list[str]]] = []
+        for g in my_bench + my_weak:
+            for t in th_bench + th_weak:
+                cands.append(([g], [t]))
+        for i in range(len(my_bench)):
+            for j in range(i + 1, len(my_bench)):
+                for t in their_studs:
+                    cands.append(([my_bench[i], my_bench[j]], [t]))
+        for i in range(len(th_bench)):
+            for j in range(i + 1, len(th_bench)):
+                for g in my_studs:
+                    cands.append(([g], [th_bench[i], th_bench[j]]))
+
+        for give, get in cands:
+            ca = trades_engine.consolidated([worth(x) for x in give])
+            cb = trades_engine.consolidated([worth(x) for x in get])
+            # package pre-filter: nobody accepts a lopsided-by-half offer
+            if max(ca, cb) <= 0 or abs(cb - ca) > 0.45 * max(ca, cb):
+                continue
+            my_gain = best([i for i in my_ids if i not in give] + get).total - base_mine.total
+            if my_gain < 2.0:
+                continue
+            their_gain = best([i for i in their_ids if i not in get] + give).total - base_theirs.total
+            if their_gain < -3.0:  # they must not be materially hurt, or they decline
+                continue
+            key = (frozenset(give), frozenset(get))
+            score = my_gain + 0.3 * max(0.0, their_gain) - 0.1 * max(0.0, -their_gain)
+            if key in proposals and proposals[key]["score"] >= score:
+                continue
+            detail = trades_engine.analyze([row(p) for p in give], [row(p) for p in get],
+                                           vbd_scale=vbd_scale, market_scale=mkt_scale)
+            proposals[key] = {
+                "score": round(score, 2),
+                "partner": r["owner"] or f"roster {r['roster_id']}",
+                "partner_roster_id": r["roster_id"],
+                "give": [{"id": p, "name": players[p]["name"], "pos": players[p]["pos"]} for p in give],
+                "receive": [{"id": p, "name": players[p]["name"], "pos": players[p]["pos"]} for p in get],
+                "my_gain": round(my_gain, 1),
+                "their_gain": round(their_gain, 1),
+                "vbd_edge": detail["vbd_edge"],
+                "market_edge": detail["market_edge"],
+                "summary": detail["summary"],
+            }
+
+    top = sorted(proposals.values(), key=lambda t: -t["score"])[:limit]
+    return {"trades": top,
+            "note": "Both lineups improve or the other side isn't hurt — deals that can actually close. Advisory only."}

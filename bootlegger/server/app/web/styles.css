@@ -514,6 +514,24 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   font-size: .74rem; font-weight: 700; letter-spacing: .06em; }
 .confirm-flag svg { width: 12px; height: 12px; }
 
+/* ============================= THE PARLOR ============================= */
+
+.deal {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel);
+  box-shadow: var(--shadow-raise); padding: 12px 14px; margin-bottom: 12px;
+}
+.deal-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.deal-partner { font-size: .78rem; font-weight: 700; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--brass); }
+.deal-gains { margin-left: auto; font-family: var(--font-ledger); font-size: .84rem;
+  color: var(--ink-dim); }
+.deal-gains b { color: var(--ink); }
+.deal-sides { display: grid; gap: 4px; }
+.deal-side { font-size: .92rem; }
+.deal-side .lbl { display: inline-block; width: 3.4em; font-size: .68rem; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+.deal-summary { color: var(--ink-faint); font-size: .8rem; margin-top: 7px; }
+
 /* ============================= LEDGER ============================= */
 
 /* the world's core material: an actual ledger page on the walnut desk */

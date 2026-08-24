@@ -94,9 +94,10 @@ function setTab(tab) {
     if (active) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
-  for (const room of ["board", "week", "waivers", "ledger"])
+  for (const room of ["board", "week", "waivers", "parlor", "ledger"])
     $(`#room-${room}`).hidden = room !== tab;
   if (tab === "waivers") loadWaivers();
+  if (tab === "parlor") loadParlor();
   if (tab === "ledger") loadLedger();
   if (tab === "week") pollWeek();
 }
@@ -508,6 +509,33 @@ async function loadWaivers() {
   } catch { wireFail(); }
 }
 
+/* --------------------------------- parlor --------------------------------- */
+function sideList(ps) {
+  return ps.map((p) =>
+    `<span class="pos pos-${posOf(p)}">${posOf(p)}</span> ${esc(p.name)}`).join(" · ");
+}
+
+async function loadParlor() {
+  try {
+    const data = await fetchJSON("/api/trades/suggest");
+    $("#parlor-body").innerHTML = data.trades.length ? data.trades.map((t) => `
+      <div class="deal">
+        <div class="deal-head">
+          <span class="deal-partner">with ${esc(t.partner)}</span>
+          <span class="deal-gains"><b>${t.my_gain > 0 ? "+" : ""}${t.my_gain}</b> you ·
+            ${t.their_gain > 0 ? "+" : ""}${t.their_gain} them</span>
+        </div>
+        <div class="deal-sides">
+          <div class="deal-side"><span class="lbl">send</span> ${sideList(t.give)}</div>
+          <div class="deal-side"><span class="lbl">get</span> ${sideList(t.receive)}</div>
+        </div>
+        <p class="deal-summary">${esc(t.summary)}</p>
+      </div>`).join("")
+      : `<p class="muted">${esc(data.note || "Nothing worth whispering this week.")}</p>`;
+    wireOK();
+  } catch { wireFail(); }
+}
+
 /* --------------------------------- ledger --------------------------------- */
 function ruleDetail(r) {
   if (r.threshold == null) return "";
@@ -570,5 +598,8 @@ async function boot() {
     if (state.tab === "waivers") loadWaivers();
     if (state.tab === "ledger") loadLedger();
   }, 15000);
+  setInterval(() => {
+    if (state.tab === "parlor") loadParlor();  // full-league scan — slower cadence
+  }, 60000);
 }
 boot();
