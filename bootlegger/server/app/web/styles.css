@@ -110,6 +110,10 @@ a { color: var(--brass); text-underline-offset: 3px; }
   text-shadow: 0 1px 0 rgba(0,0,0,.8), 0 3px 14px rgba(201,162,92,.28);
 }
 .est { color: var(--ink-faint); font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; }
+.est .pigskin {
+  width: 17px; height: 11px; vertical-align: -2px; color: var(--brass-deep);
+  margin: 0 3px; transform: rotate(-14deg); /* tilted like a held ball, not an eye */
+}
 
 .clockplate {
   grid-area: clock; justify-self: start; align-self: center; margin-bottom: 10px;
@@ -172,7 +176,16 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   font-size: 1.35rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
   color: var(--ink);
 }
-.room-note { color: var(--ink-dim); margin: 4px 0 18px; max-width: 62ch; }
+.room-note { color: var(--ink-dim); margin: 8px 0 18px; max-width: 62ch; }
+
+/* gridiron: the seam — a stitched pigskin lace under plate and room titles.
+   One center thread with cross-laces every 14px; walnut surfaces only. */
+.lace-seam::after, .call-title::after, .shelf-title::after, .room-title::after {
+  content: ""; display: block; height: 9px; margin-top: 9px;
+  background:
+    linear-gradient(var(--line) 0 0) 0 50% / 100% 1px no-repeat,
+    repeating-linear-gradient(90deg, transparent 0 13px, rgba(138, 109, 51, .55) 13px 14px);
+}
 .ledger-gap { margin-top: 44px; }
 
 .board-layout {
@@ -188,7 +201,10 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 
 .call {
   border: 1px solid var(--brass-deep); border-radius: 6px;
+  /* gridiron: a chalked play — O's, X's, one dashed route — ghosted into the
+     plate's lower corner. Decoration stays at whisper opacity, behind the ink. */
   background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 170 130' fill='none' stroke='%23ecdfc6' stroke-opacity='.08' stroke-width='2' stroke-linecap='round'%3E%3Cg transform='rotate(-4 85 65)'%3E%3Ccircle cx='34' cy='96' r='8'/%3E%3Ccircle cx='64' cy='106' r='8'/%3E%3Ccircle cx='94' cy='96' r='8'/%3E%3Cpath d='M46 44l14 14M60 44l-14 14'/%3E%3Cpath d='M96 52l14 14M110 52l-14 14'/%3E%3Cpath d='M94 86C104 66 116 50 138 30' stroke-dasharray='6 7'/%3E%3Cpath d='M138 30l-11 1M138 30l-4 10'/%3E%3C/g%3E%3C/svg%3E") right -12px bottom -10px / 185px auto no-repeat,
     linear-gradient(180deg, rgba(201,162,92,.10), rgba(201,162,92,.03) 40%),
     linear-gradient(180deg, var(--panel-2), var(--panel));
   box-shadow: var(--shadow-plate);
@@ -196,7 +212,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 }
 .call-title {
   font-size: .95rem; font-weight: 700; text-transform: uppercase; letter-spacing: .22em;
-  color: var(--brass); border-bottom: 1px solid var(--line); padding-bottom: 9px;
+  color: var(--brass);
 }
 .call-top { padding: 13px 0 10px; border-bottom: 1px dashed var(--line-soft); }
 .call-name { font-size: 1.55rem; font-weight: 700; letter-spacing: .02em; line-height: 1.1; }
@@ -208,8 +224,10 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .runners { list-style: none; padding-top: 10px; display: grid; gap: 6px; }
 .runners li { display: flex; align-items: baseline; gap: 8px; font-size: .9rem; }
 .runners .r-score { margin-left: auto; font-family: var(--font-ledger); color: var(--ink-dim); font-size: .84rem; }
-.call-done { padding: 14px 0 8px; }
+.call-done { padding: 14px 0 8px; display: flex; gap: 14px; align-items: flex-start; }
 .call-done strong { color: var(--lamp-bright); }
+.call-done .chalk-goal { width: 52px; height: auto; flex: none; color: var(--ink-faint); margin-top: 2px; }
+.call-done-copy { min-width: 0; }
 
 /* position tag: hue + written label, never color alone */
 .pos {
@@ -229,7 +247,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 }
 .shelf-title {
   font-size: .95rem; font-weight: 700; text-transform: uppercase; letter-spacing: .22em;
-  color: var(--ink-dim); border-bottom: 1px solid var(--line); padding-bottom: 9px;
+  color: var(--ink-dim);
 }
 .needs { display: flex; flex-wrap: wrap; gap: 6px; padding: 11px 0 4px; }
 .need {
@@ -304,7 +322,14 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   color: var(--ink-faint); text-transform: uppercase; margin-right: 3px; }
 
 .surv { display: flex; align-items: center; gap: 8px; }
-.surv-bar { flex: 1; height: 3px; background: var(--line-soft); border-radius: 2px; overflow: hidden; }
+/* gridiron: the track is chalked like a field — a hash every ten yards.
+   The brass fill burns yardage as the odds shorten. */
+.surv-bar {
+  flex: 1; height: 4px; border-radius: 2px; overflow: hidden;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--line) calc(10% - 1px) 10%),
+    var(--line-soft);
+}
 .surv-fill { height: 100%; background: linear-gradient(90deg, var(--brass-deep), var(--brass)); border-radius: 2px; }
 .surv-pct { font-family: var(--font-ledger); font-size: .76rem; color: var(--ink-dim); min-width: 4.5ch; text-align: right; }
 
@@ -359,13 +384,6 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .ticker::-webkit-scrollbar-track { background: var(--paper-2); }
 .ticker::-webkit-scrollbar-thumb { background: #b9a87e; border-color: var(--paper-2); }
 .ticker { scrollbar-color: #b9a87e var(--paper-2); }
-
-/* board empty / complete */
-.board-done {
-  padding: 12px; border: 1px dashed var(--line); border-radius: 6px;
-  color: var(--ink-dim); margin-bottom: 12px;
-}
-.board-done strong { color: var(--lamp-bright); }
 
 /* ============================= THIS WEEK ============================= */
 
@@ -550,13 +568,6 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   position: relative; z-index: 1;
 }
 
-/* ============================= LOADING ============================= */
-
-.loading-plate {
-  display: grid; place-items: center; padding: 60px 0; color: var(--ink-dim);
-  font-family: var(--font-ledger); letter-spacing: .12em; text-transform: uppercase; font-size: .9rem;
-}
-
 /* ============================= RESPONSIVE ============================= */
 
 @media (max-width: 1180px) {
@@ -589,7 +600,10 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   .col-body { overflow: visible; }
   .col.pos-hidden { display: none; }
   .lineup-tables { grid-template-columns: minmax(0, 1fr); }
-  .actions .btn { flex: 1; }
+  /* approval actions stack full-width on the one-thumb surface — the primary
+     never wraps to two lines in a half-width cell */
+  .actions { flex-direction: column; }
+  .actions .btn { width: 100%; }
   .delta { font-size: 1.6rem; }
   .sheet { padding: 14px 16px 16px 44px; }
   .sheet::before { left: 32px; }

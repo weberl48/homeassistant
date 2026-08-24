@@ -357,6 +357,29 @@ at 42px from the sheet's left edge (32px ≤900px), with content indented
 beyond it. Hairline rules do all remaining structure; heavy borders don't
 exist — emphasis borders just change hue (brass-deep, lamp, oxblood).
 
+**The Gridiron Layer** (added 2026-08-24). The room's sport is drawn in the
+room's own materials — leather, chalk, and field paint from the league's
+founding era, never modern sports-app chrome:
+
+- **Lace seam:** plate and room titles underline with a stitched-pigskin seam —
+  the hairline (`line`) with 1px cross-laces every 14px in brass-deep at 55%
+  (`.call-title`, `.shelf-title`, `.room-title`; utility `.lace-seam`). Walnut
+  surfaces only; the seam replaces the plain border under those titles.
+- **Yard-line track:** the survival meter's 4px track is chalked with a `line`
+  hash every 10% — the brass fill burns yardage as the odds shorten. Track
+  decoration only; the fill and figures stay the data.
+- **Chalk plays:** hand-chalked X's/O's with one dashed route ghost into The
+  Call's lower corner at .08 stroke-opacity in aged-cream ink; the
+  draft-complete state draws a chalk goalpost with a dashed kick arc
+  (`.chalk-goal`, ink-faint). Chalk is decoration at whisper opacity, drawn in
+  the icon stroke voice (round caps, ~2 units), and never carries meaning
+  color alone couldn't.
+- **Pigskin dot:** the masthead's est-line separator is a 17px lace-stitched
+  football tilted -14°, inked brass-deep.
+
+The layer never touches paper surfaces, status colors, or the position hues,
+and adds no motion — the strike-and-settle remains the room's only theater.
+
 ## Components
 
 ### Masthead & Clock Plate

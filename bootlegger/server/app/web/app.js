@@ -204,9 +204,16 @@ function renderCall(board) {
   const body = $("#call-body");
   const s = board.suggestions;
   if (board.draft.status === "complete") {
-    body.innerHTML = `<div class="call-done"><p><strong>Draft complete.</strong></p>
+    body.innerHTML = `<div class="call-done">
+      <svg class="chalk-goal" viewBox="0 0 64 62" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M32 58V38M14 38h36M14 38V10M50 38V10"/>
+        <path d="M4 54C14 36 22 24 38 8" stroke-dasharray="4 5"/>
+        <ellipse cx="41" cy="6" rx="5" ry="3.2" transform="rotate(-38 41 6)"/>
+      </svg>
+      <div class="call-done-copy"><p><strong>Draft complete.</strong></p>
       <p class="muted">The shelf is stocked — the room pours one out. Season mode
-      takes it from here.</p></div>`;
+      takes it from here.</p></div></div>`;
     return;
   }
   if (!s || !s.length) {
@@ -296,11 +303,13 @@ const STEPS = ["proposed", "notified", "approved", "executed", "verified"];
 
 function stepper(recState) {
   const failed = recState === "failed";
-  const idx = failed ? STEPS.length : STEPS.indexOf(recState);
+  // a snoozed rec still sits at "notified" on the chain — never an unlit stepper
+  const shown = recState === "snoozed" ? "notified" : recState;
+  const idx = failed ? STEPS.length : STEPS.indexOf(shown);
   return `<div class="stepper" aria-label="Recommendation state">` + STEPS.map((s, i) => {
     let cls = "step";
     if (failed && i >= 2) cls += " is-failed";
-    else if (s === recState) cls += s === "verified" ? " is-verified" : " is-now";
+    else if (s === shown) cls += s === "verified" ? " is-verified" : " is-now";
     else if (i < idx) cls += " is-done";
     return `${i ? '<span class="step-link"></span>' : ""}<span class="${cls}">${failed && s === "verified" ? "failed" : s}</span>`;
   }).join("") + `</div>`;
