@@ -156,3 +156,22 @@ def test_plus_one_over_round():
     assert waivers.plus_one_over_round(20) == 21
     assert waivers.plus_one_over_round(14.6) == 16  # rounds to 15, +1 over the 5
     assert waivers.plus_one_over_round(13.2) == 13
+
+
+def test_suggestion_score_zero_regret_when_he_survives():
+    # regret semantics: the wait-pool INCLUDES the candidate, so a star who
+    # will still be there at my next turn scores ~0 — "wait on him"
+    pool = [Candidate("a", "QB", 80.0, 1.0), Candidate("b", "QB", 30.0, 1.0)]
+    assert math.isclose(draft.suggestion_score(pool[0], pool, 1.0), 0.0, abs_tol=1e-9)
+
+
+def test_suggestion_score_full_cliff_when_vanishing():
+    # a vanishing candidate scores his value over the expected best survivor
+    pool = [Candidate("a", "RB", 100.0, 0.0), Candidate("b", "RB", 40.0, 1.0)]
+    assert math.isclose(draft.suggestion_score(pool[0], pool, 1.0), 60.0)
+
+
+def test_suggestion_score_survival_scales_regret():
+    # 50% survival: E[best at next turn] = .5*100 + .5*40 = 70 -> regret 30
+    pool = [Candidate("a", "RB", 100.0, 0.5), Candidate("b", "RB", 40.0, 1.0)]
+    assert math.isclose(draft.suggestion_score(pool[0], pool, 1.0), 30.0)

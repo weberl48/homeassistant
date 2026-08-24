@@ -1,6 +1,10 @@
-# Bootlegger on the Pi. In demo mode `api` runs everything in-process, so
-# `docker compose up api` is the whole show. Live mode adds the ingest pollers
-# and the hands worker as separate services (design doc §2).
+# Bootlegger via compose (dev machines / any docker-compose host). In demo
+# mode `api` runs everything in-process, so `docker compose up api` is the
+# whole show. Live mode adds the pollers and the hands worker (design doc §2).
+#
+# NOTE: the household Pi runs HAOS, which has no compose — the ACTUAL prod
+# deployment is ops/pi/deploy.sh (three `docker run`s mirroring these
+# services). Keep the two in sync when services or env change.
 services:
   api:
     build: ./server
@@ -14,6 +18,15 @@ services:
   ingest:
     build: ./server
     command: python -m app.ingest draft-poll
+    env_file: [.env]
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    profiles: [live]
+
+  nightly:
+    build: ./server
+    entrypoint: ["sh", "-c", "while true; do sleep 86400; python -m app.ingest nightly; done"]
     env_file: [.env]
     volumes:
       - ./data:/data

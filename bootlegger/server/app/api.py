@@ -8,11 +8,12 @@ import asyncio
 import json
 import logging
 import sqlite3
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -26,6 +27,18 @@ from .sleeper import SleeperClient
 
 log = logging.getLogger("bootlegger.api")
 WEB_DIR = Path(__file__).parent / "web"
+
+
+def require_token(x_bootlegger_token: str | None = Header(default=None)) -> None:
+    """Gate for state-changing routes. Off until BOOTLEGGER_API_TOKEN is set —
+    the port is LAN-only today, but enabling the hands makes an open mutation
+    surface unacceptable. Clients send X-Bootlegger-Token; the web board reads
+    localStorage['bootlegger.token']."""
+    if settings.api_token and x_bootlegger_token != settings.api_token:
+        raise HTTPException(401, "X-Bootlegger-Token required")
+
+
+MUTATES = [Depends(require_token)]
 
 
 def get_conn() -> sqlite3.Connection:
@@ -84,7 +97,7 @@ def draft_board():
     return brain.get_board(get_conn())
 
 
-@app.post("/api/draft/reset")
+@app.post("/api/draft/reset", dependencies=MUTATES)
 def draft_reset():
     if settings.mode != "demo":
         raise HTTPException(400, "reset exists only in demo mode")
@@ -102,7 +115,7 @@ def get_recs():
     return recs.list_recs(get_conn())
 
 
-@app.post("/api/recs/{rec_id}/approve")
+@app.post("/api/recs/{rec_id}/approve", dependencies=MUTATES)
 def approve_rec(rec_id: int):
     conn = get_conn()
     try:
@@ -114,7 +127,7 @@ def approve_rec(rec_id: int):
     return {"ok": True, "job_id": job_id}
 
 
-@app.post("/api/recs/{rec_id}/snooze")
+@app.post("/api/recs/{rec_id}/snooze", dependencies=MUTATES)
 def snooze_rec(rec_id: int):
     try:
         recs.snooze(get_conn(), rec_id)
@@ -125,7 +138,7 @@ def snooze_rec(rec_id: int):
     return {"ok": True}
 
 
-@app.post("/api/recs/{rec_id}/ignore")
+@app.post("/api/recs/{rec_id}/ignore", dependencies=MUTATES)
 def ignore_rec(rec_id: int):
     try:
         recs.ignore(get_conn(), rec_id)
@@ -151,7 +164,7 @@ def get_rules():
     return [dict(r) for r in get_conn().execute("SELECT * FROM rules ORDER BY rule_id")]
 
 
-@app.post("/api/rules/{rule_id}/toggle")
+@app.post("/api/rules/{rule_id}/toggle", dependencies=MUTATES)
 def toggle_rule(rule_id: int):
     conn = get_conn()
     row = conn.execute("SELECT enabled FROM rules WHERE rule_id=?", (rule_id,)).fetchone()
@@ -163,19 +176,26 @@ def toggle_rule(rule_id: int):
     return {"ok": True, "enabled": not row["enabled"]}
 
 
-# The street's pulse: Sleeper trending adds, cached 15 min so the 15s waiver
-# poll never hammers the wire. Failure means heat goes quiet, never the endpoint.
-_trending: dict = {"ts": 0.0, "counts": {}}
+# The street's pulse: Sleeper trending adds, cached 15 min. The refresh runs
+# in a background thread so the request path never blocks on the wire — a
+# request during refresh serves the previous counts (or none on cold start).
+_trending: dict = {"ts": 0.0, "counts": {}, "refreshing": False}
+
+
+def _refresh_trending() -> None:
+    try:
+        _trending["counts"] = {t["player_id"]: t["count"]
+                               for t in SleeperClient().trending_adds(hours=24, limit=50)}
+    except Exception:
+        pass  # heat goes quiet, never the endpoint
+    _trending["ts"] = time.time()
+    _trending["refreshing"] = False
 
 
 def _trending_counts() -> dict[str, int]:
-    if time.time() - _trending["ts"] > 900:
-        try:
-            _trending["counts"] = {t["player_id"]: t["count"]
-                                   for t in SleeperClient().trending_adds(hours=24, limit=50)}
-        except Exception:
-            pass
-        _trending["ts"] = time.time()
+    if time.time() - _trending["ts"] > 900 and not _trending["refreshing"]:
+        _trending["refreshing"] = True
+        threading.Thread(target=_refresh_trending, daemon=True).start()
     return _trending["counts"]
 
 
@@ -273,7 +293,7 @@ class TradeBody(BaseModel):
     receive: list[str]
 
 
-@app.post("/api/trades/analyze")
+@app.post("/api/trades/analyze", dependencies=MUTATES)
 def analyze_trade(body: TradeBody):
     conn = get_conn()
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}

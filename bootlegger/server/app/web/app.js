@@ -5,6 +5,17 @@
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
+
+/* Every feed-derived string (player names, teams, rationale) passes through
+   esc() before innerHTML — a poisoned upstream name must not break or script
+   the board. */
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* Optional shared secret for mutating routes (set BOOTLEGGER_API_TOKEN on the
+   server, then localStorage.setItem('bootlegger.token', ...) on each device). */
+let TOKEN = "";
+try { TOKEN = localStorage.getItem("bootlegger.token") || ""; } catch { /* fine */ }
 // Fallback only — the board payload carries the league's real roster_positions.
 const SLOTS_NEEDED = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DEF: 1 };
 
@@ -23,7 +34,7 @@ function slotsNeeded(board) {
 const state = {
   tab: localStorage.getItem("bootlegger.tab") || "board",
   board: null, week: null, health: null,
-  lastSync: null, wireDown: false,
+  lastSync: null, wireDown: false, pickFeedStale: false,
   rowIndex: new Map(),      // player id -> row element
   builtPickCount: -1,
   approving: false,
@@ -38,7 +49,8 @@ const icon = {
 };
 
 /* ---------------------------------- net ----------------------------------- */
-async function fetchJSON(url, opts) {
+async function fetchJSON(url, opts = {}) {
+  if (TOKEN) opts.headers = Object.assign({ "X-Bootlegger-Token": TOKEN }, opts.headers);
   const r = await fetch(url, opts);
   if (!r.ok) throw new Error(`${url} → ${r.status}`);
   return r.json();
@@ -53,13 +65,20 @@ function wireFail() {
 }
 function renderWire() {
   const wire = $("#wire"), banner = $("#wire-banner");
-  wire.classList.toggle("is-down", state.wireDown);
-  $("#wire-text").textContent = state.wireDown ? "wire down" : "wire live";
-  banner.hidden = !state.wireDown;
+  const down = state.wireDown, stale = state.pickFeedStale;
+  wire.classList.toggle("is-down", down || stale);
+  $("#wire-text").textContent = down ? "wire down" : stale ? "wire stale" : "wire live";
+  banner.hidden = !(down || stale);
+  if (!banner.hidden)
+    banner.innerHTML = down
+      ? `WIRE DOWN — showing the last board from <span id="wire-age">—</span> ago. Retrying.`
+      : `PICK FEED STALE — the wire answers but no fresh picks in over 10 seconds.
+         The poller may be down; picks shown may be behind the room.`;
 }
 setInterval(() => {
-  if (state.wireDown && state.lastSync)
-    $("#wire-age").textContent = `${Math.round((Date.now() - state.lastSync) / 1000)}s`;
+  const el = $("#wire-age");
+  if (el && state.wireDown && state.lastSync)
+    el.textContent = `${Math.round((Date.now() - state.lastSync) / 1000)}s`;
 }, 1000);
 
 /* ---------------------------------- tabs ---------------------------------- */
@@ -92,15 +111,15 @@ function playerRow(p) {
   el.className = "prow";
   el.dataset.id = p.id;
   const injury = p.injury
-    ? `<span class="hurt">${icon.cross}${p.injury.toUpperCase()}</span>` : "";
+    ? `<span class="hurt">${icon.cross}${esc(p.injury.toUpperCase())}</span>` : "";
   el.innerHTML = `
     <div class="l1">
       <span class="stamp" data-stamp>–</span>
-      <span class="name" title="${p.name}">${p.name}</span>
+      <span class="name" title="${esc(p.name)}">${esc(p.name)}</span>
       ${injury}
     </div>
     <div class="l2">
-      <span class="team">${p.team ?? ""} · bye ${p.bye ?? "–"}</span>
+      <span class="team">${esc(p.team ?? "")} · bye ${esc(p.bye ?? "–")}</span>
       <span class="nums">
         <span><span class="lbl">vbd</span><b data-vbd>${p.vbd}</b></span>
         <span><span class="lbl">adp</span><span data-adp>${p.adp ?? "–"}</span></span>
@@ -192,6 +211,12 @@ function renderBoard(board) {
   renderShelf(board);
   renderTicker(board.recent_picks);
   state.board = board;
+
+  // C1 guard: during a live draft, an answering API with an aging pick feed
+  // means the poller died — say so instead of showing a stale board as live.
+  const stale = board.draft.status === "drafting" && board.draft.synced_at
+    ? Date.now() - Date.parse(board.draft.synced_at) > 10000 : false;
+  if (stale !== state.pickFeedStale) { state.pickFeedStale = stale; renderWire(); }
 }
 
 function renderClock(d) {
@@ -238,20 +263,20 @@ function renderCall(board) {
   const disagree = sheet && sheet.id !== top.id;
   const runners = s.slice(1, 5).map((r) => `
     <li><span class="pos pos-${posOf(r)}">${posOf(r)}</span>
-      <span>${r.name}</span>
+      <span>${esc(r.name)}</span>
       <span class="r-score">${r.score}</span></li>`).join("");
   body.innerHTML = `
     <div class="call-top">
-      <div class="call-name">${top.name}</div>
+      <div class="call-name">${esc(top.name)}</div>
       <div class="call-meta">
-        <span class="pos pos-${posOf(top)}">${posOf(top)} · ${top.team ?? ""}</span>
+        <span class="pos pos-${posOf(top)}">${posOf(top)} · ${esc(top.team ?? "")}</span>
         <span class="stat"><span>score</span>${top.score}</span>
         <span class="stat"><span>vbd</span>${top.vbd}</span>
         <span class="stat"><span>survives</span>${fmtSurv(top.survival ?? 0)}</span>
       </div>
-      <p class="call-reason">${top.reason}</p>
+      <p class="call-reason">${esc(top.reason)}</p>
       ${disagree ? `<p class="call-sheet">The experts' sheet says
-        <b>${sheet.name}</b> <span class="pos pos-${posOf(sheet)}">${posOf(sheet)}</span>
+        <b>${esc(sheet.name)}</b> <span class="pos pos-${posOf(sheet)}">${posOf(sheet)}</span>
         <span class="sheet-ecr">ECR ${sheet.ecr}</span></p>` : ""}
     </div>
     <ul class="runners">${runners}</ul>`;
@@ -284,14 +309,14 @@ function renderShelf(board) {
   list.innerHTML = board.my_roster.map((p) => `
     <li><span class="rd">${p.round}</span>
       <span class="pos pos-${posOf(p)}">${posOf(p)}</span>
-      <span>${p.player}</span></li>`).join("");
+      <span>${esc(p.player)}</span></li>`).join("");
 }
 
 function renderTicker(picks) {
   $("#ticker").innerHTML = picks.map((p) => `
     <li class="${p.mine ? "t-mine" : ""}">
       <span class="t-no">R${p.round}·P${p.pick_no}</span>
-      <span>${p.player}</span>
+      <span>${esc(p.player)}</span>
       <span class="pos pos-${posOf(p)}">${posOf(p)}</span>
     </li>`).join("");
 }
@@ -340,11 +365,11 @@ function stepper(recState) {
 function lineupTable(title, rows, total, marks) {
   const tr = rows.map((r) => {
     const mark = marks.get(r.id) || "";
-    const hurt = r.injury ? `<span class="hurt">${icon.cross}${r.injury.toUpperCase()}</span>`
+    const hurt = r.injury ? `<span class="hurt">${icon.cross}${esc(r.injury.toUpperCase())}</span>`
       : r.bye ? `<span class="hurt">${icon.cross}BYE</span>` : "";
-    return `<tr class="${mark}"><td class="slot">${r.slot}</td>
-      <td><span class="pname">${r.name}</span>
-        <span class="team">${r.team ?? ""}</span> ${hurt}
+    return `<tr class="${mark}"><td class="slot">${esc(r.slot)}</td>
+      <td><span class="pname">${esc(r.name)}</span>
+        <span class="team">${esc(r.team ?? "")}</span> ${hurt}
         <div><span class="pos pos-${posOf(r)}">${posOf(r)}</span></div></td>
       <td class="proj">${r.proj.toFixed(1)}</td></tr>`;
   }).join("");
@@ -374,10 +399,10 @@ function renderWeek(card) {
   }
 
   const swapsLines = card.swaps.map((s) =>
-    `${s.in.name} in for ${s.out.name} (${s.slot}, ${s.gain > 0 ? "+" : ""}${s.gain})`).join(" · ");
+    `${esc(s.in.name)} in for ${esc(s.out.name)} (${esc(s.slot)}, ${s.gain > 0 ? "+" : ""}${s.gain})`).join(" · ");
   const holds = (rec && JSON.parse(rec.payload_json || "{}").rules_fired) || [];
   const holdNote = holds.length
-    ? `<p class="holds">${icon.hold} Held by house rule: ${holds.join(", ")} — the hands
+    ? `<p class="holds">${icon.hold} Held by house rule: ${esc(holds.join(", "))} — the hands
        will not move; do it in Sleeper if you agree.</p>` : "";
 
   let actions = "";
@@ -406,7 +431,7 @@ function renderWeek(card) {
         <span class="verdict-title">${card.injury_flag ? "You have trouble in the lineup." : "The room found points."}</span>
         <span class="delta">${card.delta > 0 ? "+" : ""}${card.delta.toFixed(1)}</span>
       </div>
-      <p class="rationale">${rec ? rec.rationale : swapsLines}</p>
+      <p class="rationale">${rec ? esc(rec.rationale) : swapsLines}</p>
       ${holdNote}
       ${rec ? stepper(recState) : ""}
       ${actions}
@@ -462,7 +487,7 @@ async function loadWaivers() {
   try {
     const data = await fetchJSON("/api/waivers");
     const rows = data.targets.map((t) => `
-      <tr><td><span class="pname">${t.name}</span> <span class="team">${t.team ?? ""}</span>
+      <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
         <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
       <td class="num">${t.fa_score}</td>
       <td class="num"><span class="bid">$${t.bid}</span></td>
@@ -497,10 +522,10 @@ async function loadLedger() {
       fetchJSON("/api/rules"), fetchJSON("/api/audit")]);
     $("#rules-body").innerHTML = rules.map((r) => `
       <div class="rule-row">
-        <span class="rule-name">${r.name.replaceAll("_", " ")}</span>
-        ${ruleDetail(r) ? `<span class="rule-th">${ruleDetail(r)}</span>` : ""}
-        <input type="checkbox" class="toggle" data-rule="${r.rule_id}"
-          ${r.enabled ? "checked" : ""} aria-label="Toggle ${r.name}">
+        <span class="rule-name">${esc(r.name.replaceAll("_", " "))}</span>
+        ${ruleDetail(r) ? `<span class="rule-th">${esc(ruleDetail(r))}</span>` : ""}
+        <input type="checkbox" class="toggle" data-rule="${esc(r.rule_id)}"
+          ${r.enabled ? "checked" : ""} aria-label="Toggle ${esc(r.name)}">
       </div>`).join("");
     document.querySelectorAll(".toggle[data-rule]").forEach((t) =>
       t.addEventListener("change", async () => {
@@ -511,10 +536,10 @@ async function loadLedger() {
       const cls = /ok|verified|done/.test(a.step) ? "ok"
         : /fail|mismatch|violation|expired|rule/.test(a.step) ? "bad" : "";
       return `<div class="ledger-line">
-        <span class="ts">${(a.ts || "").replace("T", " ").slice(0, 19)}</span>
-        <span>rec #${a.rec_id ?? "–"}</span>
-        <span class="step-name ${cls}">${a.step}</span>
-        ${a.screenshot_path ? `<span>shot · ${a.screenshot_path}</span>` : ""}
+        <span class="ts">${esc((a.ts || "").replace("T", " ").slice(0, 19))}</span>
+        <span>rec #${esc(a.rec_id ?? "–")}</span>
+        <span class="step-name ${cls}">${esc(a.step)}</span>
+        ${a.screenshot_path ? `<span>shot · ${esc(a.screenshot_path)}</span>` : ""}
       </div>`;
     }).join("") : `<div class="ledger-empty">Nothing on the books yet.</div>`;
     wireOK();

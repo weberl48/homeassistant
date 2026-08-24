@@ -129,6 +129,8 @@ def etl_adp(conn: sqlite3.Connection) -> int:
     """FFC ADP joined to sleeper ids by normalized name+position."""
     now = db.utcnow()
     ffc = fetch_ffc_adp(teams=settings.teams, year=settings.season)
+    if ffc:
+        conn.execute("DELETE FROM adp WHERE source='ffc'")
     lookup = {}
     for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
@@ -186,9 +188,16 @@ def etl_projections(client: SleeperClient, conn: sqlite3.Connection, week: int =
     pts_field = {"ppr": "pts_ppr", "half": "pts_half_ppr", "std": "pts_std"}[scoring]
     adp_field = {"ppr": "adp_ppr", "half": "adp_half_ppr", "std": "adp_std"}[scoring]
     have = {r["sleeper_id"] for r in conn.execute("SELECT sleeper_id FROM players")}
+    blob = client.projections(settings.season, week)
+    # Replace, don't accrete: a player dropped from the feed must not keep his
+    # last projection forever (season-ending injuries would stay draftable).
+    if blob:
+        conn.execute("DELETE FROM projections WHERE week=? AND source='sleeper'", (week,))
+        if week == 0:
+            conn.execute("DELETE FROM adp WHERE source='sleeper'")
     n = 0
     now = db.utcnow()
-    for pid, v in client.projections(settings.season, week).items():
+    for pid, v in blob.items():
         if pid not in have:
             continue
         pts = v.get(pts_field) or v.get("pts_ppr")
@@ -220,6 +229,8 @@ def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
     for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
     now = db.utcnow()
+    if data["players"]:  # only clear when the scrape actually delivered
+        conn.execute("DELETE FROM adp WHERE source='fp_ecr'")
     matched = byes = 0
     for p in data["players"]:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
@@ -251,8 +262,11 @@ def etl_espn_projections(conn: sqlite3.Connection, week: int = 0) -> int:
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
         if row["pos"] == "DEF" and row["name"]:
             def_by_nickname[row["name"].split()[-1].lower()] = row["sleeper_id"]
+    rows = fetch_espn_projections(settings.season, week)
+    if rows:
+        conn.execute("DELETE FROM projections WHERE week=? AND source='espn'", (week,))
     n = 0
-    for p in fetch_espn_projections(settings.season, week):
+    for p in rows:
         if p["position"] == "DEF":
             nick = p["name"].split(" D/ST")[0].split()[-1].lower()
             pid = def_by_nickname.get(nick)
@@ -282,6 +296,10 @@ def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
     fetched = fetch_fantasypros_projections(settings.fantasypros_api_key,
                                             settings.season, scoring, week=week)
+    # Full success clears stale rows; a partial fetch only upserts, so the
+    # failed positions keep yesterday's numbers instead of vanishing.
+    if fetched["rows"] and not fetched["failed"]:
+        conn.execute("DELETE FROM projections WHERE week=? AND source='fantasypros'", (week,))
     n = 0
     for p in fetched["rows"]:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
@@ -394,8 +412,14 @@ def main() -> None:
         if not draft_id:
             raise SystemExit("no draft id; set SLEEPER_DRAFT_ID or SLEEPER_LEAGUE_ID")
         while True:
-            n = etl_draft_picks(client, conn, draft_id)
-            print(f"picks={n}", flush=True)
+            # The poller must outlive Sleeper hiccups: if this process dies,
+            # the API keeps serving stale picks while claiming wire-live. The
+            # board watches drafts.updated_at and banners when it goes stale.
+            try:
+                n = etl_draft_picks(client, conn, draft_id)
+                print(f"picks={n}", flush=True)
+            except Exception as e:
+                print(f"poll error (retrying): {e}", flush=True)
             time.sleep(settings.draft_poll_seconds)
 
 

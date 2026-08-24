@@ -38,8 +38,11 @@ def _players_index(conn) -> dict[str, sqlite3.Row]:
 
 def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     """Everything the Draft Board surface needs, in one payload."""
+    # Newest draft wins: a league reset creates a second draft row, and an
+    # unordered LIMIT 1 could bind the board to the dead one on draft night.
     drow = conn.execute("SELECT * FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone() \
-        if settings.mode == "demo" else conn.execute("SELECT * FROM drafts LIMIT 1").fetchone()
+        if settings.mode == "demo" else conn.execute(
+            "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
     dsettings = json.loads(drow["settings_json"]) if drow and drow["settings_json"] else {}
     teams = int(dsettings.get("teams", settings.teams))
     rounds = int(dsettings.get("rounds", settings.rounds))
@@ -196,6 +199,9 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             "on_clock_slot": on_clock_slot,
             "on_the_clock_me": on_clock_slot == my_slot,
             "my_slot": my_slot, "my_next_pick": my_next,
+            # heartbeat: the poller refreshes this every cycle; the frontend
+            # banners when it goes stale during a live draft
+            "synced_at": drow["updated_at"] if drow else None,
         },
         "players": board_rows,
         "suggestions": suggestions,

@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS consensus(
     vbd REAL,
     PRIMARY KEY(player_id, week)
 );
+-- NOTE: `adp` holds pick-position ADP for sources sleeper/ffc/demo but EXPERT
+-- CONSENSUS RANK for source fp_ecr (rank ~ ADP early, diverges in the tail).
+-- brain.py's composition prefers true ADP and falls back to rank; never
+-- average across sources without checking `source`.
 CREATE TABLE IF NOT EXISTS adp(
     player_id TEXT NOT NULL,
     source TEXT NOT NULL,
