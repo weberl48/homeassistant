@@ -1,0 +1,58 @@
+# /config/dashboards/bootlegger.yaml
+# Sidebar dashboard for Bootlegger. Registered in configuration.yaml under
+# `lovelace: dashboards:` as dashboard-bootlegger.
+#
+# The board itself lives at http://192.168.1.160:8484 (LAN / Tailscale only —
+# no public URL by design). The iframe and tap links below work when the phone
+# is on home Wi-Fi or on the household Tailscale.
+
+title: Bootlegger
+
+views:
+  - title: The Board
+    path: board
+    icon: mdi:barrel
+    cards:
+      - type: vertical-stack
+        cards:
+          # Hero: service + lineup state, tap opens the board itself
+          - type: custom:mushroom-template-card
+            primary: >-
+              {% set s = states('sensor.bootlegger_lineup_state') %}
+              {% if s == 'optimal' %}Lineup optimal — the room is satisfied
+              {% elif s == 'verified' %}Swap verified against the API ✅
+              {% elif s in ['proposed', 'notified', 'pending'] %}The room found {{ states('sensor.bootlegger_lineup_delta') }} pts — approval waiting
+              {% elif s in ['approved', 'executed'] %}The hands are moving…
+              {% elif s == 'failed' %}Swap FAILED — set your lineup in Sleeper
+              {% else %}Bootlegger is {{ states('sensor.bootlegger_status') }}{% endif %}
+            secondary: >-
+              {{ state_attr('sensor.bootlegger_status', 'mode') }} mode ·
+              draft {{ state_attr('sensor.bootlegger_status', 'draft_status') }} ·
+              tap to open the back room
+            icon: mdi:barrel
+            icon_color: >-
+              {% set s = states('sensor.bootlegger_lineup_state') %}
+              {% if s in ['optimal', 'verified'] %}green
+              {% elif s == 'failed' %}red
+              {% elif s in ['proposed', 'notified', 'pending'] %}amber
+              {% else %}brown{% endif %}
+            fill_container: true
+            multiline_secondary: true
+            tap_action:
+              action: url
+              url_path: http://192.168.1.160:8484
+
+          - type: glance
+            entities:
+              - entity: sensor.bootlegger_status
+                name: Service
+              - entity: sensor.bootlegger_lineup_delta
+                name: Lineup Δ
+              - entity: sensor.bootlegger_lineup_state
+                name: Rec state
+
+          # The board, embedded. Needs the phone on Wi-Fi/Tailscale and the
+          # service running; otherwise use the tap link above.
+          - type: iframe
+            url: http://192.168.1.160:8484
+            aspect_ratio: 75%

@@ -1,0 +1,33 @@
+# Bootlegger (fantasy football autopilot) — HA decoration only.
+# Per the design, HA is OUT of Bootlegger's critical path: these sensors just
+# mirror its /health and week card so the dashboard can show state. If the
+# service is down the sensors go unavailable and the dashboard says so.
+
+rest:
+  - resource: http://192.168.1.160:8484/health
+    scan_interval: 60
+    timeout: 5
+    sensor:
+      - name: "Bootlegger Status"
+        unique_id: bootlegger_status
+        value_template: "{{ 'up' if value_json.ok else 'trouble' }}"
+        json_attributes:
+          - mode
+          - draft_status
+          - approve_required
+          - hands_dry_run
+
+  - resource: http://192.168.1.160:8484/api/week/1
+    scan_interval: 120
+    timeout: 5
+    sensor:
+      - name: "Bootlegger Lineup Delta"
+        unique_id: bootlegger_lineup_delta
+        unit_of_measurement: "pts"
+        value_template: "{{ value_json.delta | default(0) }}"
+      - name: "Bootlegger Lineup State"
+        unique_id: bootlegger_lineup_state
+        value_template: >-
+          {% if value_json.rec %}{{ value_json.rec.state }}
+          {% elif value_json.material %}pending
+          {% else %}optimal{% endif %}
