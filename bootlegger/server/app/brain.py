@@ -150,6 +150,7 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         "suggestions": suggestions,
         "recent_picks": recent,
         "my_roster": my_roster,
+        "roster_positions": rp,
     }
 
 

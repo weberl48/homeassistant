@@ -163,13 +163,47 @@ def etl_values(conn: sqlite3.Connection) -> int:
     return n
 
 
+def etl_projections(client: SleeperClient, conn: sqlite3.Connection, week: int = 0) -> int:
+    """Sleeper public projections -> projections table. The points field follows
+    the league's PPR setting when known (rec 1.0 -> pts_ppr, .5 -> half, 0 -> std)."""
+    field = "pts_ppr"
+    row = conn.execute("SELECT scoring_json FROM league").fetchone()
+    if row and row["scoring_json"]:
+        rec = (json.loads(row["scoring_json"]) or {}).get("rec")
+        if rec == 0.5:
+            field = "pts_half_ppr"
+        elif rec == 0:
+            field = "pts_std"
+    have = {r["sleeper_id"] for r in conn.execute("SELECT sleeper_id FROM players")}
+    n = 0
+    for pid, v in client.projections(settings.season, week).items():
+        pts = v.get(field) or v.get("pts_ppr")
+        if not pts or pid not in have:
+            continue
+        conn.execute(
+            "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
+            "VALUES(?,?,?,?,?,?)",
+            (pid, week, "sleeper", float(pts), None, None),
+        )
+        n += 1
+    conn.commit()
+    return n
+
+
 def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: str) -> int:
     d = client.draft(draft_id)
+    # A snake draft cares about the DRAFT SLOT, not the roster id. Sleeper
+    # publishes draft_order (user_id -> slot) once the order is set; merge our
+    # slot into the stored settings so the board tracks it automatically.
+    dsettings = d.get("settings", {}) or {}
+    order = d.get("draft_order") or {}
+    if settings.user_id and settings.user_id in order:
+        dsettings = {**dsettings, "slot": order[settings.user_id]}
     conn.execute(
         "INSERT INTO drafts(draft_id,status,settings_json,updated_at) VALUES(?,?,?,?) "
         "ON CONFLICT(draft_id) DO UPDATE SET status=excluded.status,"
         "settings_json=excluded.settings_json,updated_at=excluded.updated_at",
-        (draft_id, d.get("status"), json.dumps(d.get("settings", {})), db.utcnow()),
+        (draft_id, d.get("status"), json.dumps(dsettings), db.utcnow()),
     )
     picks = client.draft_picks(draft_id)
     for p in picks:
@@ -203,7 +237,14 @@ def nightly(conn: sqlite3.Connection) -> dict:
         etl_rosters(client, conn)
     out["adp"] = etl_adp(conn)
     out["values"] = etl_values(conn)
+    out["projections"] = etl_projections(client, conn, week=0)
     out["consensus"] = compute_consensus(conn, week=0)
+    # In-season: weekly projections feed the Sunday lineup card.
+    state = client.nfl_state() or {}
+    wk = state.get("week") or 0
+    if state.get("season_type") == "regular" and wk:
+        out[f"projections_w{wk}"] = etl_projections(client, conn, week=wk)
+        out[f"consensus_w{wk}"] = compute_consensus(conn, week=wk)
     ping_healthchecks(ok=True)
     return out
 

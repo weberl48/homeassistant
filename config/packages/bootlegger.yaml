@@ -1,7 +1,8 @@
-# Bootlegger (fantasy football autopilot) — HA decoration only.
-# Per the design, HA is OUT of Bootlegger's critical path: these sensors just
-# mirror its /health and week card so the dashboard can show state. If the
-# service is down the sensors go unavailable and the dashboard says so.
+# Bootlegger (fantasy football autopilot) — HA decoration + the phone tap.
+# Per the design, HA is OUT of Bootlegger's critical path: the sensors mirror
+# its /health and week card, and the push automations are a convenience layer —
+# if HA is down, the board at :8484 still works and the ledger still records.
+# The approve tap reuses the house actionable-push pattern (see money advisor).
 
 rest:
   - resource: http://192.168.1.160:8484/health
@@ -31,3 +32,73 @@ rest:
           {% if value_json.rec %}{{ value_json.rec.state }}
           {% elif value_json.material %}pending
           {% else %}optimal{% endif %}
+        json_attributes:
+          - rec
+          - delta
+
+rest_command:
+  bootlegger_rec_action:
+    url: "http://192.168.1.160:8484/api/recs/{{ rec_id }}/{{ action }}"
+    method: post
+
+automation:
+  - id: bootlegger_push_lineup_rec
+    alias: "Bootlegger: push lineup rec for approval"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.bootlegger_lineup_state
+        to:
+          - proposed
+          - notified
+    condition:
+      - condition: template
+        value_template: >-
+          {{ (state_attr('sensor.bootlegger_lineup_state', 'rec') or {}).get('rec_id') is not none }}
+    action:
+      - variables:
+          rid: "{{ (state_attr('sensor.bootlegger_lineup_state', 'rec') or {}).get('rec_id') }}"
+          why: >-
+            {{ (state_attr('sensor.bootlegger_lineup_state', 'rec') or {}).get('rationale')
+               or 'A lineup swap is waiting for approval.' }}
+      - service: notify.mobile_app_sm_s926u
+        data:
+          title: >-
+            Bootlegger — the room found
+            {{ '%+.1f' | format(state_attr('sensor.bootlegger_lineup_state', 'delta') | float(0)) }} pts
+          message: "{{ why }}"
+          data:
+            tag: "bootlegger_rec_{{ rid }}"
+            channel: Bootlegger
+            clickAction: "http://192.168.1.160:8484"
+            actions:
+              - action: "BOOTLEGGER_APPROVE_{{ rid }}"
+                title: "Approve & Execute"
+              - action: "BOOTLEGGER_SNOOZE_{{ rid }}"
+                title: "Snooze 30m"
+
+  - id: bootlegger_handle_push_action
+    alias: "Bootlegger: handle push approval tap"
+    mode: queued
+    trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+    condition:
+      - condition: template
+        value_template: "{{ (trigger.event.data.action | default('')).startswith('BOOTLEGGER_') }}"
+    action:
+      - variables:
+          verb: "{{ trigger.event.data.action.split('_')[1] | lower }}"
+          rid: "{{ trigger.event.data.action.split('_')[2] }}"
+      - service: rest_command.bootlegger_rec_action
+        data:
+          rec_id: "{{ rid }}"
+          action: "{{ verb }}"
+      - service: notify.mobile_app_sm_s926u
+        data:
+          title: "Bootlegger"
+          message: >-
+            {{ 'The hands are moving — the board will show it verified.'
+               if verb == 'approve' else 'Snoozed 30 minutes.' }}
+          data:
+            tag: "bootlegger_rec_{{ rid }}"

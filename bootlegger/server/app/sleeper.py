@@ -50,6 +50,12 @@ class SleeperClient:
     def trending_adds(self, hours: int = 24, limit: int = 25) -> list[dict]:
         return self._get(f"/players/nfl/trending/add?lookback_hours={hours}&limit={limit}")
 
+    def projections(self, season: int, week: int = 0) -> dict[str, dict]:
+        """Sleeper's public projections blob; week 0 = full-season aggregate.
+        Values carry pts_ppr / pts_half_ppr / pts_std per player id."""
+        path = f"/projections/nfl/regular/{season}" + (f"/{week}" if week else "")
+        return self._get(path)
+
     def nfl_state(self) -> dict:
         return self._get("/state/nfl")
 

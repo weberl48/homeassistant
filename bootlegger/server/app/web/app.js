@@ -5,7 +5,20 @@
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
+// Fallback only — the board payload carries the league's real roster_positions.
 const SLOTS_NEEDED = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DEF: 1 };
+
+function slotsNeeded(board) {
+  const rp = board.roster_positions;
+  if (!Array.isArray(rp) || !rp.length) return SLOTS_NEEDED;
+  const n = {};
+  for (const s of rp) {
+    if (["BN", "IR", "TAXI"].includes(s)) continue;
+    const k = ["SUPER_FLEX", "SUPERFLEX", "WRRB_FLEX", "REC_FLEX"].includes(s) ? "FLEX" : s;
+    n[k] = (n[k] || 0) + 1;
+  }
+  return n;
+}
 
 const state = {
   tab: localStorage.getItem("bootlegger.tab") || "board",
@@ -240,17 +253,21 @@ function renderCall(board) {
 }
 
 function renderShelf(board) {
+  const slots = slotsNeeded(board);
   const counts = {};
   for (const p of board.my_roster) counts[p.pos] = (counts[p.pos] || 0) + 1;
   const needs = [];
   let flexUsed = 0;
   for (const pos of ["QB", "RB", "WR", "TE", "K", "DEF"]) {
-    const have = counts[pos] || 0, want = SLOTS_NEEDED[pos];
+    const want = slots[pos] || 0;
+    if (!want) continue;
+    const have = counts[pos] || 0;
     if (["RB", "WR", "TE"].includes(pos) && have > want)
       flexUsed += have - want;
     needs.push({ pos, have: Math.min(have, want), want });
   }
-  needs.push({ pos: "FLEX", have: Math.min(flexUsed, SLOTS_NEEDED.FLEX), want: SLOTS_NEEDED.FLEX });
+  if (slots.FLEX)
+    needs.push({ pos: "FLEX", have: Math.min(flexUsed, slots.FLEX), want: slots.FLEX });
   $("#shelf-needs").innerHTML = needs.map((n) =>
     `<span class="need ${n.have < n.want ? "is-open" : ""}">${n.pos} ${n.have}/${n.want}</span>`).join("");
   const list = $("#shelf-list");
