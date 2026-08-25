@@ -9,5 +9,11 @@
     "bench_row": {"role": "button", "name_re": "(?i){player_name}"},
     "confirm_swap": {"role": "button", "name_re": "(?i)confirm|save"}
   },
-  "pacing_seconds": {"min": 0.8, "max": 2.5}
+  "pacing_seconds": {"min": 0.8, "max": 2.5},
+  "draft_room": {
+    "_comment": "Draft pilot locators — placeholders until calibrated in a live LOGGED-IN practice room (scrimmage mode). calibrated stays false until then; the pilot refuses to act on placeholders.",
+    "calibrated": false,
+    "search": {"role": "searchbox", "placeholder_re": "(?i)search"},
+    "draft_button": {"name_re": "(?i)^draft\\b"}
+  }
 }

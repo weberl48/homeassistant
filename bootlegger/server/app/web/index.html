@@ -72,6 +72,11 @@ provenance.
   <button class="btn-link" id="practice-clear">Back to the real draft</button>
 </div>
 
+<div class="pilot-banner" id="pilot-banner" hidden>
+  THE PILOT HAS THE WHEEL — on your clock, Bootlegger drafts from the slip,
+  then The Call. <button class="btn-link" id="pilot-disarm">Disarm</button>
+</div>
+
 <main id="main">
 
   <!-- ============================ THE BOARD ============================ -->
@@ -90,6 +95,24 @@ provenance.
           <ol id="shelf-list" class="shelf-list"></ol>
         </div>
         <button class="btn btn-ghost btn-small" id="reset-mock" hidden>Re-run the mock draft</button>
+
+        <div class="scrimmage slip" id="slip">
+          <h3 class="scrimmage-title">The Slip</h3>
+          <p class="scrimmage-note">Your ordered pick list. If the pilot flies,
+          it takes the slip first and The Call when the slip runs dry. Picked
+          players stay, struck through — the plan meets reality in ink.</p>
+          <div class="slip-search-wrap">
+            <input id="slip-search" type="text" spellcheck="false"
+              placeholder="add a player…" aria-label="Search players to add to the slip">
+            <div id="slip-results" class="slip-results" hidden></div>
+          </div>
+          <ol id="slip-list" class="slip-list"></ol>
+          <button class="btn btn-ghost btn-small" id="slip-fill">Add the Call's top five</button>
+          <div class="pilot">
+            <span class="pilot-status" id="pilot-status">—</span>
+            <button class="btn btn-ghost btn-small" id="pilot-arm">Arm the pilot</button>
+          </div>
+        </div>
 
         <div class="scrimmage" id="scrimmage">
           <h3 class="scrimmage-title">Scrimmage</h3>

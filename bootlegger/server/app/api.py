@@ -351,6 +351,34 @@ def get_draft_grades():
     return brain.draft_grades(get_conn())
 
 
+class QueueBody(BaseModel):
+    ids: list[str]
+
+
+class ArmBody(BaseModel):
+    armed: bool
+
+
+@app.get("/api/queue")
+def get_queue():
+    """The Slip + pilot state."""
+    return brain.get_queue(get_conn())
+
+
+@app.post("/api/queue", dependencies=MUTATES)
+def save_queue(body: QueueBody):
+    return {"ok": True, "count": brain.set_queue(get_conn(), body.ids)}
+
+
+@app.post("/api/pilot/arm", dependencies=MUTATES)
+def pilot_arm(body: ArmBody):
+    """Arm/disarm the draft pilot. Arming is a flag the pilot worker watches;
+    with no worker running (or dry-run on) it drafts nothing — but the flag
+    still banners in the UI so intent is never invisible."""
+    db.meta_set(get_conn(), "pilot_armed", "1" if body.armed else "0")
+    return {"ok": True, "armed": body.armed}
+
+
 @app.get("/api/practice")
 def practice_status():
     return {"draft_id": db.meta_get(get_conn(), "practice_draft_id")}

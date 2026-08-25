@@ -192,6 +192,30 @@ def test_grades_missing_risk_imputed():
         "the genuinely sturdy seat must out-grade the unknown one"
 
 
+def test_slip_roundtrip(world):
+    """set_queue drops unknowns and dupes, preserves order; get_queue resolves
+    display rows in that order."""
+    pids = [r["player_id"] for r in world.execute(
+        "SELECT player_id FROM consensus WHERE week=0 "
+        "ORDER BY pts_robust DESC LIMIT 3")]
+    n = brain.set_queue(world, [pids[0], "nope-999", pids[1], pids[0], pids[2]])
+    assert n == 3
+    q = brain.get_queue(world)
+    assert [p["id"] for p in q["queue"]] == pids
+    assert q["pilot_armed"] is False
+
+
+def test_resolve_pilot_pick():
+    """Slip first while anyone on it survives; The Call when it runs dry;
+    None when the world is empty."""
+    sugg = [{"id": "c1"}, {"id": "c2"}]
+    assert brain.resolve_pilot_pick(["a", "b"], set(), sugg) == ("a", "slip")
+    assert brain.resolve_pilot_pick(["a", "b"], {"a"}, sugg) == ("b", "slip")
+    assert brain.resolve_pilot_pick(["a", "b"], {"a", "b"}, sugg) == ("c1", "call")
+    assert brain.resolve_pilot_pick(["a"], {"a", "c1"}, sugg) == ("c2", "call")
+    assert brain.resolve_pilot_pick([], {"c1", "c2"}, sugg) is None
+
+
 def test_parse_draft_id():
     """Scrimmage paste box: room URLs, bare ids, and junk."""
     good = "1397719078969278464"

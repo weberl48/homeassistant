@@ -599,6 +599,59 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .rc-mine p { color: var(--ink-dim); margin-top: 4px; }
 .rc-mine p b { color: var(--ink); }
 
+/* the slip + pilot (board rail) */
+.slip-search-wrap { position: relative; margin-bottom: 10px; }
+.slip-search-wrap input {
+  width: 100%; font: 400 .85rem/1.2 var(--font-ui); color: var(--ink);
+  background: var(--ground); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px;
+}
+.slip-search-wrap input:focus-visible { outline: 2px dashed var(--brass); outline-offset: -1px; }
+.slip-results {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow-plate); overflow: hidden; padding: 4px;
+}
+.slip-results button {
+  appearance: none; display: block; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: none; color: var(--ink); font: inherit; font-size: .88rem;
+  padding: 7px 8px; border-radius: 6px;
+}
+.slip-results button:hover { background: var(--panel-2); }
+.slip-list { list-style: none; margin: 0 0 10px; }
+.slip-row {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 6px 2px; border-bottom: 1px dashed var(--line-soft);
+}
+.slip-n {
+  font-family: var(--font-ledger); font-size: .74rem; color: var(--ink-faint);
+  min-width: 16px; text-align: right;
+}
+.slip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slip-row.is-gone .slip-name { text-decoration: line-through; color: var(--ink-faint); }
+.slip-acts { display: flex; gap: 2px; }
+.slip-acts button {
+  appearance: none; cursor: pointer; background: none; color: var(--ink-dim);
+  border: 1px solid var(--line-soft); border-radius: 5px;
+  font-size: .72rem; line-height: 1; padding: 4px 6px;
+}
+.slip-acts button:hover { color: var(--ink); border-color: var(--brass-deep); }
+.slip-empty { padding: 6px 2px; }
+.pilot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px;
+}
+.pilot-status {
+  font: 600 .72rem/1.3 var(--font-ui); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-dim);
+}
+.pilot-banner {
+  position: sticky; top: 0; z-index: 27;
+  background: linear-gradient(180deg, #52231d, #421d18);
+  color: #ffd9d3; border-bottom: 2px dashed var(--oxblood);
+  padding: 9px 20px; font-weight: 600; letter-spacing: .03em;
+}
+
 /* scrimmage box (board rail) */
 .scrimmage {
   margin-top: 14px; border: 1px dashed var(--line); border-radius: 12px;

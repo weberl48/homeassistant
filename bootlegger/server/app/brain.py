@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from pathlib import Path
 from typing import Any
 
 from . import db
@@ -58,6 +59,53 @@ def set_practice(conn: sqlite3.Connection, did: str) -> None:
         conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (old,))
         conn.execute("DELETE FROM drafts WHERE draft_id=?", (old,))
     db.meta_set(conn, "practice_draft_id", did)
+
+
+def get_queue(conn: sqlite3.Connection) -> dict:
+    """The Slip: the user's ordered pick list. Resolved to display rows with
+    a picked flag (picked players stay visible, struck through — the slip is
+    a plan, and the room should see how the plan met reality)."""
+    ids = json.loads(db.meta_get(conn, "draft_queue") or "[]")
+    players = _players_index(conn)
+    cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
+    drow = conn.execute("SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+    picked = {r["player_id"] for r in conn.execute(
+        "SELECT player_id FROM draft_picks WHERE draft_id=?",
+        (drow["draft_id"],))} if drow else set()
+    rows = [{"id": pid, "name": players[pid]["name"], "pos": players[pid]["pos"],
+             "team": players[pid]["team"],
+             "pts": round((cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0, 1),
+             "picked": pid in picked}
+            for pid in ids if pid in players]
+    return {"queue": rows,
+            "pilot_armed": db.meta_get(conn, "pilot_armed") == "1",
+            "pilot_dry_run": settings.hands_dry_run,
+            "pilot_ready": Path("/run/secrets/sleeper_storage_state").exists()}
+
+
+def set_queue(conn: sqlite3.Connection, ids: list[str]) -> int:
+    """Replace the slip wholesale (the UI always sends the full order).
+    Unknown ids are dropped, order preserved, dupes collapsed."""
+    players = _players_index(conn)
+    seen: set[str] = set()
+    clean = [pid for pid in ids
+             if pid in players and not (pid in seen or seen.add(pid))]
+    db.meta_set(conn, "draft_queue", json.dumps(clean))
+    return len(clean)
+
+
+def resolve_pilot_pick(queue_ids: list[str], picked: set[str],
+                       suggestions: list[dict]) -> tuple[str, str] | None:
+    """The pilot's one decision, kept pure and testable: first slip player
+    still on the board, else The Call's top suggestion. Returns
+    (player_id, source) or None when there is nothing to take."""
+    for pid in queue_ids:
+        if pid not in picked:
+            return pid, "slip"
+    for s in suggestions:
+        if s["id"] not in picked:
+            return s["id"], "call"
+    return None
 
 
 def clear_practice(conn: sqlite3.Connection) -> str | None:

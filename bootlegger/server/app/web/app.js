@@ -906,6 +906,102 @@ function renderReportCard(g) {
     ${detail}`;
 }
 
+/* ------------------------------ the slip + pilot --------------------------
+   The Slip is the user's ordered pick list; the pilot (hands/draft_pilot.py,
+   a separate opt-in worker) takes slip-first-else-The-Call. The UI only
+   edits the plan and the armed flag — it never picks anything itself. */
+state.slipIds = [];
+
+async function loadSlip() {
+  try {
+    const data = await fetchJSON("/api/queue");
+    state.slipIds = data.queue.map((p) => p.id);
+    $("#slip-list").innerHTML = data.queue.length ? data.queue.map((p, i) => `
+      <li class="slip-row ${p.picked ? "is-gone" : ""}" data-id="${esc(p.id)}">
+        <span class="slip-n">${i + 1}</span>
+        <span class="pos pos-${posOf(p)}">${posOf(p)}</span>
+        <span class="slip-name">${esc(p.name)}</span>
+        <span class="slip-acts">
+          <button data-act="up" aria-label="Move ${esc(p.name)} up">↑</button>
+          <button data-act="down" aria-label="Move ${esc(p.name)} down">↓</button>
+          <button data-act="rm" aria-label="Remove ${esc(p.name)}">✕</button>
+        </span>
+      </li>`).join("")
+      : `<li class="muted slip-empty">Empty slip — the pilot would fly The Call alone.</li>`;
+    const armed = data.pilot_armed;
+    $("#pilot-status").textContent = armed
+      ? `ARMED${data.pilot_dry_run ? " · dry run — logs only" : " · LIVE"}`
+      : `parked${data.pilot_ready ? "" : " · no session key on the Pi"}${data.pilot_dry_run ? " · dry run" : ""}`;
+    $("#pilot-arm").textContent = armed ? "Disarm the pilot" : "Arm the pilot";
+    $("#pilot-banner").hidden = !armed;
+  } catch { /* rail panel only — the board stands */ }
+}
+
+async function saveSlip() {
+  await practiceCall("/api/queue", { ids: state.slipIds });
+  loadSlip();
+}
+
+$("#slip-list").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const id = btn.closest(".slip-row").dataset.id;
+  const i = state.slipIds.indexOf(id);
+  if (i < 0) return;
+  if (btn.dataset.act === "rm") state.slipIds.splice(i, 1);
+  if (btn.dataset.act === "up" && i > 0)
+    [state.slipIds[i - 1], state.slipIds[i]] = [state.slipIds[i], state.slipIds[i - 1]];
+  if (btn.dataset.act === "down" && i < state.slipIds.length - 1)
+    [state.slipIds[i + 1], state.slipIds[i]] = [state.slipIds[i], state.slipIds[i + 1]];
+  saveSlip().catch(() => wireFail());
+});
+
+let _slipTimer = null;
+$("#slip-search").addEventListener("input", (e) => {
+  clearTimeout(_slipTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { $("#slip-results").hidden = true; return; }
+  _slipTimer = setTimeout(async () => {
+    try {
+      const rs = await fetchJSON(`/api/players/search?q=${encodeURIComponent(q)}`);
+      $("#slip-results").innerHTML = rs.length ? rs.map((r) => `
+        <button type="button" data-id="${esc(r.id)}">
+          <span class="pos pos-${r.pos === "DST" ? "DEF" : esc(r.pos)}">${r.pos === "DST" ? "DEF" : esc(r.pos)}</span>
+          ${esc(r.name)} <span class="team">${esc(r.team ?? "")}</span></button>`).join("")
+        : `<p class="muted">nobody by that name</p>`;
+      $("#slip-results").hidden = false;
+    } catch { /* search is a convenience */ }
+  }, 250);
+});
+$("#slip-results").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-id]");
+  if (!b) return;
+  if (!state.slipIds.includes(b.dataset.id)) state.slipIds.push(b.dataset.id);
+  $("#slip-search").value = "";
+  $("#slip-results").hidden = true;
+  saveSlip().catch(() => wireFail());
+});
+
+$("#slip-fill").addEventListener("click", () => {
+  for (const s of (state.board?.suggestions || []).slice(0, 5))
+    if (!state.slipIds.includes(s.id)) state.slipIds.push(s.id);
+  saveSlip().catch(() => wireFail());
+});
+
+async function setPilot(armed) {
+  try { await practiceCall("/api/pilot/arm", { armed }); } catch { wireFail(); }
+  loadSlip();
+}
+$("#pilot-arm").addEventListener("click", () => {
+  const arming = $("#pilot-arm").textContent.startsWith("Arm");
+  if (arming && !confirm(
+    "Arm the pilot?\n\nWhen the pilot worker is running with dry-run OFF, " +
+    "Bootlegger will DRAFT FOR YOU whenever you're on the clock — the slip " +
+    "first, The Call when it runs dry. Disarm any time.")) return;
+  setPilot(arming);
+});
+$("#pilot-disarm").addEventListener("click", () => setPilot(false));
+
 /* -------------------------------- scrimmage -------------------------------
    Practice rooms are invisible on Sleeper's listing APIs, so the only way in
    is the room's URL. The server validates the id against Sleeper before
@@ -975,6 +1071,7 @@ async function boot() {
   } catch { wireFail(); }
   await pollBoard();   // runs applyPhase — a phase turn re-homes the tab here
   chipDefault();
+  loadSlip();
   state.booted = true;
   await pollWeek();
   // Adaptive cadence: 1s while the draft is live (the server caches the board
@@ -990,6 +1087,7 @@ async function boot() {
   setInterval(() => {
     if (state.tab === "waivers") loadWaivers();
     if (state.tab === "ledger") loadLedger();
+    if (state.tab === "board") loadSlip();   // picked strikethroughs + pilot state
   }, 15000);
   setInterval(() => {
     if (state.tab === "parlor") loadParlor();  // full-league scan — slower cadence
