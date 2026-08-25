@@ -20,6 +20,9 @@ from typing import Any
 # injury data is present (Draft Sharks down or pre-integration draft).
 WEIGHTS = {"starters": 0.45, "vbd": 0.20, "surplus": 0.15, "depth": 0.10, "risk": 0.10}
 
+# Letter cuts on the composite z. Roughly: A-range = top ~sixth of the room,
+# B straddles the middle, C-range = bottom ~sixth, D = a clear outlier. In a
+# 12-seat room that hands out a couple of As and a couple of Cs most drafts.
 _CURVE = [(1.30, "A+"), (0.80, "A"), (0.40, "A-"), (0.15, "B+"), (-0.15, "B"),
           (-0.40, "B-"), (-0.80, "C+"), (-1.10, "C"), (-1.40, "C-")]
 
@@ -49,7 +52,19 @@ def compose(teams: list[dict[str, Any]]) -> list[dict[str, Any]]:
         total = sum(weights.values())
         weights = {k: v / total for k, v in weights.items()}
 
-    cols = {k: _zscores([float(t.get(k) or 0.0) for t in teams]) for k in weights}
+    cols = {}
+    for k in weights:
+        vals = [t.get(k) for t in teams]
+        if k == "risk":
+            # A seat the injury data doesn't cover must grade AVERAGE, not
+            # sturdiest — treating missing as zero risk would reward drafting
+            # players the sharks don't track. Impute the league mean.
+            present = [float(v) for v in vals if v is not None]
+            fill = mean(present)
+            vals = [float(v) if v is not None else fill for v in vals]
+        else:
+            vals = [float(v or 0.0) for v in vals]
+        cols[k] = _zscores(vals)
     if "risk" in cols:                       # lower risk is better — invert
         cols["risk"] = [-z for z in cols["risk"]]
 
@@ -66,7 +81,9 @@ def compose(teams: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def seat_note(t: dict[str, Any]) -> str:
-    """One line in the room's voice, driven by the strongest signals."""
+    """One line in the room's voice, driven by the strongest signals.
+    |z| >= 0.8 (about the top/bottom sixth of the room) is what earns a
+    mention — anything milder reads as noise, not a story."""
     c = t["components"]
     strong = max(c, key=lambda k: c[k]["z"])
     weak = min(c, key=lambda k: c[k]["z"])

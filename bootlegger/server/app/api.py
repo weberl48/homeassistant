@@ -366,6 +366,12 @@ def practice_start(body: PracticeBody):
     if not did:
         raise HTTPException(400, "no draft id in that — paste the practice room's URL")
     conn = get_conn()
+    # HARD guard, checked locally before anything else: while the real league
+    # draft is live, the wire is not for rent. A pasted URL (or anyone on the
+    # LAN hitting this endpoint) must not blind the board on draft night.
+    if brain.live_league_draft(conn):
+        raise HTTPException(409, "the league draft is LIVE — the wire stays on "
+                                 "the real thing. Scrimmage another night.")
     # Validate against Sleeper before binding: a typo'd id must fail loudly
     # here, not silently starve the poller. Also fetch the league's own draft
     # id — pasting the real room should be a friendly no, not a rebind.
@@ -382,28 +388,14 @@ def practice_start(body: PracticeBody):
         raise HTTPException(502, "couldn't reach Sleeper to check that room — try again")
     if not doc:
         raise HTTPException(404, "Sleeper doesn't know that draft id — check the link")
-    # Swapping rooms: sweep the previous scrimmage's rows so they can't
-    # outrank the new target on the newest-draft rule.
-    old = db.meta_get(conn, "practice_draft_id")
-    if old and old != did:
-        conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (old,))
-        conn.execute("DELETE FROM drafts WHERE draft_id=?", (old,))
-    db.meta_set(conn, "practice_draft_id", did)
+    brain.set_practice(conn, did)
     return {"ok": True, "draft_id": did, "status": doc.get("status")}
 
 
 @app.post("/api/practice/clear", dependencies=MUTATES)
 def practice_clear():
-    """Back to the real thing: drop the scrimmage rows so the board rebinds
-    to the league draft on the next poll."""
-    conn = get_conn()
-    did = db.meta_get(conn, "practice_draft_id")
-    if did:
-        conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (did,))
-        conn.execute("DELETE FROM drafts WHERE draft_id=?", (did,))
-        conn.execute("DELETE FROM meta WHERE key='practice_draft_id'")
-        conn.commit()
-    return {"ok": True, "cleared": did}
+    """Back to the real thing — brain.clear_practice owns the sweep."""
+    return {"ok": True, "cleared": brain.clear_practice(get_conn())}
 
 
 class DeviceBody(BaseModel):

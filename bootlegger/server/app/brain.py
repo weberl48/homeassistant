@@ -32,6 +32,46 @@ def parse_draft_id(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+def draft_is_complete(status: str | None, n_picks: int, total: int) -> bool:
+    """THE one home for 'is the draft in the books': the label says so, or
+    every pick is in (some rooms — the demo seed included — never flip the
+    label). The board and the report card must never disagree on this."""
+    return status == "complete" or (total > 0 and n_picks >= total)
+
+
+def live_league_draft(conn: sqlite3.Connection) -> bool:
+    """True while a NON-scrimmage draft is live. The scrimmage bind must
+    refuse while this holds — retargeting the poller mid-real-draft would
+    blind the board on the one night it matters, under a green wire lamp."""
+    practice_id = db.meta_get(conn, "practice_draft_id") or ""
+    row = conn.execute(
+        "SELECT 1 FROM drafts WHERE status='drafting' AND draft_id != ?",
+        (practice_id,)).fetchone()
+    return row is not None
+
+
+def set_practice(conn: sqlite3.Connection, did: str) -> None:
+    """Bind the scrimmage: sweep any previous room's rows (they'd contest
+    the newest-draft rule), then write the meta key the poller watches."""
+    old = db.meta_get(conn, "practice_draft_id")
+    if old and old != did:
+        conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (old,))
+        conn.execute("DELETE FROM drafts WHERE draft_id=?", (old,))
+    db.meta_set(conn, "practice_draft_id", did)
+
+
+def clear_practice(conn: sqlite3.Connection) -> str | None:
+    """Back to the real thing: drop the scrimmage rows and the meta key so
+    the board rebinds to the league draft on the next poll."""
+    did = db.meta_get(conn, "practice_draft_id")
+    if did:
+        conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (did,))
+        conn.execute("DELETE FROM drafts WHERE draft_id=?", (did,))
+        conn.execute("DELETE FROM meta WHERE key='practice_draft_id'")
+        conn.commit()
+    return did
+
+
 def lineup_hash(starters: list[str]) -> str:
     """Order-sensitive hash of the starters list — slot order is the lineup."""
     return hashlib.sha256(json.dumps(starters).encode()).hexdigest()[:16]
@@ -74,7 +114,7 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     picked = {p["player_id"]: p for p in picks}
     current_pick = len(picks) + 1
     total_picks = teams * rounds
-    if status == "complete" or current_pick > total_picks:
+    if draft_is_complete(status, len(picks), total_picks):
         status = "complete"
         on_clock_slot, my_next = None, None
     else:
@@ -416,12 +456,12 @@ def draft_grades(conn: sqlite3.Connection) -> dict:
     draft_id = drow["draft_id"]
     dsettings = json.loads(drow["settings_json"]) if drow["settings_json"] else {}
     my_slot = int(dsettings.get("slot", settings.my_roster_id))
-    # Complete = the label says so OR every pick is in — same derivation as
-    # the board (the demo seed and some rooms never flip the label).
     n_picks = conn.execute("SELECT COUNT(*) c FROM draft_picks WHERE draft_id=?",
                            (draft_id,)).fetchone()["c"]
     total = int(dsettings.get("teams", settings.teams)) * int(dsettings.get("rounds", settings.rounds))
-    if drow["status"] != "complete" and n_picks < total:
+    # A cancelled room can carry the 'complete' label with no picks — grading
+    # zero seats would crash the curve math, so an empty book is never ready.
+    if n_picks == 0 or not draft_is_complete(drow["status"], n_picks, total):
         return not_ready
     practice = draft_id == db.meta_get(conn, "practice_draft_id")
 

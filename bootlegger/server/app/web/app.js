@@ -497,13 +497,17 @@ async function pollBoard() {
     const status = state.board?.draft?.status;
     const practice = !!state.board?.draft?.practice;
     $("#practice-banner").hidden = !practice;
+    // The server hard-refuses binds during the live league draft (409);
+    // hiding the box removes the affordance for the misclick entirely.
+    $("#scrimmage").hidden = status === "drafting" && !practice;
     applyPhase(status, practice);
     maybeLoadGrades();
     // Wayfinding: rooms that have nothing until the season starts read dim.
-    // Still clickable — inside, each explains when it opens.
+    // Still clickable — inside, each explains when it opens. The season rooms
+    // follow the REAL league, so a finished scrimmage never lights them.
     document.querySelectorAll(".tab").forEach((b) => {
       if (["week", "waivers", "parlor"].includes(b.dataset.tab))
-        b.classList.toggle("is-dormant", status !== "complete");
+        b.classList.toggle("is-dormant", status !== "complete" || practice);
     });
     wireOK();
   } catch { wireFail(); }
@@ -841,6 +845,8 @@ async function loadLedger() {
 /* ------------------------------ the report card ---------------------------
    Grades appear once, when the bound draft (real or scrimmage) completes —
    every seat on the league's own curve, my row opened up. */
+// Keys mirror engines/grades.WEIGHTS — rename a metric server-side and this
+// map must follow, or the UI shows the raw key.
 const COMP_LABELS = { starters: "starting nine", vbd: "value", surplus: "discounts",
                       depth: "the shelf", risk: "sturdiness" };
 
@@ -904,6 +910,9 @@ function renderReportCard(g) {
    Practice rooms are invisible on Sleeper's listing APIs, so the only way in
    is the room's URL. The server validates the id against Sleeper before
    binding — a typo fails loudly here, not silently on the wire. */
+/* Not fetchJSON on purpose: fetchJSON throws away the response body on a
+   non-2xx, and scrimmage errors carry their message in the server's JSON
+   `detail` ("that's the league draft", "the league draft is LIVE", …). */
 async function practiceCall(path, body) {
   const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
   if (TOKEN) opts.headers["X-Bootlegger-Token"] = TOKEN;

@@ -137,6 +137,61 @@ def test_grade_letter_curve():
     assert ge.letter(-2.0) == "D"
 
 
+def test_live_league_draft_guard(world):
+    """C1 pin: a live NON-practice draft blocks scrimmage binds; the same
+    draft bound AS the scrimmage does not; a finished draft never does."""
+    assert brain.live_league_draft(world) is True   # demo seed is 'drafting'
+    did = world.execute("SELECT draft_id FROM drafts").fetchone()["draft_id"]
+    db.meta_set(world, "practice_draft_id", did)    # it IS the scrimmage
+    assert brain.live_league_draft(world) is False
+    world.execute("DELETE FROM meta WHERE key='practice_draft_id'")
+    world.execute("UPDATE drafts SET status='complete'")
+    assert brain.live_league_draft(world) is False
+    world.execute("UPDATE drafts SET status='drafting'")  # restore for others
+    world.commit()
+
+
+def test_practice_lifecycle(predraft_world):
+    """set_practice sweeps the previous room's rows; clear removes everything."""
+    conn = predraft_world
+    conn.execute("INSERT INTO drafts(draft_id,status,settings_json,updated_at) "
+                 "VALUES('old-room','complete','{}','2026-01-01')")
+    conn.execute("INSERT INTO draft_picks(draft_id,pick_no,round,draft_slot,"
+                 "roster_id,player_id,ts) VALUES('old-room',1,1,1,1,'x','2026-01-01')")
+    db.meta_set(conn, "practice_draft_id", "old-room")
+    brain.set_practice(conn, "new-room")
+    assert db.meta_get(conn, "practice_draft_id") == "new-room"
+    assert conn.execute("SELECT COUNT(*) c FROM drafts WHERE draft_id='old-room'"
+                        ).fetchone()["c"] == 0, "old scrimmage rows must be swept"
+    cleared = brain.clear_practice(conn)
+    assert cleared == "new-room"
+    assert db.meta_get(conn, "practice_draft_id") is None
+
+
+def test_grades_refuse_empty_complete(predraft_world):
+    """W2 pin: a 'complete' label with zero picks (cancelled room) must not
+    reach the curve math."""
+    predraft_world.execute("UPDATE drafts SET status='complete'")
+    predraft_world.execute("DELETE FROM draft_picks")
+    g = brain.draft_grades(predraft_world)
+    assert g["ready"] is False
+
+
+def test_grades_missing_risk_imputed():
+    """W1 pin: a seat the injury data doesn't cover grades AVERAGE sturdiness,
+    never sturdiest."""
+    from app.engines import grades as ge
+    base = {"starters": 100.0, "vbd": 10.0, "surplus": 0.0, "depth": 1}
+    teams = [{**base, "slot": 1, "risk": 10.0},
+             {**base, "slot": 2, "risk": 30.0},
+             {**base, "slot": 3, "risk": None}]
+    out = ge.compose(teams)
+    by_slot = {t["slot"]: t for t in out}
+    assert by_slot[3]["components"]["risk"]["z"] == 0.0, "imputed to the mean"
+    assert by_slot[1]["components"]["risk"]["z"] > by_slot[3]["components"]["risk"]["z"], \
+        "the genuinely sturdy seat must out-grade the unknown one"
+
+
 def test_parse_draft_id():
     """Scrimmage paste box: room URLs, bare ids, and junk."""
     good = "1397719078969278464"

@@ -546,6 +546,19 @@ def main() -> None:
                 target = db.meta_get(conn, "practice_draft_id") or draft_id
                 if target != last_target:
                     status, cycle = None, 0   # full doc immediately on a switch
+                    if last_target is not None:
+                        # Backstop for the clear/poll race: a cycle already in
+                        # flight for the OLD target can re-upsert rows the API
+                        # just deleted, leaving a ghost draft that contests the
+                        # newest-draft rule. On every switch, sweep anything
+                        # that is neither the new target nor the league draft.
+                        conn.execute(
+                            "DELETE FROM draft_picks WHERE draft_id NOT IN (?,?)",
+                            (target, draft_id))
+                        conn.execute(
+                            "DELETE FROM drafts WHERE draft_id NOT IN (?,?)",
+                            (target, draft_id))
+                        conn.commit()
                     last_target = target
                 full = cycle % 10 == 0 or status is None
                 n = etl_draft_picks(client, conn, target, full=full)
