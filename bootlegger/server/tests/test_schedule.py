@@ -30,6 +30,10 @@ def synthetic_season(season: int = 2026) -> list[dict]:
                 "away_team": away, "home_team": home,
                 "roof": "dome" if home in ("MIN", "DET", "NO") else "outdoors",
                 "stadium": f"{home} Field", "location": "Home",
+                # Vegas: home favored by 3 in a 44.5 game for week 1; lines
+                # unposted (None) beyond it, like the real file's tail weeks.
+                "spread_line": 3.0 if week == 1 else None,
+                "total_line": 44.5 if week == 1 else None,
             })
     return games
 
@@ -52,6 +56,29 @@ def test_etl_schedule_both_perspectives_and_utc(sched_conn):
     assert g["kickoff_utc"].startswith("2026-09-13T17:00")
     n = sched_conn.execute("SELECT COUNT(*) c FROM nfl_games").fetchone()["c"]
     assert n == 272 * 2
+
+
+def test_vegas_lines_team_perspective(sched_conn):
+    """positive spread_line = HOME favored (nflverse convention); each team
+    row carries its own side of the line and its implied total."""
+    home = next(r for r in sched_conn.execute(
+        "SELECT * FROM nfl_games WHERE week=1 AND is_home=1 LIMIT 1"))
+    away = schedule.game_for(sched_conn, home["opponent"], 1)
+    assert home["spread"] == 3.0 and away["spread"] == -3.0
+    assert home["implied_total"] == pytest.approx(23.75, abs=0.06)  # (44.5+3)/2
+    assert away["implied_total"] == pytest.approx(20.75, abs=0.06)
+    # Unposted lines stay NULL, they don't become zeros.
+    late = sched_conn.execute(
+        "SELECT spread, implied_total FROM nfl_games WHERE week=15 LIMIT 1").fetchone()
+    assert late["spread"] is None and late["implied_total"] is None
+
+
+def test_migration_idempotent(sched_conn):
+    """init_db (schema + guarded ALTERs) must be re-runnable on a DB that
+    already carries every column — the live Pi runs it on every boot."""
+    from app import db as db_mod
+    db_mod.init_db(sched_conn)
+    db_mod.init_db(sched_conn)
 
 
 def test_short_read_refused(conn, monkeypatch):

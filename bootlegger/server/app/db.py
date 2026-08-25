@@ -166,6 +166,9 @@ CREATE TABLE IF NOT EXISTS nfl_games(
     precip_prob REAL,
     temp_f REAL,
     weather_at TEXT,
+    spread REAL,          -- team-perspective: positive = this team favored
+    total_line REAL,
+    implied_total REAL,   -- (total_line + spread)/2 — the market's opponent-strength read
     PRIMARY KEY(season, week, team)
 );
 """
@@ -188,7 +191,10 @@ def utcnow() -> str:
 def _migrate(conn: sqlite3.Connection) -> None:
     """Guarded ALTERs for columns added after first ship."""
     for stmt in ("ALTER TABLE players ADD COLUMN injury_risk REAL",
-                 "ALTER TABLE players ADD COLUMN proj_games REAL"):
+                 "ALTER TABLE players ADD COLUMN proj_games REAL",
+                 "ALTER TABLE nfl_games ADD COLUMN spread REAL",
+                 "ALTER TABLE nfl_games ADD COLUMN total_line REAL",
+                 "ALTER TABLE nfl_games ADD COLUMN implied_total REAL"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:

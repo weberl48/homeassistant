@@ -319,6 +319,13 @@ def fetch_nflverse_games(season: int, timeout: float = 60.0) -> list[dict[str, A
             continue
         if not week:
             continue
+        def _f(key: str) -> float | None:
+            try:
+                v = row.get(key)
+                return float(v) if v not in (None, "") else None
+            except ValueError:
+                return None
+
         out.append({
             "week": week,
             "gameday": row.get("gameday") or "",
@@ -328,6 +335,11 @@ def fetch_nflverse_games(season: int, timeout: float = 60.0) -> list[dict[str, A
             "roof": (row.get("roof") or "").strip().lower(),
             "stadium": row.get("stadium") or "",
             "location": (row.get("location") or "Home").strip(),
+            # Vegas: nflverse convention is positive spread_line = HOME favored
+            # (verified against the 2026 file's own moneylines). Lines post as
+            # books publish them — nullable, coverage grows weekly.
+            "spread_line": _f("spread_line"),
+            "total_line": _f("total_line"),
         })
     return out
 

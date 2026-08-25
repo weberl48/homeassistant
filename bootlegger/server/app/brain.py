@@ -450,6 +450,7 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
                 "injury": p["injury_status"], "bye": p["bye"] == week,
                 "opp": (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None,
                 "kickoff_utc": kickoff, "locked": locked,
+                "imp": g["implied_total"] if g else None,
                 "wx": schedule.weather_flags(g)}
 
     # Latest rec whatever its state — the card must be able to show the
@@ -489,6 +490,14 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
         if fo is not None and fi is not None and fi < fo and s["gain"] < 2.0:
             risk = (f"thin edge, thinner floor — {in_d['name']}'s floor is "
                     f"{fi} vs {fo} a game; a coin-flip, not a clear start")
+        # The market's read: a thin edge into a much lower implied team total
+        # is the projection arguing with Vegas — say so.
+        io, ii = out_d["imp"], in_d["imp"]
+        if (io is not None and ii is not None and s["gain"] < 2.0
+                and io - ii >= 4.0):
+            note = (f"the market likes the bench spot — {in_d['name']}'s team "
+                    f"is implied for {ii}, {out_d['name']}'s for {io}")
+            risk = f"{risk}; {note}" if risk else note
         if in_d["wx"]:
             note = f"{in_d['name']}'s game: {', '.join(in_d['wx'])}"
             risk = f"{risk}; {note}" if risk else note
@@ -1037,6 +1046,7 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
             t["opp"] = (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None
             t["bye_now"] = byew == wk_now
             t["bye_next"] = byew == wk_now + 1
+            t["imp"] = g["implied_total"] if g else None
             t["wx"] = schedule.weather_flags(g)
 
     # "Would he start?" — adding the candidate to my roster and re-optimizing

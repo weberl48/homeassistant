@@ -64,15 +64,25 @@ def etl_schedule(conn: sqlite3.Connection, season: int) -> int:
     for g in games:
         ko = _kickoff_utc(g["gameday"], g["gametime"])
         neutral = 1 if g["location"] != "Home" else 0
-        common = (season, g["week"], ko, g["roof"], g["stadium"], neutral)
-        rows.append((*common[:2], g["home_team"], g["away_team"], 1, *common[2:]))
-        rows.append((*common[:2], g["away_team"], g["home_team"], 0, *common[2:]))
+        # Vegas, from each team's own side of the line: positive spread = this
+        # team favored; implied_total = (total + spread)/2 is the market's
+        # expectation of THIS team's score — the opponent-strength signal.
+        sl, tl = g.get("spread_line"), g.get("total_line")
+        for team, opp, home in ((g["home_team"], g["away_team"], 1),
+                                (g["away_team"], g["home_team"], 0)):
+            spread = sl if home else (-sl if sl is not None else None)
+            implied = round((tl + spread) / 2, 1) if (tl is not None and spread is not None) else None
+            rows.append((season, g["week"], team, opp, home, ko, g["roof"],
+                         g["stadium"], neutral, spread, tl, implied))
     conn.executemany(
-        "INSERT INTO nfl_games(season,week,team,opponent,is_home,kickoff_utc,roof,stadium,neutral_site) "
-        "VALUES(?,?,?,?,?,?,?,?,?) "
+        "INSERT INTO nfl_games(season,week,team,opponent,is_home,kickoff_utc,roof,stadium,"
+        "neutral_site,spread,total_line,implied_total) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(season,week,team) DO UPDATE SET opponent=excluded.opponent,"
         "is_home=excluded.is_home,kickoff_utc=excluded.kickoff_utc,"
-        "roof=excluded.roof,stadium=excluded.stadium,neutral_site=excluded.neutral_site",
+        "roof=excluded.roof,stadium=excluded.stadium,neutral_site=excluded.neutral_site,"
+        "spread=excluded.spread,total_line=excluded.total_line,"
+        "implied_total=excluded.implied_total",
         rows,
     )
     conn.commit()

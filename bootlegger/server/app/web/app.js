@@ -541,12 +541,14 @@ function kickoffShort(iso) {
 }
 
 function gameChip(r) {
-  // Opponent + kickoff (+ lock, + weather) — the schedule context per row.
+  // Opponent + kickoff (+ implied total, lock, weather) — the schedule and
+  // market context per row. `imp` is Vegas's expected score for his team.
   if (!r.opp) return "";
+  const imp = r.imp != null ? ` · imp ${r.imp}` : "";
   const wx = (r.wx || []).length
     ? ` <span class="hurt">${icon.cross}${esc(r.wx.join(", ").toUpperCase())}</span>` : "";
   const lock = r.locked ? ` <span class="hurt">${icon.cross}LOCKED</span>` : "";
-  return `<span class="team">${esc(r.opp)} ${esc(kickoffShort(r.kickoff_utc))}</span>${lock}${wx}`;
+  return `<span class="team">${esc(r.opp)} ${esc(kickoffShort(r.kickoff_utc))}${esc(imp)}</span>${lock}${wx}`;
 }
 
 function lineupTable(title, rows, total, marks) {
@@ -682,8 +684,9 @@ async function loadWaivers() {
       if (t.bye_now) return `<span class="confirm-flag">${icon.flag}ON BYE NOW</span>`;
       if (t.bye_next) return `<span class="street">bye next wk</span>`;
       if (!t.opp) return "–";
+      const imp = t.imp != null ? ` · imp ${t.imp}` : "";
       const wx = (t.wx || []).length ? ` <span class="street">${esc(t.wx.join(", "))}</span>` : "";
-      return `${esc(t.opp)}${wx}`;
+      return `${esc(t.opp)}${esc(imp)}${wx}`;
     };
     const rows = data.targets.map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
