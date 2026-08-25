@@ -287,6 +287,10 @@ NFLVERSE_GAMES_FALLBACK = "http://www.habitatring.com/games.csv"
 NFLVERSE_TO_SLEEPER = {"LA": "LAR"}
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Official practice reports (Wed/Thu/Fri participation + team game status),
+# published per-season by nflverse. The season file 404s until the season's
+# first reports post — the fetcher returns [] and the ETL self-arms at Week 1.
+NFLVERSE_INJURIES_URL = "https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_{season}.csv"
 
 
 def fetch_nflverse_games(season: int, timeout: float = 60.0) -> list[dict[str, Any]]:
@@ -342,6 +346,50 @@ def fetch_nflverse_games(season: int, timeout: float = 60.0) -> list[dict[str, A
             "total_line": _f("total_line"),
         })
     return out
+
+
+PRACTICE_SHORT = {
+    "Did Not Participate In Practice": "DNP",
+    "Limited Participation in Practice": "LIMITED",
+    "Full Participation in Practice": "FULL",
+}
+
+
+def fetch_nflverse_injuries(season: int, timeout: float = 60.0) -> list[dict[str, Any]]:
+    """The latest regular-season week's practice reports. Rows: {name,
+    position, team, week, report_status, practice_status(short)}. A 404
+    (season file not yet published) is an empty list, not an error."""
+    import csv
+    import io
+    try:
+        r = httpx.get(NFLVERSE_INJURIES_URL.format(season=season), timeout=timeout,
+                      follow_redirects=True, headers={"User-Agent": "bootlegger/0.1"})
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+    except httpx.HTTPError:
+        return []
+    rows = []
+    for row in csv.DictReader(io.StringIO(r.text)):
+        if row.get("season_type") != "REG":
+            continue
+        try:
+            week = int(row.get("week") or 0)
+        except ValueError:
+            continue
+        practice = row.get("practice_status") or ""
+        rows.append({
+            "name": row.get("full_name") or "",
+            "position": (row.get("position") or "").upper(),
+            "team": NFLVERSE_TO_SLEEPER.get(row.get("team", ""), row.get("team", "")),
+            "week": week,
+            "report_status": row.get("report_status") or None,
+            "practice_status": PRACTICE_SHORT.get(practice, practice or None),
+        })
+    if not rows:
+        return []
+    latest = max(r["week"] for r in rows)
+    return [r for r in rows if r["week"] == latest]
 
 
 def fetch_openmeteo_hour(lat: float, lon: float, date: str, hour_utc: int,

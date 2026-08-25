@@ -451,6 +451,7 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
                 "opp": (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None,
                 "kickoff_utc": kickoff, "locked": locked,
                 "imp": g["implied_total"] if g else None,
+                "practice": p["practice_status"],
                 "wx": schedule.weather_flags(g)}
 
     # Latest rec whatever its state — the card must be able to show the
@@ -500,6 +501,11 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
             risk = f"{risk}; {note}" if risk else note
         if in_d["wx"]:
             note = f"{in_d['name']}'s game: {', '.join(in_d['wx'])}"
+            risk = f"{risk}; {note}" if risk else note
+        # Practice report (in-season, from the official Wed-Fri reports): a
+        # swap-in who hasn't practiced is a different bet than his projection.
+        if in_d.get("practice") == "DNP":
+            note = f"{in_d['name']} has not practiced this week"
             risk = f"{risk}; {note}" if risk else note
         swaps.append({**s, "out": out_d, "in": in_d,
                       "out_floor_pg": fo, "in_floor_pg": fi, "risk": risk})

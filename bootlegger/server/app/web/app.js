@@ -555,7 +555,8 @@ function lineupTable(title, rows, total, marks) {
   const tr = rows.map((r) => {
     const mark = marks.get(r.id) || "";
     const hurt = r.injury ? `<span class="hurt">${icon.cross}${esc(r.injury.toUpperCase())}</span>`
-      : r.bye ? `<span class="hurt">${icon.cross}BYE</span>` : "";
+      : r.bye ? `<span class="hurt">${icon.cross}BYE</span>`
+      : r.practice && r.practice !== "FULL" ? `<span class="hurt">${icon.cross}${esc(r.practice)}</span>` : "";
     return `<tr class="${mark}"><td class="slot">${esc(r.slot)}</td>
       <td><span class="pname">${esc(r.name)}</span>
         <span class="team">${esc(r.team ?? "")}</span> ${hurt}

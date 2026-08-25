@@ -194,7 +194,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
                  "ALTER TABLE players ADD COLUMN proj_games REAL",
                  "ALTER TABLE nfl_games ADD COLUMN spread REAL",
                  "ALTER TABLE nfl_games ADD COLUMN total_line REAL",
-                 "ALTER TABLE nfl_games ADD COLUMN implied_total REAL"):
+                 "ALTER TABLE nfl_games ADD COLUMN implied_total REAL",
+                 "ALTER TABLE players ADD COLUMN practice_status TEXT",
+                 "ALTER TABLE players ADD COLUMN report_status TEXT"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:

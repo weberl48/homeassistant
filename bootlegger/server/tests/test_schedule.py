@@ -161,6 +161,27 @@ def test_refresh_weather_outdoor_only_and_ttl(sched_conn, monkeypatch):
     assert calls == []
 
 
+def test_injuries_etl_joins_clears_and_tolerates_404(conn, monkeypatch):
+    from app import ingest
+    conn.execute(
+        "INSERT OR REPLACE INTO players(sleeper_id,name,pos,team) "
+        "VALUES('inj_1','Practice Watch','WR','GB')")
+    reports = [{"name": "Practice Watch", "position": "WR", "team": "GB",
+                "week": 4, "report_status": "Questionable", "practice_status": "DNP"}]
+    monkeypatch.setattr(ingest, "fetch_nflverse_injuries", lambda season: reports)
+    out = ingest.etl_injuries(conn)
+    assert out == {"week": 4, "matched": 1}
+    row = conn.execute("SELECT practice_status, report_status FROM players "
+                       "WHERE sleeper_id='inj_1'").fetchone()
+    assert (row["practice_status"], row["report_status"]) == ("DNP", "Questionable")
+    # File gone next run (404 → []): stale reports must clear, not linger.
+    monkeypatch.setattr(ingest, "fetch_nflverse_injuries", lambda season: [])
+    assert ingest.etl_injuries(conn) == {"week": None, "matched": 0}
+    row = conn.execute("SELECT practice_status FROM players "
+                       "WHERE sleeper_id='inj_1'").fetchone()
+    assert row["practice_status"] is None
+
+
 def test_derive_baselines_reproduces_design_doc_table():
     """The real league's shape (12-team, QB/2RB/2WR/TE/2FLEX/K/DEF) must land
     exactly on the hand-tuned constants — going data-driven changed nothing

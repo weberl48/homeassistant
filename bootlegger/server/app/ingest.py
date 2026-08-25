@@ -21,7 +21,7 @@ from .sleeper import SleeperClient
 from .sources import (fetch_cbs_projections, fetch_draftsharks, fetch_espn_projections,
                       fetch_fantasycalc_values, fetch_fantasypros_projections,
                       fetch_ffc_adp, fetch_fftoday_projections, fetch_fp_ecr,
-                      normalize_name)
+                      fetch_nflverse_injuries, normalize_name)
 
 # Tiering pools per position: deep enough to cover draftable players, shallow
 # enough that the GMM sees structure instead of a waiver-wire tail.
@@ -245,6 +245,32 @@ def etl_projections(client: SleeperClient, conn: sqlite3.Connection, week: int =
                 )
     conn.commit()
     return n
+
+
+def etl_injuries(conn: sqlite3.Connection) -> dict:
+    """Official practice reports (nflverse) onto players.practice_status /
+    report_status. Cleared before each fill so stale reports never linger —
+    an empty fetch (file not yet published, or a quiet week) leaves the
+    columns honestly NULL rather than frozen at last week."""
+    rows = fetch_nflverse_injuries(settings.season)
+    conn.execute("UPDATE players SET practice_status=NULL, report_status=NULL")
+    if not rows:
+        conn.commit()
+        return {"week": None, "matched": 0}
+    lookup = {}
+    for r in conn.execute("SELECT sleeper_id, name, pos, team FROM players").fetchall():
+        lookup[(normalize_name(r["name"]), r["pos"])] = r["sleeper_id"]
+    matched = 0
+    for r in rows:
+        pid = lookup.get((normalize_name(r["name"]), r["position"]))
+        if not pid:
+            continue
+        conn.execute(
+            "UPDATE players SET practice_status=?, report_status=? WHERE sleeper_id=?",
+            (r["practice_status"], r["report_status"], pid))
+        matched += 1
+    conn.commit()
+    return {"week": rows[0]["week"], "matched": matched}
 
 
 def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
@@ -512,6 +538,10 @@ def nightly(conn: sqlite3.Connection) -> dict:
             out["weather"] = refresh_weather(conn, settings.season, wk_now)
     except Exception as e:  # the board must not die with the schedule mirror
         out["schedule"] = f"failed: {e}"
+    try:
+        out["injuries"] = etl_injuries(conn)
+    except Exception as e:
+        out["injuries"] = f"failed: {e}"
     out["adp"] = etl_adp(conn)
     out["values"] = etl_values(conn)
     out["projections"] = etl_projections(client, conn, week=0)
