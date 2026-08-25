@@ -487,9 +487,15 @@ def nightly(conn: sqlite3.Connection) -> dict:
     try:
         state = client.nfl_state() or {}
         wk = int(state.get("week") or 0)
-        if wk > 0:
+        # Preseason weeks also count up in state/nfl (Aug 2026 reported week 3
+        # — of PRESEASON). Only a regular-season week may drive the week-shaped
+        # machinery; outside it the meta keeps its last value (default 1, which
+        # is correct for the draft-to-Week-1 window).
+        if wk > 0 and state.get("season_type") == "regular":
             db.meta_set(conn, "current_week", str(wk))
             out["current_week"] = wk
+        else:
+            out["current_week"] = f"kept (state: {state.get('season_type')} wk {wk})"
     except Exception as e:
         print(f"state/nfl unavailable ({e}); keeping last known week", flush=True)
     if settings.league_id:
