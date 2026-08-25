@@ -348,27 +348,33 @@ def fetch_nflverse_games(season: int, timeout: float = 60.0) -> list[dict[str, A
     return out
 
 
-PRACTICE_SHORT = {
-    "Did Not Participate In Practice": "DNP",
-    "Limited Participation in Practice": "LIMITED",
-    "Full Participation in Practice": "FULL",
-}
+def practice_short(status: str | None) -> str | None:
+    """Free-text participation → DNP/LIMITED/FULL by substring, case-blind
+    (nflverse varies capitalization). Unrecognized text maps to None rather
+    than shipping a long sentence into chips sized for one word."""
+    t = (status or "").lower()
+    if "did not" in t:
+        return "DNP"
+    if "limited" in t:
+        return "LIMITED"
+    if "full" in t:
+        return "FULL"
+    return None
 
 
 def fetch_nflverse_injuries(season: int, timeout: float = 60.0) -> list[dict[str, Any]]:
     """The latest regular-season week's practice reports. Rows: {name,
     position, team, week, report_status, practice_status(short)}. A 404
-    (season file not yet published) is an empty list, not an error."""
+    (season file not yet published) is an empty list; any OTHER failure
+    raises, so the caller keeps yesterday's reports instead of wiping them
+    over a network blip."""
     import csv
     import io
-    try:
-        r = httpx.get(NFLVERSE_INJURIES_URL.format(season=season), timeout=timeout,
-                      follow_redirects=True, headers={"User-Agent": "bootlegger/0.1"})
-        if r.status_code == 404:
-            return []
-        r.raise_for_status()
-    except httpx.HTTPError:
+    r = httpx.get(NFLVERSE_INJURIES_URL.format(season=season), timeout=timeout,
+                  follow_redirects=True, headers={"User-Agent": "bootlegger/0.1"})
+    if r.status_code == 404:
         return []
+    r.raise_for_status()
     rows = []
     for row in csv.DictReader(io.StringIO(r.text)):
         if row.get("season_type") != "REG":
@@ -377,14 +383,13 @@ def fetch_nflverse_injuries(season: int, timeout: float = 60.0) -> list[dict[str
             week = int(row.get("week") or 0)
         except ValueError:
             continue
-        practice = row.get("practice_status") or ""
         rows.append({
             "name": row.get("full_name") or "",
             "position": (row.get("position") or "").upper(),
             "team": NFLVERSE_TO_SLEEPER.get(row.get("team", ""), row.get("team", "")),
             "week": week,
             "report_status": row.get("report_status") or None,
-            "practice_status": PRACTICE_SHORT.get(practice, practice or None),
+            "practice_status": practice_short(row.get("practice_status")),
         })
     if not rows:
         return []

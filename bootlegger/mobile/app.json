@@ -5,7 +5,8 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#17120e",
+    "backgroundColor": "#16382b",
+    "scheme": "bootlegger",
     "android": {
       "package": "house.speakeasy.bootlegger",
       "edgeToEdgeEnabled": true
@@ -19,7 +20,8 @@
       ]
     ],
     "extra": {
-      "apiBase": "http://192.168.1.160:8484"
+      "apiBase": "http://192.168.1.160:8484",
+      "apiToken": ""
     }
   }
 }

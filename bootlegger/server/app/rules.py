@@ -7,7 +7,7 @@ import json
 import sqlite3
 
 from . import schedule
-from .config import SOURCE_DISAGREEMENT_MAX
+from .config import SOURCE_DISAGREEMENT_MAX, settings
 
 
 def _enabled(conn: sqlite3.Connection) -> dict[str, float | None]:
@@ -22,10 +22,12 @@ def _team_of(conn: sqlite3.Connection, player_id: str) -> str | None:
 
 
 def kickoff_hours_away(conn: sqlite3.Connection, player_id: str, week: int) -> float | None:
-    """Hours until the player's kickoff, from the nfl_games schedule table.
-    None (no schedule row, or kickoff not yet announced) still fails toward
-    acting only in approve mode where a human is in the loop."""
-    return schedule.kickoff_hours_away(conn, _team_of(conn, player_id), week)
+    """Hours until the player's kickoff (negative once underway), from the
+    nfl_games schedule table, pinned to the configured season. None (no
+    schedule row, or kickoff not yet announced) still fails toward acting
+    only in approve mode where a human is in the loop."""
+    return schedule.kickoff_hours_away(conn, _team_of(conn, player_id), week,
+                                       season=settings.season)
 
 
 def _disagreement(conn: sqlite3.Connection, player_id: str, week: int) -> float:
@@ -43,6 +45,16 @@ def evaluate(conn: sqlite3.Connection, swaps: list[dict], week: int) -> list[str
     enabled = _enabled(conn)
     fired: list[str] = []
     player_ids = [pid for s in swaps for pid in (s.get("out_id"), s.get("in_id")) if pid]
+
+    if "kickoff_passed" in enabled:
+        # The binding version of the card's cosmetic lock filter: a swap
+        # touching a player whose game has started must never reach the hands,
+        # whatever the presentation layer showed at approval time.
+        for pid in player_ids:
+            hrs = kickoff_hours_away(conn, pid, week)
+            if hrs is not None and hrs <= 0:
+                fired.append("kickoff_passed")
+                break
 
     if "questionable_near_kickoff" in enabled:
         window = enabled["questionable_near_kickoff"] or 3.0
@@ -74,7 +86,8 @@ def evaluate(conn: sqlite3.Connection, swaps: list[dict], week: int) -> list[str
         # Threshold = wind mph (default 20); ≥70% precip flags regardless.
         wind_min = enabled["weather_flag_on_game"] or 20.0
         for pid in player_ids:
-            g = schedule.game_for(conn, _team_of(conn, pid), week)
+            g = schedule.game_for(conn, _team_of(conn, pid), week,
+                                  season=settings.season)
             if schedule.weather_flags(g, wind_min=wind_min):
                 fired.append("weather_flag_on_game")
                 break

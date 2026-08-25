@@ -1,3 +1,4 @@
+import * as Notifications from "expo-notifications";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useState } from "react";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
@@ -28,6 +29,14 @@ export default function App() {
   useEffect(() => {
     setUpPush();
     const stop = listenForActions();
+    // Deep-link consumer for push.ts's data.deep_link (recs.py sends
+    // "bootlegger://week" on a lineup call). No expo-linking dependency
+    // here — just key off the notification's data string, per app.json's
+    // declared "bootlegger" scheme.
+    const deepLinkSub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      const deepLink = resp.notification.request.content.data?.deep_link as string | undefined;
+      if (deepLink === "bootlegger://week") setTab("week");
+    });
     const ping = setInterval(async () => {
       try {
         await api.board();
@@ -38,6 +47,7 @@ export default function App() {
     }, 4000);
     return () => {
       stop();
+      deepLinkSub.remove();
       clearInterval(ping);
     };
   }, []);

@@ -61,6 +61,10 @@ async def _demo_loops(app: FastAPI) -> None:
         await asyncio.sleep(1.0)
 
 
+def _weather_tick(week: int) -> None:
+    schedule.refresh_weather(db.connect(), settings.season, week)
+
+
 async def _season_loop() -> None:
     """LIVE mode's lineup scanner.
 
@@ -82,7 +86,11 @@ async def _season_loop() -> None:
             if in_season:
                 # Weather first (TTL-guarded no-op when fresh) so the scan and
                 # its don't-act rules see game-day wind, not last night's.
-                schedule.refresh_weather(conn, settings.season, week)
+                # Off the event loop: refresh_weather is synchronous httpx with
+                # a 15s timeout per game — inline it would freeze every /api
+                # request for the duration. db.connect() is thread-local, so
+                # the worker thread opens its own connection.
+                await asyncio.to_thread(_weather_tick, week)
                 recs.scan_lineup(conn, week=week)
         except Exception:
             log.exception("season scan error")
@@ -182,6 +190,17 @@ def draft_reset():
         raise HTTPException(400, "reset exists only in demo mode")
     demo.reset_draft(get_conn())
     return {"ok": True}
+
+
+@app.get("/api/week/current")
+def week_card_current():
+    """The week the season clock says it is — every client should poll this,
+    not a hardcoded number (a week-1 URL lies from week 2 on: all its
+    kickoffs have passed, so every row reads LOCKED and no rec is found).
+    Declared before the {week} route so FastAPI matches it first."""
+    conn = get_conn()
+    week = int(db.meta_get(conn, "current_week") or 1)
+    return brain.get_week_card(conn, week)
 
 
 @app.get("/api/week/{week}")
@@ -464,7 +483,7 @@ class DeviceBody(BaseModel):
     platform: str = "android"
 
 
-@app.post("/api/devices")
+@app.post("/api/devices", dependencies=MUTATES)
 def register_device(body: DeviceBody):
     conn = get_conn()
     conn.execute(

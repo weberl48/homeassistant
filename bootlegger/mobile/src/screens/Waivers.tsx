@@ -13,17 +13,24 @@ type Target = {
 export default function Waivers() {
   const [data, setData] = useState<any>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fetching = useRef(false); // in-flight guard: never stack overlapping polls
 
   useEffect(() => {
     const load = async () => {
+      if (fetching.current) return;
+      fetching.current = true;
       try {
         setData(await api.waivers());
       } catch {
         /* wire indicator in App handles it */
+      } finally {
+        fetching.current = false;
       }
     };
     load();
-    timer.current = setInterval(load, 5000);
+    // Mirrors the web board's waiver poll cadence — the street moves fast
+    // enough to be worth 15s, but not fast enough to hammer the Pi.
+    timer.current = setInterval(load, 15000);
     return () => { if (timer.current) clearInterval(timer.current); };
   }, []);
 

@@ -18,15 +18,20 @@ export default function Ledger() {
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [audit, setAudit] = useState<ActionRow[] | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fetching = useRef(false); // in-flight guard: never stack overlapping polls
 
   useEffect(() => {
     const load = async () => {
+      if (fetching.current) return;
+      fetching.current = true;
       try {
         const [r, a] = await Promise.all([api.rules(), api.audit()]);
         setRules(r);
         setAudit(a);
       } catch {
         /* wire indicator in App handles it */
+      } finally {
+        fetching.current = false;
       }
     };
     load();

@@ -527,17 +527,23 @@ def nightly(conn: sqlite3.Connection) -> dict:
     if settings.league_id:
         etl_league(client, conn)
         etl_rosters(client, conn)
+    # The schedule layer: kickoff times for the don't-act rules and locks,
+    # byes straight from the source (FP-ECR scrape remains the fallback),
+    # and this week's outdoor-game weather. Byes and weather read the
+    # PERSISTED nfl_games table, so they run even when tonight's nflverse
+    # fetch fails — etl_players has already nulled every bye, and restoring
+    # them is pure DB work that must not die with someone else's network.
     try:
-        # The schedule layer: kickoff times for the don't-act rules and locks,
-        # byes straight from the source (FP-ECR scrape remains the fallback),
-        # and this week's outdoor-game weather.
         out["schedule"] = etl_schedule(conn, settings.season)
+    except Exception as e:  # the board must not die with the schedule mirror
+        out["schedule"] = f"failed: {e}"
+    try:
         out["byes"] = backfill_byes(conn, settings.season)
         wk_now = int(db.meta_get(conn, "current_week") or 0)
         if wk_now:
             out["weather"] = refresh_weather(conn, settings.season, wk_now)
-    except Exception as e:  # the board must not die with the schedule mirror
-        out["schedule"] = f"failed: {e}"
+    except Exception as e:
+        out["byes"] = f"failed: {e}"
     try:
         out["injuries"] = etl_injuries(conn)
     except Exception as e:
@@ -565,8 +571,13 @@ def nightly(conn: sqlite3.Connection) -> dict:
         except Exception as e:  # scrapes break; the consensus must not
             out[label] = f"failed: {e}"
     out["consensus"] = compute_consensus(conn, week=0)
-    # In-season: weekly projections feed the Sunday lineup card.
-    state = client.nfl_state() or {}
+    # In-season: weekly projections feed the Sunday lineup card. A failed
+    # state read skips the weekly block — it must not abort the run before
+    # the report persists and the dead-man ping fires.
+    try:
+        state = client.nfl_state() or {}
+    except Exception:
+        state = {}
     wk = state.get("week") or 0
     if state.get("season_type") == "regular" and wk:
         out[f"projections_w{wk}"] = etl_projections(client, conn, week=wk)

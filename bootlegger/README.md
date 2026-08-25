@@ -71,8 +71,9 @@ including — the final tap and reports which locators still resolve.
 Every failure degrades to a notification, never to silence: push (Expo/FCM,
 outbound-only) with `recommendations` and `game-time-emergency` channels;
 healthchecks.io dead-man pings (`HEALTHCHECKS_URL`); an off-Pi Sunday-9am
-lineup check you can arm by copying `ops/github/lineup-check.yml` into
-`.github/workflows/`; nightly backups via `ops/systemd/bootlegger-backup.service`.
+lineup check, ARMED at `.github/workflows/lineup-check.yml` (needs repo
+variables `SLEEPER_LEAGUE_ID` + `SLEEPER_ROSTER_ID`; `ops/github/` holds only
+a pointer); nightly backups via `ops/systemd/bootlegger-backup.service`.
 Home Assistant stays out of the critical path.
 
 ## The app

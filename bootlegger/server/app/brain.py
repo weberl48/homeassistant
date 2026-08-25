@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import db, schedule
-from .config import DEMO_ROSTER_POSITIONS, settings
+from .config import DEMO_ROSTER_POSITIONS, MATERIALITY_PTS, settings
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import draft as draft_engine
 from .engines import grades as grades_engine
@@ -477,7 +477,7 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
             "JOIN players pl ON pl.sleeper_id=pr.player_id "
             "WHERE pr.player_id=? AND pr.week=0 AND pr.floor IS NOT NULL "
             "ORDER BY pr.source='draftsharks' DESC LIMIT 1", (pid,)).fetchone()
-        if not row or not row["floor"]:
+        if not row or row["floor"] is None:
             return None
         return round(row["floor"] / (row["proj_games"] or 17.0), 1)
 
@@ -510,15 +510,21 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
         swaps.append({**s, "out": out_d, "in": in_d,
                       "out_floor_pg": fo, "in_floor_pg": fi, "risk": risk})
 
+    # Everything the verdict claims must be earned by the swaps it actually
+    # proposes: a locked (dropped) swap's gain may not inflate the delta, the
+    # materiality call, or the push copy.
+    actionable = round(sum(s["gain"] for s in swaps), 2)
+    kept_flag = any(s["out"]["injury"] or s["out"]["bye"] for s in swaps)
+
     return {
         "week": week, "ready": True,
         "owner": roster["owner"],
         "actual": actual_rows, "optimal": optimal_rows, "bench": bench_rows,
         "actual_total": round(d.actual_total, 1),
         "optimal_total": round(d.optimal.total if d.optimal else 0.0, 1),
-        "delta": round(d.delta, 1),
-        "injury_flag": d.injury_flag,
-        "material": d.material and bool(swaps),
+        "delta": round(actionable, 1),
+        "injury_flag": kept_flag,
+        "material": bool(swaps) and (actionable > MATERIALITY_PTS or kept_flag),
         "swaps": swaps,
         "wx_concerns": sorted({f"{r['team']}: {w}" for r in actual_rows
                                for w in (r["wx"] or [])}),
@@ -544,7 +550,8 @@ def rationale_for_swaps(conn: sqlite3.Connection, card: dict) -> str:
             why[-1] += f" ({s['in']['opp']})"
         parts.append("; ".join(why) + ".")
         if s.get("risk"):
-            parts.append(s["risk"].capitalize() + ".")
+            # str.capitalize() would lowercase every player name in the tail
+            parts.append(s["risk"][0].upper() + s["risk"][1:] + ".")
     parts.append(f"Net {card['delta']:+.1f} projected points.")
     if card.get("wx_concerns"):
         parts.append("Weather on the slate: " + "; ".join(card["wx_concerns"]) + ".")

@@ -13,13 +13,18 @@ type Player = {
 export default function DraftBoard() {
   const [board, setBoard] = useState<any>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fetching = useRef(false); // in-flight guard: never stack overlapping polls
 
   useEffect(() => {
     const load = async () => {
+      if (fetching.current) return;
+      fetching.current = true;
       try {
         setBoard(await api.board());
       } catch {
         /* wire indicator in App handles it */
+      } finally {
+        fetching.current = false;
       }
     };
     load();

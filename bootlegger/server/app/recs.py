@@ -14,9 +14,12 @@ TRANSITIONS: dict[str, set[str]] = {
     "proposed": {"notified", "approved", "snoozed", "ignored"},
     "notified": {"approved", "snoozed", "ignored"},
     "snoozed": {"approved", "ignored", "notified"},
-    "approved": {"executed", "failed"},
+    # dry_run: a LIVE-mode approval consumed while the hands are in dry-run —
+    # nothing executed, nothing verified, and the machine says so instead of
+    # laundering the rehearsal through executed→verified.
+    "approved": {"executed", "failed", "dry_run"},
     "executed": {"verified", "failed"},
-    "ignored": set(), "verified": set(), "failed": set(),
+    "ignored": set(), "verified": set(), "failed": set(), "dry_run": set(),
 }
 
 JOB_TTL_H = 2.0  # the undo window; expired jobs are dropped, never retried
@@ -51,9 +54,12 @@ def scan_lineup(conn: sqlite3.Connection, week: int = 1) -> int | None:
     swaps_key = json.dumps([(s["out_id"], s["in_id"]) for s in card["swaps"]], sort_keys=True)
     # 'ignored' dedupes too — dismissing a swap set silences that exact set;
     # 'failed' does not, so the degradation ladder re-proposes after a failure.
+    # 'dry_run' dedupes: the user was already told the hands won't act on this
+    # set — re-proposing it every scan tick would be a push loop.
     open_rec = conn.execute(
         "SELECT rec_id, payload_json FROM recommendations WHERE kind='lineup' AND week=? "
-        "AND state IN ('proposed','notified','snoozed','approved','executed','ignored','verified')",
+        "AND state IN ('proposed','notified','snoozed','approved','executed','ignored',"
+        "'verified','dry_run')",
         (week,)
     ).fetchall()
     for r in open_rec:

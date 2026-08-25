@@ -74,6 +74,12 @@ def etl_schedule(conn: sqlite3.Connection, season: int) -> int:
             implied = round((tl + spread) / 2, 1) if (tl is not None and spread is not None) else None
             rows.append((season, g["week"], team, opp, home, ko, g["roof"],
                          g["stadium"], neutral, spread, tl, implied))
+    # Delete-then-write, not upsert: a postponed game moves to another week's
+    # key, and a stale row under the old (season, week, team) key would hide
+    # the real off-week and mark its players locked forever. The credibility
+    # guard above means we never trade good rows for a bad read; the weather
+    # columns this drops are refilled by the very next refresh_weather.
+    conn.execute("DELETE FROM nfl_games WHERE season=?", (season,))
     conn.executemany(
         "INSERT INTO nfl_games(season,week,team,opponent,is_home,kickoff_utc,roof,stadium,"
         "neutral_site,spread,total_line,implied_total) "
@@ -130,11 +136,12 @@ def game_for(conn: sqlite3.Connection, team: str | None, week: int,
 
 
 def kickoff_hours_away(conn: sqlite3.Connection, team: str | None, week: int,
-                       now: datetime | None = None) -> float | None:
+                       now: datetime | None = None,
+                       season: int | None = None) -> float | None:
     """Hours until the team's kickoff; negative once the game is underway.
     None when the schedule has no timed game (rules then fail toward the
     human-in-the-loop path, as before)."""
-    g = game_for(conn, team, week)
+    g = game_for(conn, team, week, season=season)
     if not g or not g["kickoff_utc"]:
         return None
     ko = datetime.fromisoformat(g["kickoff_utc"])
@@ -167,7 +174,12 @@ def refresh_weather(conn: sqlite3.Connection, season: int, week: int,
         try:
             wx = fetch_openmeteo_hour(lat, lon, ko.strftime("%Y-%m-%d"), ko.hour)
         except Exception:
-            continue  # next TTL pass retries; staleness is visible via weather_at
+            # Stamp the attempt (values stay NULL) so a struggling weather API
+            # is retried on the TTL, not on every scan tick of game day.
+            conn.execute(
+                "UPDATE nfl_games SET weather_at=? WHERE season=? AND week=? AND team=?",
+                (now.isoformat(timespec="seconds"), season, week, g["team"]))
+            continue
         conn.execute(
             "UPDATE nfl_games SET wind_mph=?, precip_prob=?, temp_f=?, weather_at=? "
             "WHERE season=? AND week=? AND team IN (?,?)",

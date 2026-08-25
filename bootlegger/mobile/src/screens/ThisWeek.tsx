@@ -8,11 +8,16 @@ export default function ThisWeek() {
   const [card, setCard] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fetching = useRef(false); // in-flight guard: never stack overlapping polls
 
   const load = async () => {
+    if (fetching.current) return;
+    fetching.current = true;
     try {
-      setCard(await api.week(1));
-    } catch { /* wire indicator handles it */ }
+      setCard(await api.weekCurrent());
+    } catch { /* wire indicator handles it */ } finally {
+      fetching.current = false;
+    }
   };
   useEffect(() => {
     load();
@@ -42,7 +47,11 @@ export default function ThisWeek() {
           </Text>
           <Text style={s.delta}>{card.delta > 0 ? `+${card.delta}` : card.delta}</Text>
           <Text style={s.rationale}>{rec?.rationale ?? ""}</Text>
-          {rec && <Text style={s.state}>STATE · {String(rec.state).toUpperCase()}</Text>}
+          {rec && (
+            <Text style={s.state}>
+              STATE · {rec.state === "dry_run" ? "DRY RUN" : String(rec.state).toUpperCase()}
+            </Text>
+          )}
           {canAct && (
             <View style={s.actions}>
               <Pressable style={[s.btn, s.btnPrimary]} disabled={busy} onPress={act(api.approve)}>
@@ -60,6 +69,11 @@ export default function ThisWeek() {
           )}
           {rec && ["approved", "executed"].includes(rec.state) && (
             <Text style={s.moving}>The hands are moving…</Text>
+          )}
+          {rec && rec.state === "dry_run" && (
+            <Text style={s.dryRun}>
+              DRY RUN — nothing touched. Set it in Sleeper yourself if you agree.
+            </Text>
           )}
         </View>
       ) : (
@@ -113,6 +127,7 @@ const s = StyleSheet.create({
   btnGhost: { borderWidth: 1, borderColor: T.line, flex: 1 },
   btnGhostText: { color: T.inkDim, fontWeight: "600", letterSpacing: 1 },
   moving: { color: T.brass, marginTop: 12, letterSpacing: 1 },
+  dryRun: { color: T.marigold, marginTop: 12, lineHeight: 19 },
   allgood: {
     borderWidth: 1, borderColor: T.lamp, borderRadius: 6,
     backgroundColor: T.panel, padding: 16, marginBottom: 16,

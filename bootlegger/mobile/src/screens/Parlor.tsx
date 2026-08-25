@@ -23,17 +23,24 @@ function fmtGain(n: number): string {
 export default function Parlor() {
   const [data, setData] = useState<any>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fetching = useRef(false); // in-flight guard: never stack overlapping polls
 
   useEffect(() => {
     const load = async () => {
+      if (fetching.current) return;
+      fetching.current = true;
       try {
         setData(await api.trades());
       } catch {
         /* wire indicator in App handles it */
+      } finally {
+        fetching.current = false;
       }
     };
     load();
-    timer.current = setInterval(load, 8000);
+    // Mirrors the web board's trade-scan cadence: it's a full-league scan,
+    // so 60s keeps it off the Pi's back.
+    timer.current = setInterval(load, 60000);
     return () => { if (timer.current) clearInterval(timer.current); };
   }, []);
 

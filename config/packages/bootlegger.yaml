@@ -22,7 +22,9 @@ rest:
         unique_id: bootlegger_projection_sources
         value_template: "{{ value_json.sources_live if value_json.sources_live is not none else 'n/a' }}"
 
-  - resource: http://192.168.1.160:8484/api/week/1
+  # /current resolves the season clock server-side — a hardcoded /week/1
+  # would go stale (and read all-locked) from week 2 on.
+  - resource: http://192.168.1.160:8484/api/week/current
     scan_interval: 120
     timeout: 5
     sensor:

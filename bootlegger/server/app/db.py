@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS nfl_games(
 
 DEFAULT_RULES: list[tuple[str, float | None]] = [
     ("questionable_near_kickoff", 3.0),   # hours
+    ("kickoff_passed", None),             # binding lock: never drive a started slot
     ("weather_flag_on_game", None),
     ("source_disagreement", 0.25),        # relative spread
     ("any_drop_involved", None),

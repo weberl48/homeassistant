@@ -144,6 +144,23 @@ def run_once(conn: sqlite3.Connection) -> bool:
         return True
 
     # Act -------------------------------------------------------------------
+    if settings.hands_dry_run and settings.mode == "live":
+        # A live dry run must not pretend. The rosters mirror is REAL data
+        # here (writing a fake lineup into it corrupts every reader until the
+        # next sync), and post-verify against the actual API would always
+        # fail and cry wolf. So: touch nothing, park the rec in its own
+        # terminal state (the scanner dedups on it), tell the user plainly.
+        conn.execute("UPDATE jobs SET state='done', finished_at=? WHERE job_id=?",
+                     (db.utcnow(), job_id))
+        conn.commit()
+        db.log_action(conn, rec_id, "act:dry_run_noop", before=before, after=target)
+        transition(conn, rec_id, "dry_run")
+        names = _swap_names(conn, payload["swaps"])
+        push.send(conn, "Dry run — nothing touched",
+                  " · ".join(f"{i} in for {o}" for o, i in names)
+                  + ". Hands are in dry-run; set it in Sleeper yourself if you agree.",
+                  push.CHANNEL_NORMAL, data={"rec_id": rec_id})
+        return True
     try:
         if settings.hands_dry_run:
             db.log_action(conn, rec_id, "act:dry_run_swap", before=before, after=target)
@@ -195,6 +212,16 @@ def _swap_names(conn, swaps: list[dict]) -> list[tuple[str, str]]:
 def run_loop(poll_seconds: float = 2.0) -> None:
     conn = db.connect()
     db.init_db(conn)
+    if not settings.hands_dry_run:
+        # Armed hands must prove they CAN act before consuming a single job —
+        # discovering a missing browser mid-act would burn an approval on an
+        # ImportError. Fail loud at boot; the restart loop keeps it visible.
+        try:
+            import playwright.sync_api  # noqa: F401
+        except ImportError as e:
+            log.critical("HANDS_DRY_RUN=0 but Playwright is not installed in "
+                         "this image — refusing to start: %s", e)
+            raise SystemExit(2)
     log.info("hands worker up (dry_run=%s, approve_required=%s)",
              settings.hands_dry_run, settings.approve_required)
     while True:

@@ -31,10 +31,12 @@ docker build -t $IMG $SRC
 
 docker rm -f bootlegger bootlegger-ingest bootlegger-nightly bootlegger-hands 2>/dev/null || true
 
-# The board + API (the only container that needs the port and the hands gates)
+# The board + API. HANDS_DRY_RUN comes from the same knob as the worker so
+# /health and the board always report the mode the hands actually run in —
+# a split value here made monitoring lie in the dangerous direction.
 # shellcheck disable=SC2086
 docker run -d --name bootlegger --restart unless-stopped -p 8484:8484 \
-  -e BOOTLEGGER_APPROVE_REQUIRED=1 -e HANDS_DRY_RUN=1 $ENV_COMMON $IMG
+  -e BOOTLEGGER_APPROVE_REQUIRED=1 -e HANDS_DRY_RUN="${HANDS_DRY_RUN:-1}" $ENV_COMMON $IMG
 
 # Draft-pick poller (2s cadence; crash-tolerant loop inside)
 # shellcheck disable=SC2086

@@ -35,6 +35,8 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 export const api = {
   base: BASE,
   board: () => get<any>("/api/draft/board"),
+  // Server resolves the season clock itself — the app never hardcodes a week.
+  weekCurrent: () => get<any>("/api/week/current"),
   week: (n = 1) => get<any>(`/api/week/${n}`),
   approve: (recId: number) => post<any>(`/api/recs/${recId}/approve`),
   snooze: (recId: number) => post<any>(`/api/recs/${recId}/snooze`),

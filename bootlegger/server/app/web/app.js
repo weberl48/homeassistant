@@ -520,8 +520,10 @@ const STEPS = ["proposed", "notified", "approved", "executed", "verified"];
 
 function stepper(recState) {
   const failed = recState === "failed";
-  // a snoozed rec still sits at "notified" on the chain — never an unlit stepper
-  const shown = recState === "snoozed" ? "notified" : recState;
+  // a snoozed rec still sits at "notified" on the chain — never an unlit
+  // stepper; a dry_run terminal parks at approved (nothing executed).
+  const shown = recState === "snoozed" ? "notified"
+    : recState === "dry_run" ? "approved" : recState;
   const idx = failed ? STEPS.length : STEPS.indexOf(shown);
   return `<div class="stepper" aria-label="Recommendation state">` + STEPS.map((s, i) => {
     let cls = "step";
@@ -576,7 +578,7 @@ function renderWeek(card) {
   const rec = card.rec;
   const recState = rec ? rec.state : null;
 
-  if (!card.material && (!rec || ["verified", "ignored", "failed", null].includes(recState))) {
+  if (!card.material && (!rec || ["verified", "ignored", "failed", "dry_run", null].includes(recState))) {
     const verifiedLine = recState === "verified"
       ? `The last swap was <strong>verified against the API</strong>. ` : "";
     wrap.innerHTML = `
@@ -616,6 +618,9 @@ function renderWeek(card) {
   } else if (recState === "failed") {
     actions = `<p class="holds">${icon.hold} The swap failed or expired — every failure
       degrades to this notice, never to silence. <a href="https://sleeper.com" rel="noopener">Set it in Sleeper</a>.</p>`;
+  } else if (recState === "dry_run") {
+    actions = `<p class="holds">${icon.hold} Dry run — the hands touched nothing.
+      <a href="https://sleeper.com" rel="noopener">Set it in Sleeper</a> if you agree.</p>`;
   }
 
   wrap.innerHTML = `
@@ -669,7 +674,7 @@ function lineupBlock(card) {
 
 async function pollWeek() {
   try {
-    const card = await fetchJSON("/api/week/1");
+    const card = await fetchJSON("/api/week/current");
     if (!state.approving) renderWeek(card);
     state.week = card;
     wireOK();
