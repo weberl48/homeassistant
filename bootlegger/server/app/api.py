@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import brain, db, demo, recs
+from . import brain, db, demo, recs, schedule
 from .config import settings
 from .engines import lineup as lineup_engine
 from .engines import trades as trades_engine
@@ -80,6 +80,9 @@ async def _season_loop() -> None:
             in_season = (drow and drow["status"] == "complete"
                          and my and json.loads(my["players_json"]))
             if in_season:
+                # Weather first (TTL-guarded no-op when fresh) so the scan and
+                # its don't-act rules see game-day wind, not last night's.
+                schedule.refresh_weather(conn, settings.season, week)
                 recs.scan_lineup(conn, week=week)
         except Exception:
             log.exception("season scan error")

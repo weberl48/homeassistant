@@ -5,10 +5,21 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { api } from "./src/api";
 import { listenForActions, setUpPush } from "./src/push";
 import DraftBoard from "./src/screens/DraftBoard";
+import Ledger from "./src/screens/Ledger";
+import Parlor from "./src/screens/Parlor";
 import ThisWeek from "./src/screens/ThisWeek";
+import Waivers from "./src/screens/Waivers";
 import { T } from "./src/theme";
 
-type Tab = "board" | "week";
+type Tab = "board" | "week" | "street" | "parlor" | "ledger";
+
+const TAB_LABEL: Record<Tab, string> = {
+  board: "BOARD",
+  week: "WEEK",
+  street: "STREET",
+  parlor: "PARLOR",
+  ledger: "LEDGER",
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("board");
@@ -44,19 +55,27 @@ export default function App() {
         </Text>
       </View>
       <View style={s.tabs}>
-        {(["board", "week"] as Tab[]).map((t) => (
+        {(["board", "week", "street", "parlor", "ledger"] as Tab[]).map((t) => (
           <Pressable
             key={t}
             onPress={() => setTab(t)}
             style={[s.tab, tab === t && s.tabActive]}
           >
-            <Text style={[s.tabText, tab === t && s.tabTextActive]}>
-              {t === "board" ? "THE BOARD" : "THIS WEEK"}
+            <Text
+              style={[s.tabText, tab === t && s.tabTextActive]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {TAB_LABEL[t]}
             </Text>
           </Pressable>
         ))}
       </View>
-      {tab === "board" ? <DraftBoard /> : <ThisWeek />}
+      {tab === "board" ? <DraftBoard />
+        : tab === "week" ? <ThisWeek />
+        : tab === "street" ? <Waivers />
+        : tab === "parlor" ? <Parlor />
+        : <Ledger />}
     </SafeAreaView>
   );
 }
@@ -78,8 +97,8 @@ const s = StyleSheet.create({
   wire: { color: T.lamp, fontSize: 11, letterSpacing: 1 },
   wireDown: { color: T.oxblood },
   tabs: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: T.line },
-  tab: { flex: 1, paddingVertical: 12, alignItems: "center" },
+  tab: { flex: 1, paddingVertical: 12, paddingHorizontal: 2, alignItems: "center" },
   tabActive: { borderBottomWidth: 2, borderBottomColor: T.brass },
-  tabText: { color: T.inkDim, fontSize: 13, letterSpacing: 1.5, fontWeight: "600" },
+  tabText: { color: T.inkDim, fontSize: 11, letterSpacing: 0.8, fontWeight: "600" },
   tabTextActive: { color: T.brassBright },
 });

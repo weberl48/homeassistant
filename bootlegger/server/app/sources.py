@@ -277,6 +277,90 @@ def fetch_fantasycalc_values(ppr: float = 1.0, num_qbs: int = 1,
     return out
 
 
+# NFL schedule: nflverse's games.csv (Lee Sharpe's canonical file, mirrored by
+# the nflverse-data release). Carries gameday + gametime (US/Eastern), roof,
+# stadium, and location — everything kickoff rules, byes, and weather need.
+NFLVERSE_GAMES_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+NFLVERSE_GAMES_FALLBACK = "http://www.habitatring.com/games.csv"
+# nflverse team codes vs Sleeper's: only the Rams differ (verified against the
+# live players table 2026-08-25 — 32 codes, LAR not LA).
+NFLVERSE_TO_SLEEPER = {"LA": "LAR"}
+
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+
+def fetch_nflverse_games(season: int, timeout: float = 60.0) -> list[dict[str, Any]]:
+    """Regular-season rows for `season` from games.csv. Rows: {week, gameday,
+    gametime (ET, may be ''), away_team, home_team, roof, stadium, location} —
+    team codes already normalized to Sleeper's vocabulary."""
+    import csv
+    import io
+    text = None
+    for url in (NFLVERSE_GAMES_URL, NFLVERSE_GAMES_FALLBACK):
+        try:
+            r = httpx.get(url, timeout=timeout, follow_redirects=True,
+                          headers={"User-Agent": "bootlegger/0.1"})
+            r.raise_for_status()
+            text = r.text
+            break
+        except httpx.HTTPError:
+            continue
+    if text is None:
+        raise RuntimeError("nflverse games.csv unreachable (both mirrors)")
+    out = []
+    for row in csv.DictReader(io.StringIO(text)):
+        if row.get("game_type") != "REG":
+            continue
+        try:
+            if int(row.get("season") or 0) != season:
+                continue
+            week = int(row.get("week") or 0)
+        except ValueError:
+            continue
+        if not week:
+            continue
+        out.append({
+            "week": week,
+            "gameday": row.get("gameday") or "",
+            "gametime": row.get("gametime") or "",
+            "away_team": NFLVERSE_TO_SLEEPER.get(row.get("away_team", ""), row.get("away_team", "")),
+            "home_team": NFLVERSE_TO_SLEEPER.get(row.get("home_team", ""), row.get("home_team", "")),
+            "roof": (row.get("roof") or "").strip().lower(),
+            "stadium": row.get("stadium") or "",
+            "location": (row.get("location") or "Home").strip(),
+        })
+    return out
+
+
+def fetch_openmeteo_hour(lat: float, lon: float, date: str, hour_utc: int,
+                         timeout: float = 15.0) -> dict[str, float | None]:
+    """One forecast hour (UTC) at a point from Open-Meteo (keyless).
+    Returns {wind_mph, precip_prob, temp_f} with None for anything missing."""
+    r = httpx.get(OPEN_METEO_URL, params={
+        "latitude": lat, "longitude": lon,
+        "hourly": "temperature_2m,precipitation_probability,wind_speed_10m",
+        "wind_speed_unit": "mph", "temperature_unit": "fahrenheit",
+        "timezone": "UTC", "start_date": date, "end_date": date,
+    }, timeout=timeout, headers={"User-Agent": "bootlegger/0.1"})
+    r.raise_for_status()
+    h = r.json().get("hourly") or {}
+    times = h.get("time") or []
+    want = f"{date}T{hour_utc:02d}:00"
+    try:
+        i = times.index(want)
+    except ValueError:
+        return {"wind_mph": None, "precip_prob": None, "temp_f": None}
+
+    def _at(key: str) -> float | None:
+        vals = h.get(key) or []
+        v = vals[i] if i < len(vals) else None
+        return float(v) if v is not None else None
+
+    return {"wind_mph": _at("wind_speed_10m"),
+            "precip_prob": _at("precipitation_probability"),
+            "temp_f": _at("temperature_2m")}
+
+
 # Draft Sharks (paid sub): the rankings lazy-load endpoint serves the full
 # table as HTML fragments. Auth = session cookie exported after login, stored
 # mode-600 at DS_COOKIE_FILE — never in the repo. Slug is PPR; other scorings

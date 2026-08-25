@@ -7,10 +7,11 @@ import hashlib
 import json
 import re
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import db
+from . import db, schedule
 from .config import DEMO_ROSTER_POSITIONS, settings
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import draft as draft_engine
@@ -427,15 +428,29 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
     ]
     d = diff_lineup(pool, starters, rp)
 
+    # Game context for every roster team, one query: opponent, kickoff, and
+    # any weather concern. `locked` = kickoff already passed (Sleeper locks
+    # the slot; the card must stop proposing that swap).
+    games = {g["team"]: g for g in conn.execute(
+        "SELECT * FROM nfl_games WHERE season=? AND week=?",
+        (settings.season, week))}
+    now_utc = datetime.now(timezone.utc)
+
     def describe(pid: str) -> dict:
         p = players[pid]
         raw = round(projs.get(pid, 0.0), 1)
         zeroed = (p["injury_status"] or "") in INactive or p["bye"] == week
+        g = games.get(p["team"])
+        kickoff = g["kickoff_utc"] if g else None
+        locked = bool(kickoff) and datetime.fromisoformat(kickoff) <= now_utc
         # proj is what the player counts for (0 when Out/bye) so rows always
         # reconcile with the totals; proj_full keeps the healthy number.
         return {"id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
                 "proj": 0.0 if zeroed else raw, "proj_full": raw,
-                "injury": p["injury_status"], "bye": p["bye"] == week}
+                "injury": p["injury_status"], "bye": p["bye"] == week,
+                "opp": (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None,
+                "kickoff_utc": kickoff, "locked": locked,
+                "wx": schedule.weather_flags(g)}
 
     # Latest rec whatever its state — the card must be able to show the
     # verified confirmation and the failed notice, not just open work.
@@ -452,6 +467,34 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
     bench_rows = [describe(pid) for pid in ids
                   if pid in players and pid not in set(starters)]
 
+    def floor_pg(pid: str) -> float | None:
+        """Draft Sharks floor as a per-game number — the uncertainty signal
+        the dossier already displays, finally allowed into a decision."""
+        row = conn.execute(
+            "SELECT pr.floor, pl.proj_games FROM projections pr "
+            "JOIN players pl ON pl.sleeper_id=pr.player_id "
+            "WHERE pr.player_id=? AND pr.week=0 AND pr.floor IS NOT NULL "
+            "ORDER BY pr.source='draftsharks' DESC LIMIT 1", (pid,)).fetchone()
+        if not row or not row["floor"]:
+            return None
+        return round(row["floor"] / (row["proj_games"] or 17.0), 1)
+
+    swaps = []
+    for s in d.swaps:
+        out_d, in_d = describe(s["out_id"]), describe(s["in_id"])
+        if out_d["locked"] or in_d["locked"]:
+            continue  # Sleeper has locked the slot; proposing it would be a lie
+        fo, fi = floor_pg(s["out_id"]), floor_pg(s["in_id"])
+        risk = None
+        if fo is not None and fi is not None and fi < fo and s["gain"] < 2.0:
+            risk = (f"thin edge, thinner floor — {in_d['name']}'s floor is "
+                    f"{fi} vs {fo} a game; a coin-flip, not a clear start")
+        if in_d["wx"]:
+            note = f"{in_d['name']}'s game: {', '.join(in_d['wx'])}"
+            risk = f"{risk}; {note}" if risk else note
+        swaps.append({**s, "out": out_d, "in": in_d,
+                      "out_floor_pg": fo, "in_floor_pg": fi, "risk": risk})
+
     return {
         "week": week, "ready": True,
         "owner": roster["owner"],
@@ -460,12 +503,10 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
         "optimal_total": round(d.optimal.total if d.optimal else 0.0, 1),
         "delta": round(d.delta, 1),
         "injury_flag": d.injury_flag,
-        "material": d.material,
-        "swaps": [
-            {**s,
-             "out": describe(s["out_id"]), "in": describe(s["in_id"])}
-            for s in d.swaps
-        ],
+        "material": d.material and bool(swaps),
+        "swaps": swaps,
+        "wx_concerns": sorted({f"{r['team']}: {w}" for r in actual_rows
+                               for w in (r["wx"] or [])}),
         "lineup_hash": lineup_hash(starters),
         "rec": dict(open_rec) if open_rec else None,
     }
@@ -484,8 +525,14 @@ def rationale_for_swaps(conn: sqlite3.Connection, card: dict) -> str:
         if s["out"]["bye"]:
             why.append(f"{s['out']['name']} is on bye")
         why.append(f"{s['in']['name']} projects {s['gain']:+.1f} pts in the {s['slot']} slot")
+        if s["in"].get("opp"):
+            why[-1] += f" ({s['in']['opp']})"
         parts.append("; ".join(why) + ".")
+        if s.get("risk"):
+            parts.append(s["risk"].capitalize() + ".")
     parts.append(f"Net {card['delta']:+.1f} projected points.")
+    if card.get("wx_concerns"):
+        parts.append("Weather on the slate: " + "; ".join(card["wx_concerns"]) + ".")
     return " ".join(parts)
 
 
@@ -691,6 +738,16 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
             for j in range(i + 1, len(th_bench)):
                 for g in my_studs:
                     cands.append(([g], [th_bench[i], th_bench[j]]))
+        # 2-for-2: positional rebalances a 1-for-1 can't express (my WR + spare
+        # RB for their RB + spare WR). Pools capped at 4 a side — 36 pairs per
+        # partner keeps the Pi's Hungarian budget honest.
+        my_two = (my_bench + my_weak)[:4]
+        th_two = (th_bench + th_weak)[:4]
+        for i in range(len(my_two)):
+            for j in range(i + 1, len(my_two)):
+                for k in range(len(th_two)):
+                    for m in range(k + 1, len(th_two)):
+                        cands.append(([my_two[i], my_two[j]], [th_two[k], th_two[m]]))
 
         for give, get in cands:
             ca = trades_engine.consolidated([worth(x) for x in give])
@@ -959,11 +1016,28 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         out.append({
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
             "fa_score": round(score, 1), "bid": advice.bid,
-            "hard_confirm": advice.hard_confirm, "tier": c["tier"],
+            "hard_confirm": advice.hard_confirm,
+            # the row's OWN tier — `c` here would be a stale loop leftover
+            "tier": cons[pid]["tier"] if pid in cons else None,
             "heat": heat.get(pid, 0),
         })
     out.sort(key=lambda r: -r["fa_score"])
     top = out[:20]
+
+    # Schedule context: who the target plays this week, and the bid traps —
+    # on bye now (he can't help the week you bought him) or next week.
+    wk_now = int(db.meta_get(conn, "current_week") or 0)
+    if wk_now:
+        gnow = {g["team"]: g for g in conn.execute(
+            "SELECT * FROM nfl_games WHERE season=? AND week=?",
+            (settings.season, wk_now))}
+        for t in top:
+            g = gnow.get(t["team"])
+            byew = players[t["id"]]["bye"]
+            t["opp"] = (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None
+            t["bye_now"] = byew == wk_now
+            t["bye_next"] = byew == wk_now + 1
+            t["wx"] = schedule.weather_flags(g)
 
     # "Would he start?" — adding the candidate to my roster and re-optimizing
     # tells whether he cracks the lineup (gain > 0) or is depth.

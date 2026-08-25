@@ -29,7 +29,7 @@ ENV_COMMON="-e BOOTLEGGER_MODE=live -e SLEEPER_LEAGUE_ID=$LEAGUE \
 
 docker build -t $IMG $SRC
 
-docker rm -f bootlegger bootlegger-ingest bootlegger-nightly 2>/dev/null || true
+docker rm -f bootlegger bootlegger-ingest bootlegger-nightly bootlegger-hands 2>/dev/null || true
 
 # The board + API (the only container that needs the port and the hands gates)
 # shellcheck disable=SC2086
@@ -41,10 +41,21 @@ docker run -d --name bootlegger --restart unless-stopped -p 8484:8484 \
 docker run -d --name bootlegger-ingest --restart unless-stopped $ENV_COMMON \
   $IMG python -m app.ingest draft-poll
 
-# Nightly ETL loop (players, ADP, values, ECR, three projection sources)
+# Nightly ETL loop (players, schedule+weather, ADP, values, ECR, projections)
 # shellcheck disable=SC2086
 docker run -d --name bootlegger-nightly --restart unless-stopped $ENV_COMMON \
   --entrypoint sh $IMG -c 'while true; do sleep 86400; python -m app.ingest nightly; done'
+
+# Hands worker — the consumer of the approval queue. Ships in DRY-RUN unless
+# HANDS_DRY_RUN=0 is exported at deploy time: it drains approved jobs, runs the
+# don't-act rules and pre/post verification, and logs act:dry_run_swap instead
+# of touching a browser. Without this container an approval enqueued a job
+# nothing consumed. Real execution additionally needs the calibrated swap
+# selector map + session state (see hands/browser.py) and BOOTLEGGER_API_TOKEN.
+# shellcheck disable=SC2086
+docker run -d --name bootlegger-hands --restart unless-stopped \
+  -e BOOTLEGGER_APPROVE_REQUIRED=1 -e HANDS_DRY_RUN="${HANDS_DRY_RUN:-1}" \
+  --memory=1g $ENV_COMMON $IMG python -m hands.worker
 
 sleep 5
 curl -sf http://192.168.1.160:8484/health && echo && echo "deployed."

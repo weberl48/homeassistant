@@ -532,6 +532,23 @@ function stepper(recState) {
   }).join("") + `</div>`;
 }
 
+function kickoffShort(iso) {
+  // "Sun 1:00" in the viewer's own timezone; the schedule stores UTC.
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+function gameChip(r) {
+  // Opponent + kickoff (+ lock, + weather) — the schedule context per row.
+  if (!r.opp) return "";
+  const wx = (r.wx || []).length
+    ? ` <span class="hurt">${icon.cross}${esc(r.wx.join(", ").toUpperCase())}</span>` : "";
+  const lock = r.locked ? ` <span class="hurt">${icon.cross}LOCKED</span>` : "";
+  return `<span class="team">${esc(r.opp)} ${esc(kickoffShort(r.kickoff_utc))}</span>${lock}${wx}`;
+}
+
 function lineupTable(title, rows, total, marks) {
   const tr = rows.map((r) => {
     const mark = marks.get(r.id) || "";
@@ -540,7 +557,7 @@ function lineupTable(title, rows, total, marks) {
     return `<tr class="${mark}"><td class="slot">${esc(r.slot)}</td>
       <td><span class="pname">${esc(r.name)}</span>
         <span class="team">${esc(r.team ?? "")}</span> ${hurt}
-        <div><span class="pos pos-${posOf(r)}">${posOf(r)}</span></div></td>
+        <div><span class="pos pos-${posOf(r)}">${posOf(r)}</span> ${gameChip(r)}</div></td>
       <td class="proj">${r.proj.toFixed(1)}</td></tr>`;
   }).join("");
   return `<div class="lineup"><h3>${title}<span class="total">${total.toFixed(1)}</span></h3>
@@ -569,7 +586,10 @@ function renderWeek(card) {
   }
 
   const swapsLines = card.swaps.map((s) =>
-    `${esc(s.in.name)} in for ${esc(s.out.name)} (${esc(s.slot)}, ${s.gain > 0 ? "+" : ""}${s.gain})`).join(" · ");
+    `${esc(s.in.name)} in for ${esc(s.out.name)} (${esc(s.slot)}, ${s.gain > 0 ? "+" : ""}${s.gain})`
+    + (s.risk ? ` — <em>${esc(s.risk)}</em>` : "")).join(" · ");
+  const wxLine = (card.wx_concerns || []).length
+    ? `<p class="holds">${icon.hold} Weather on the slate: ${esc(card.wx_concerns.join("; "))}.</p>` : "";
   const holds = (rec && JSON.parse(rec.payload_json || "{}").rules_fired) || [];
   const holdNote = holds.length
     ? `<p class="holds">${icon.hold} Held by house rule: ${esc(holds.join(", "))} — the hands
@@ -602,6 +622,7 @@ function renderWeek(card) {
         <span class="delta">${card.delta > 0 ? "+" : ""}${card.delta.toFixed(1)}</span>
       </div>
       <p class="rationale">${rec ? esc(rec.rationale) : swapsLines}</p>
+      ${wxLine}
       ${holdNote}
       ${rec ? stepper(recState) : ""}
       ${actions}
@@ -656,6 +677,14 @@ async function pollWeek() {
 async function loadWaivers() {
   try {
     const data = await fetchJSON("/api/waivers");
+    const nextUp = (t) => {
+      // The bid traps first: a target who can't help the week you bought him.
+      if (t.bye_now) return `<span class="confirm-flag">${icon.flag}ON BYE NOW</span>`;
+      if (t.bye_next) return `<span class="street">bye next wk</span>`;
+      if (!t.opp) return "–";
+      const wx = (t.wx || []).length ? ` <span class="street">${esc(t.wx.join(", "))}</span>` : "";
+      return `${esc(t.opp)}${wx}`;
+    };
     const rows = data.targets.map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
         <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
@@ -664,12 +693,14 @@ async function loadWaivers() {
       <td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>
       <td class="num">${t.lineup_gain == null ? "–"
         : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}</td>
+      <td class="num">${nextUp(t)}</td>
       <td>${t.hard_confirm ? `<span class="confirm-flag">${icon.flag}BIG SWING — CONFIRM TWICE</span>` : ""}</td></tr>`).join("");
     $("#waivers-body").innerHTML = data.targets.length ? `
       <table class="wtable">
         <thead><tr><th>Player</th><th style="text-align:right">FA score</th>
         <th style="text-align:right">Bid</th><th style="text-align:right">The street</th>
         <th style="text-align:right">Your lineup</th>
+        <th style="text-align:right">Next up</th>
         <th></th></tr></thead>
         <tbody>${rows}</tbody></table>
       <p class="optimal-note">Sized at the P70 of the league's bids for each value tier (${data.history_n} on the books), +$1 over round numbers.</p>`

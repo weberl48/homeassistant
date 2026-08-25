@@ -16,6 +16,7 @@ from .config import settings
 from .engines import consensus as cx
 from .engines import tiers as tiers_engine
 from .engines import vbd as vbd_engine
+from .schedule import backfill_byes, etl_schedule, refresh_weather
 from .sleeper import SleeperClient
 from .sources import (fetch_cbs_projections, fetch_draftsharks, fetch_espn_projections,
                       fetch_fantasycalc_values, fetch_fantasypros_projections,
@@ -25,6 +26,22 @@ from .sources import (fetch_cbs_projections, fetch_draftsharks, fetch_espn_proje
 # Tiering pools per position: deep enough to cover draftable players, shallow
 # enough that the GMM sees structure instead of a waiver-wire tail.
 TIER_POOLS = {"QB": 32, "RB": 64, "WR": 72, "TE": 28, "K": 16, "DEF": 16}
+
+
+def _league_baselines(conn: sqlite3.Connection) -> dict[str, int] | None:
+    """VOLS baselines derived from the league's own roster shape and size;
+    None (no league row yet) falls back to the design-doc constants. For the
+    canonical 12-team 2-flex shape the derivation reproduces the constants
+    exactly (test-pinned), so going live with this changed nothing."""
+    row = conn.execute("SELECT settings_json FROM league").fetchone()
+    if not row:
+        return None
+    s = json.loads(row["settings_json"] or "{}")
+    rp = s.get("roster_positions") or []
+    if not rp:
+        return None
+    teams = int((s.get("settings") or {}).get("num_teams") or settings.teams)
+    return vbd_engine.derive_baselines(teams, rp)
 
 
 def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
@@ -51,7 +68,7 @@ def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
     by_pos: dict[str, list[tuple[str, float]]] = defaultdict(list)
     for pid, pts in robust.items():
         by_pos[pos_of[pid]].append((pid, pts))
-    vbd_map = vbd_engine.compute_vbd(by_pos)
+    vbd_map = vbd_engine.compute_vbd(by_pos, _league_baselines(conn))
 
     tier_map: dict[str, int] = {}
     for pos, players in by_pos.items():
@@ -88,7 +105,7 @@ def etl_players(client: SleeperClient, conn: sqlite3.Connection) -> int:
             "name": p.get("full_name") or f"{p.get('first_name','')} {p.get('last_name','')}".strip() or pid,
             "pos": p.get("position"),
             "team": p.get("team"),
-            "bye": None,  # byes come from the schedule; nflreadpy lands in Phase 2
+            "bye": None,  # rebuilt every nightly by schedule.backfill_byes (ECR fallback)
             "status": p.get("status") or "Active",
             "injury_status": p.get("injury_status"),
             "updated_at": now,
@@ -256,8 +273,11 @@ def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
         )
         matched += 1
         if p["bye"]:
-            conn.execute("UPDATE players SET bye=? WHERE sleeper_id=?", (p["bye"], pid))
-            byes += 1
+            # Fallback only: the schedule-derived byes (etl_schedule, earlier
+            # in the nightly) are authoritative; ECR fills whatever they miss.
+            if conn.execute("UPDATE players SET bye=? WHERE sleeper_id=? AND bye IS NULL",
+                            (p["bye"], pid)).rowcount:
+                byes += 1
     conn.commit()
     return {"experts": data["experts"], "matched": matched, "byes": byes}
 
@@ -475,6 +495,17 @@ def nightly(conn: sqlite3.Connection) -> dict:
     if settings.league_id:
         etl_league(client, conn)
         etl_rosters(client, conn)
+    try:
+        # The schedule layer: kickoff times for the don't-act rules and locks,
+        # byes straight from the source (FP-ECR scrape remains the fallback),
+        # and this week's outdoor-game weather.
+        out["schedule"] = etl_schedule(conn, settings.season)
+        out["byes"] = backfill_byes(conn, settings.season)
+        wk_now = int(db.meta_get(conn, "current_week") or 0)
+        if wk_now:
+            out["weather"] = refresh_weather(conn, settings.season, wk_now)
+    except Exception as e:  # the board must not die with the schedule mirror
+        out["schedule"] = f"failed: {e}"
     out["adp"] = etl_adp(conn)
     out["values"] = etl_values(conn)
     out["projections"] = etl_projections(client, conn, week=0)

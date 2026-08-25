@@ -164,8 +164,8 @@ Seed FAAB history by walking `previous_league_id` back through prior seasons of 
 | Live draft sync | API polling, no extension, works from any device | **Better** |
 | Custom-scoring exactness | Your league's literal settings | **Better** |
 | FAAB advice | Modeled on your league's actual bid history | **Better** |
-| Automation & notifications | Native Android push w/ shade approvals, DND-bypass emergencies, self-verifying actuation | **Better** (FP has nothing) |
-| Rationale | LLM paragraph per recommendation | **Better** |
+| Automation & notifications | Native Android push w/ shade approvals, DND-bypass emergencies, self-verifying actuation | **Better** on safety/verification; note FP's My Playbook Auto-Pilot DOES auto-submit Sleeper lineups (corrected 2026-08-25 — earlier "FP has nothing" was wrong) |
+| Rationale | Deterministic writer (injury/bye/opponent/weather/floor context as of 2026-08-25); the LLM paragraph is still the Phase 3 option | **Parity** |
 | Start/sit & trade math | Same commodity algorithms | Parity |
 | Expert breadth | FP ECR (via nflverse cache) is *one input*, not 100 experts | Worse — mitigated |
 | Projection polish, UX breadth | Solo build | Worse — irrelevant for one user |
@@ -177,7 +177,7 @@ Seed FAAB history by walking `previous_league_id` back through prior seasons of 
 - **Phase 0 — draft-ready MVP:** repo + compose + SQLite schema · Sleeper client + players/ADP/FantasyCalc/ECR ETL · consensus + GMM tiers + VOLS · app shell + Draft Board screen (2s pick polling, best-available, survival odds) · the web fallback page · rehearse against a Sleeper mock. *Done when: in a live mock, the board crosses off every pick within 3s and top-available matches gut within one tier ~90% of the time.*
 - **Phase 1 — pre-draft week:** Expo/FCM push pipeline with shade action buttons + DND-bypass emergency channel · lineup optimizer + diff in dry-run · This Week screen. *Done when: a forced suboptimal lineup produces a phone notification with a working [Approve] button inside 60s of the poll.*
 - **Draft day:** board on the laptop/phone, human picks, zero actuation.
-- **Phase 2 — season weeks 1–2:** injury watcher · T-90/T-20 escalation · verification loop on confirmations · GitHub Actions off-Pi check · healthchecks + backups.
+- **Phase 2 — season weeks 1–2:** injury watcher · T-90/T-20 escalation · verification loop on confirmations · GitHub Actions off-Pi check · healthchecks + backups. *Shipped 2026-08-25: the schedule layer (nflverse games.csv → `nfl_games`) — kickoff-time don't-act rules live, per-player locks on the week card, schedule-derived byes, Open-Meteo weather on outdoor games with the weather rule armed, and the off-Pi GitHub check armed at `.github/workflows/lineup-check.yml` (now with a real bye check).*
 - **Phase 3 — weeks 2–4:** waiver/FAAB engine (seeded from `previous_league_id` history) · LLM rationale via forked read-only MCP · rules table UI.
 - **Phase 4 — weeks 3–5: the hands.** Test-league rehearsal → selector map + canary → `approve_required` live on the real league → 3 clean weeks → optionally flip `auto_execute`. *Done when: 3 consecutive real approved swaps go proposed→executed→API-verified with complete screenshot trails and zero manual fixes.*
 

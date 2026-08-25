@@ -844,6 +844,16 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   .col { max-height: 460px; }
 }
 
+@media (max-width: 560px) {
+  /* The report card on a phone: the prose "read" column is what crushed the
+     table — drop it (my seat's full note lives in .rc-mine below) and let the
+     figures breathe. The wrapper scrolls as a last resort, never the page. */
+  .report-card { overflow-x: auto; }
+  .rc-table td:last-child, .rc-table th:last-child { display: none; }
+  .rc-table td, .rc-table th { padding: 6px 6px; }
+  .wtable { display: block; overflow-x: auto; }
+}
+
 @media (max-width: 420px) {
   .tab { padding: 12px 8px 13px; font-size: .76rem; letter-spacing: .05em; }
   /* all five lifecycle states must fit one 390px line — the verified terminal

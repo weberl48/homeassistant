@@ -2,7 +2,37 @@
 vbd = projected points − points of the baseline player at that position."""
 from __future__ import annotations
 
+import math
+
 from ..config import VOLS_BASELINES
+
+# How flex starts actually distribute in practice: mostly WR, a solid RB
+# share, TEs almost never. floor() on the shares makes the 12-team 2-flex
+# derivation land exactly on the hand-tuned design-doc table (31/40/12) —
+# pinned by test, so live values cannot shift under this refactor.
+FLEX_WEIGHTS = {"RB": 0.30, "WR": 0.67, "TE": 0.03}
+FLEX_SLOTS = {"FLEX", "WRRB_FLEX", "REC_FLEX"}
+SFLEX_SLOTS = {"SUPER_FLEX", "SUPERFLEX"}
+
+
+def derive_baselines(teams: int, roster_positions: list[str]) -> dict[str, int]:
+    """VOLS baselines from the league's own shape instead of a hardcoded
+    12-team table: dedicated starters × teams, plus each position's share of
+    the flex pool (superflex feeds QB)."""
+    counts: dict[str, int] = {}
+    for s in roster_positions:
+        if s in ("QB", "RB", "WR", "TE", "K", "DEF"):
+            counts[s] = counts.get(s, 0) + 1
+    flex = sum(1 for s in roster_positions if s in FLEX_SLOTS) * teams
+    sflex = sum(1 for s in roster_positions if s in SFLEX_SLOTS) * teams
+    out = {}
+    for pos in ("QB", "RB", "WR", "TE", "K", "DEF"):
+        n = counts.get(pos, 0) * teams
+        n += math.floor(flex * FLEX_WEIGHTS.get(pos, 0.0))
+        if pos == "QB" and sflex:
+            n += math.floor(sflex * 0.75)
+        out[pos] = max(n, 1)
+    return out
 
 
 def baseline_points(pos_points_desc: list[float], pos: str,

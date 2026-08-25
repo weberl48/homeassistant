@@ -12,7 +12,7 @@
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const POS_HUES = { QB: "#b8455f", RB: "#3aa96b", WR: "#4f8fd8", TE: "#cb7c2c", K: "#8768cf", DEF: "#9c8f38" };
+  const POS_HUES = { QB: "#ff7a95", RB: "#52d98b", WR: "#6fb1ff", TE: "#f0954a", K: "#b591ff", DEF: "#d8d060" };
   const posOf = (p) => (p.pos === "DST" ? "DEF" : p.pos);
 
   const host = document.createElement("div");
@@ -20,58 +20,76 @@
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = `
 <style>
-  :host { all: initial; }
+  :host {
+    all: initial;
+    /* CHALK & TURF tokens — mirrors bootlegger/server/app/web/styles.css
+       :root so every hex here appears exactly once. */
+    --ground: #16382b;
+    --panel: #1b4234;
+    --panel-2: #215040;
+    --line: rgba(242,247,239,.30);
+    --line-soft: rgba(242,247,239,.14);
+    --ink: #f2f7ef;
+    --ink-dim: #c9dccd;
+    --ink-faint: #9fc2ab;
+    --brass: #f7c948;
+    --brass-bright: #ffdd6b;
+    --brass-deep: #c29a25;
+    --lamp: #58c07c;
+    --oxblood: #ff8177;
+    --font-ledger: "Courier Prime", "Courier New", monospace;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   .panel {
     position: fixed; right: 16px; bottom: 16px; width: 304px; z-index: 2147483000;
-    background: linear-gradient(180deg, #251c14, #1e1712);
-    border: 1px solid #8a6d33; border-radius: 6px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--brass-deep); border-radius: 6px;
     box-shadow: 0 2px 6px rgba(0,0,0,.45), 0 8px 24px rgba(0,0,0,.35);
-    color: #ecdfc6; font: 400 13px/1.4 "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); font: 400 13px/1.4 "Segoe UI", system-ui, sans-serif;
   }
   .head {
     display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-    border-bottom: 1px solid #3b2f21; cursor: pointer; user-select: none;
+    border-bottom: 1px solid var(--line-soft); cursor: pointer; user-select: none;
   }
-  .mark { font: 400 13px Georgia, serif; letter-spacing: .18em; color: #e6c684; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: #58a06c;
-         box-shadow: 0 1px 5px rgba(88,160,108,.8); }
-  .dot.bad { background: #cf6152; box-shadow: 0 1px 5px rgba(207,97,82,.8); }
-  .fold { margin-left: auto; color: #91805f; font-size: 14px; }
+  .mark { font: 400 13px Georgia, serif; letter-spacing: .18em; color: var(--brass); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lamp);
+         box-shadow: 0 1px 5px rgba(88,192,124,.8); }
+  .dot.bad { background: var(--oxblood); box-shadow: 0 1px 5px rgba(255,129,119,.8); }
+  .fold { margin-left: auto; color: var(--ink-faint); font-size: 14px; }
   .body { padding: 9px 10px 10px; }
-  .clock { font-family: Consolas, monospace; font-size: 12px; color: #b5a483;
+  .clock { font-family: var(--font-ledger); font-size: 12px; color: var(--ink-dim);
            letter-spacing: .04em; margin-bottom: 7px; }
-  .clock.mine { color: #e6c684; font-weight: 700; }
-  .warn { color: #cf6152; font-size: 11px; margin-bottom: 6px; }
-  .call { border: 1px solid #8a6d33; border-radius: 5px; padding: 8px 9px;
-          background: linear-gradient(180deg, rgba(201,162,92,.10), rgba(201,162,92,.02));
+  .clock.mine { color: var(--brass-bright); font-weight: 700; }
+  .warn { color: var(--oxblood); font-size: 11px; margin-bottom: 6px; }
+  .call { border: 1px solid var(--brass-deep); border-radius: 5px; padding: 8px 9px;
+          background: linear-gradient(180deg, rgba(247,201,72,.10), rgba(247,201,72,.02));
           cursor: pointer; }
-  .call:hover { background: linear-gradient(180deg, rgba(201,162,92,.16), rgba(201,162,92,.05)); }
+  .call:hover { background: linear-gradient(180deg, rgba(247,201,72,.16), rgba(247,201,72,.05)); }
   .cname { font-size: 16px; font-weight: 700; }
-  .cmeta { display: flex; gap: 10px; font-family: Consolas, monospace; font-size: 11px;
-           color: #b5a483; margin-top: 2px; }
-  .creason { color: #b5a483; font-size: 11.5px; margin-top: 5px; }
-  .sheet { color: #91805f; font-size: 11px; margin-top: 5px; padding-top: 5px;
-           border-top: 1px dashed #2a2118; }
-  .sheet b { color: #b5a483; }
+  .cmeta { display: flex; gap: 10px; font-family: var(--font-ledger); font-size: 11px;
+           color: var(--ink-dim); margin-top: 2px; }
+  .creason { color: var(--ink-dim); font-size: 11.5px; margin-top: 5px; }
+  .sheet { color: var(--ink-faint); font-size: 11px; margin-top: 5px; padding-top: 5px;
+           border-top: 1px dashed var(--line-soft); }
+  .sheet b { color: var(--ink-dim); }
   .runners { list-style: none; margin-top: 7px; }
   .runners li { display: flex; align-items: baseline; gap: 7px; padding: 4px 2px;
-                border-top: 1px solid #2a2118; cursor: pointer; }
-  .runners li:hover { background: #251c14; }
+                border-top: 1px solid var(--line-soft); cursor: pointer; }
+  .runners li:hover { background: var(--panel-2); }
   .swatch { width: 7px; height: 7px; border-radius: 2px; flex: none; }
-  .rpos { font-size: 10px; font-weight: 700; color: #91805f; width: 24px; }
+  .rpos { font-size: 10px; font-weight: 700; color: var(--ink-faint); width: 24px; }
   .rname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rnum { margin-left: auto; font-family: Consolas, monospace; font-size: 11px; color: #b5a483; }
+  .rnum { margin-left: auto; font-family: var(--font-ledger); font-size: 11px; color: var(--ink-dim); }
   .needs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-  .need { font-size: 10px; font-weight: 600; border: 1px solid #3b2f21; border-radius: 3px;
-          padding: 1px 5px; color: #91805f; }
-  .need.open { border-color: #8a6d33; color: #c9a25c; }
+  .need { font-size: 10px; font-weight: 600; border: 1px solid var(--line); border-radius: 3px;
+          padding: 1px 5px; color: var(--ink-faint); }
+  .need.open { border-color: var(--brass-deep); color: var(--brass); }
   .toast { position: absolute; left: 10px; right: 10px; bottom: calc(100% + 8px);
-           background: #c9a25c; color: #17120e; font-weight: 600; font-size: 12px;
+           background: var(--brass); color: var(--ground); font-weight: 600; font-size: 12px;
            padding: 7px 10px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.5);
            opacity: 0; transition: opacity .15s ease; pointer-events: none; }
   .toast.show { opacity: 1; }
-  .muted { color: #91805f; font-size: 12px; }
+  .muted { color: var(--ink-faint); font-size: 12px; }
   .panel.folded .body { display: none; }
 </style>
 <div class="panel" id="panel">
@@ -170,7 +188,7 @@
         </div>
         <ul class="runners">${s.slice(1, 4).map((r, i) => `
           <li data-i="${i + 1}" title="click: search him in Sleeper">
-            <span class="swatch" style="background:${POS_HUES[posOf(r)] || "#91805f"}"></span>
+            <span class="swatch" style="background:${POS_HUES[posOf(r)] || "#9fc2ab"}"></span>
             <span class="rpos">${esc(posOf(r))}</span>
             <span class="rname">${esc(r.name)}</span>
             <span class="rnum">${r.score ?? ""}</span></li>`).join("")}

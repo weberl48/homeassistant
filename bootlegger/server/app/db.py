@@ -147,6 +147,27 @@ CREATE TABLE IF NOT EXISTS meta(
     key TEXT PRIMARY KEY,
     value TEXT
 );
+-- One row per (team, week): the NFL schedule from the team's point of view.
+-- team/opponent use Sleeper's code vocabulary (nflverse's LA is stored as LAR).
+-- kickoff_utc NULL = time not yet announced. Weather columns are filled only
+-- for outdoor home games inside the forecast window; weather_at is the fetch
+-- timestamp that drives staleness.
+CREATE TABLE IF NOT EXISTS nfl_games(
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    team TEXT NOT NULL,
+    opponent TEXT,
+    is_home INTEGER,
+    kickoff_utc TEXT,
+    roof TEXT,
+    stadium TEXT,
+    neutral_site INTEGER DEFAULT 0,
+    wind_mph REAL,
+    precip_prob REAL,
+    temp_f REAL,
+    weather_at TEXT,
+    PRIMARY KEY(season, week, team)
+);
 """
 
 DEFAULT_RULES: list[tuple[str, float | None]] = [

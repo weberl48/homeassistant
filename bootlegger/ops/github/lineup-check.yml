@@ -1,48 +1,5 @@
-# Off-Pi safety net (design doc §6): Sunday-morning "is my lineup set" check
-# that runs on GitHub's infrastructure and reads only the public Sleeper API —
-# it works even when the Pi is dead.
-#
-# To arm it: copy this file to .github/workflows/lineup-check.yml and set the
-# repo variables SLEEPER_LEAGUE_ID and SLEEPER_ROSTER_ID (Settings → Secrets
-# and variables → Actions → Variables). A failing run emails you via GitHub's
-# built-in workflow-failure notification.
-name: sunday-lineup-check
-
-on:
-  schedule:
-    - cron: "0 13 * * 0"   # 13:00 UTC ≈ 9am ET during the season (DST)
-  workflow_dispatch:
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    if: ${{ vars.SLEEPER_LEAGUE_ID != '' }}
-    steps:
-      - name: Any starter OUT / BYE / empty?
-        env:
-          LEAGUE: ${{ vars.SLEEPER_LEAGUE_ID }}
-          ROSTER: ${{ vars.SLEEPER_ROSTER_ID }}
-        run: |
-          python3 - <<'EOF'
-          import json, os, sys, urllib.request
-
-          league = os.environ["LEAGUE"]; roster_id = int(os.environ["ROSTER"])
-          get = lambda u: json.load(urllib.request.urlopen(u))
-          rosters = get(f"https://api.sleeper.app/v1/league/{league}/rosters")
-          mine = next(r for r in rosters if r["roster_id"] == roster_id)
-          starters = mine.get("starters") or []
-          state = get("https://api.sleeper.app/v1/state/nfl")
-          players = get("https://api.sleeper.app/v1/players/nfl")
-          bad = []
-          for pid in starters:
-              if pid in ("0", None, ""):
-                  bad.append("EMPTY SLOT"); continue
-              p = players.get(pid, {})
-              status = p.get("injury_status") or ""
-              if status in ("Out", "Doubtful", "IR", "Sus"):
-                  bad.append(f"{p.get('full_name', pid)} is {status}")
-          if bad:
-              print("LINEUP TROUBLE:", "; ".join(bad))
-              sys.exit(1)
-          print(f"week {state.get('week')}: all {len(starters)} starters active")
-          EOF
+# ARMED 2026-08-25 — the live workflow is the canonical copy at
+# .github/workflows/lineup-check.yml (repo root). This file is a pointer so
+# the ops directory still documents that the safety net exists; edit the
+# armed copy, not this one. It needs repo variables SLEEPER_LEAGUE_ID and
+# SLEEPER_ROSTER_ID (Settings → Secrets and variables → Actions → Variables).

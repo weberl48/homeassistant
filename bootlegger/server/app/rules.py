@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
+from . import schedule
 from .config import SOURCE_DISAGREEMENT_MAX
 
 
@@ -14,11 +15,17 @@ def _enabled(conn: sqlite3.Connection) -> dict[str, float | None]:
             conn.execute("SELECT name, threshold FROM rules WHERE enabled=1")}
 
 
+def _team_of(conn: sqlite3.Connection, player_id: str) -> str | None:
+    row = conn.execute("SELECT team FROM players WHERE sleeper_id=?",
+                       (player_id,)).fetchone()
+    return row["team"] if row else None
+
+
 def kickoff_hours_away(conn: sqlite3.Connection, player_id: str, week: int) -> float | None:
-    """Hours until the player's kickoff. No schedule source is wired yet
-    (Phase 2, nflreadpy) — None means the time-based rules cannot trip, which
-    fails toward acting only in approve mode where a human is in the loop."""
-    return None
+    """Hours until the player's kickoff, from the nfl_games schedule table.
+    None (no schedule row, or kickoff not yet announced) still fails toward
+    acting only in approve mode where a human is in the loop."""
+    return schedule.kickoff_hours_away(conn, _team_of(conn, player_id), week)
 
 
 def _disagreement(conn: sqlite3.Connection, player_id: str, week: int) -> float:
@@ -63,5 +70,13 @@ def evaluate(conn: sqlite3.Connection, swaps: list[dict], week: int) -> list[str
         if any("faab" in json.dumps(s).lower() for s in swaps):
             fired.append("any_faab_involved")
 
-    # weather_flag_on_game: no weather source wired yet (Phase 2); cannot trip.
+    if "weather_flag_on_game" in enabled:
+        # Threshold = wind mph (default 20); ≥70% precip flags regardless.
+        wind_min = enabled["weather_flag_on_game"] or 20.0
+        for pid in player_ids:
+            g = schedule.game_for(conn, _team_of(conn, pid), week)
+            if schedule.weather_flags(g, wind_min=wind_min):
+                fired.append("weather_flag_on_game")
+                break
+
     return fired
