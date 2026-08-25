@@ -563,6 +563,42 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   box-shadow: var(--shadow-raise); padding: 12px 14px; margin-bottom: 12px;
 }
 
+/* the report card (post-draft grades) */
+.report-card {
+  border: 2px dashed var(--brass-deep); border-radius: 12px;
+  background: var(--panel); box-shadow: var(--shadow-raise);
+  padding: 16px 18px; margin-bottom: 16px;
+}
+.rc-table td, .rc-table th { padding: 7px 10px; }
+.rc-table .num { text-align: right; font-family: var(--font-ledger); }
+.rc-table tr.is-me td {
+  background: linear-gradient(90deg, rgba(247,201,72,.14), transparent 85%);
+  font-weight: 700;
+}
+.rc-note { color: var(--ink-dim); font-size: .88rem; }
+.me-tag {
+  font: 700 .6rem/1 var(--font-ui); letter-spacing: .12em; color: var(--ground);
+  background: var(--brass); border-radius: 3px; padding: 2px 5px; vertical-align: 2px;
+}
+.gradechip {
+  display: inline-block; min-width: 30px; text-align: center;
+  font: 700 .85rem/1 var(--font-ui); letter-spacing: .04em;
+  border-radius: 6px; padding: 4px 6px; color: var(--ground);
+}
+.gA { background: var(--lamp); }
+.gB { background: var(--ink-dim); }
+.gC { background: var(--brass); }
+.gD { background: var(--oxblood); }
+.rc-mine { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px; }
+.rc-comps { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+.rc-comp { display: inline-flex; align-items: center; gap: 6px; }
+.rc-comp .lbl {
+  font: 600 .68rem/1 var(--font-ui); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.rc-mine p { color: var(--ink-dim); margin-top: 4px; }
+.rc-mine p b { color: var(--ink); }
+
 /* scrimmage box (board rail) */
 .scrimmage {
   margin-top: 14px; border: 1px dashed var(--line); border-radius: 12px;

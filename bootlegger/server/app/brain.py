@@ -13,6 +13,7 @@ from . import db
 from .config import DEMO_ROSTER_POSITIONS, settings
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import draft as draft_engine
+from .engines import grades as grades_engine
 from .engines import trades as trades_engine
 from .engines import waivers as waivers_engine
 from .engines.draft import Candidate
@@ -400,6 +401,103 @@ def rationale_for_swaps(conn: sqlite3.Connection, card: dict) -> str:
 # ---------------------------------------------------------------------------
 # The Parlor — trade suggestions
 # ---------------------------------------------------------------------------
+
+def draft_grades(conn: sqlite3.Connection) -> dict:
+    """The Report Card: grade every seat of the completed draft on the
+    league's own curve. Works for scrimmages too — a practice room gets the
+    same treatment, with anonymous seat labels."""
+    drow = conn.execute("SELECT * FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone() \
+        if settings.mode == "demo" else conn.execute(
+            "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+    not_ready = {"ready": False,
+                 "note": "The report card is written when the draft is in the books."}
+    if not drow:
+        return not_ready
+    draft_id = drow["draft_id"]
+    dsettings = json.loads(drow["settings_json"]) if drow["settings_json"] else {}
+    my_slot = int(dsettings.get("slot", settings.my_roster_id))
+    # Complete = the label says so OR every pick is in — same derivation as
+    # the board (the demo seed and some rooms never flip the label).
+    n_picks = conn.execute("SELECT COUNT(*) c FROM draft_picks WHERE draft_id=?",
+                           (draft_id,)).fetchone()["c"]
+    total = int(dsettings.get("teams", settings.teams)) * int(dsettings.get("rounds", settings.rounds))
+    if drow["status"] != "complete" and n_picks < total:
+        return not_ready
+    practice = draft_id == db.meta_get(conn, "practice_draft_id")
+
+    players = _players_index(conn)
+    cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
+    _pref = {"sleeper": 0, "demo": 1, "ffc": 2, "fp_ecr": 3}
+    adp: dict[str, float] = {}
+    adp_src: dict[str, int] = {}
+    for r in conn.execute("SELECT * FROM adp"):
+        pid, p = r["player_id"], _pref.get(r["source"], 9)
+        if pid not in adp or p < adp_src[pid]:
+            adp[pid], adp_src[pid] = r["adp"], p
+
+    owners = {r["roster_id"]: r["owner"] for r in conn.execute("SELECT * FROM rosters")}
+    rp = roster_positions(conn)
+    n_starting = len([s for s in rp if s not in ("BN", "IR", "TAXI")])
+
+    by_slot: dict[int, list[sqlite3.Row]] = {}
+    for p in conn.execute(
+            "SELECT * FROM draft_picks WHERE draft_id=? ORDER BY pick_no", (draft_id,)):
+        by_slot.setdefault(p["draft_slot"], []).append(p)
+
+    teams, steal = [], None
+    for slot, picks in sorted(by_slot.items()):
+        ids = [p["player_id"] for p in picks if p["player_id"] in players]
+        pool = [PlayerProj(pid, players[pid]["pos"],
+                           (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
+                           players[pid]["name"], players[pid]["injury_status"])
+                for pid in ids]
+        starters = optimize(pool, rp).total
+        vbd_total = sum(max(0.0, (cons[pid]["vbd"] or 0.0)) for pid in ids if pid in cons)
+        depth = max(0, sum(1 for pid in ids
+                           if pid in cons and (cons[pid]["vbd"] or 0) > 0) - n_starting)
+
+        surplus, best, reach = 0.0, None, None
+        for p in picks:
+            pid = p["player_id"]
+            if pid not in players or pid not in adp:
+                continue
+            d = adp[pid] - p["pick_no"]           # +N picks of market value
+            surplus += d
+            entry = {"name": players[pid]["name"], "pos": players[pid]["pos"],
+                     "pick_no": p["pick_no"], "adp": round(adp[pid], 1),
+                     "surplus": round(d, 1)}
+            if best is None or d > best["surplus"]:
+                best = entry
+            if reach is None or d < reach["surplus"]:
+                reach = entry
+            if d > 0 and (steal is None or d > steal["surplus"]):
+                steal = {**entry, "slot": slot}
+
+        risks = [(players[pid]["injury_risk"], (cons[pid]["pts_robust"] or 0.0))
+                 for pid in ids if pid in cons and players[pid]["injury_risk"] is not None]
+        wsum = sum(w for _, w in risks)
+        risk = round(sum(r * w for r, w in risks) / wsum, 1) if wsum else None
+
+        # A CPU practice room reuses slot numbers that collide with the real
+        # league's roster ids — never paste the league's owner names on bots.
+        owner = f"Seat {slot}" if practice else \
+            (owners.get(picks[0]["roster_id"]) or f"roster {picks[0]['roster_id']}")
+        teams.append({
+            "slot": slot, "owner": owner, "mine": slot == my_slot,
+            "starters": round(starters, 1), "vbd": round(vbd_total, 1),
+            "surplus": round(surplus, 1), "depth": depth, "risk": risk,
+            "best_pick": best, "reach": reach,
+        })
+
+    teams = grades_engine.compose(teams)
+    for t in teams:
+        t["note"] = grades_engine.seat_note(t)
+    if steal is not None:
+        seat = next((t for t in teams if t["slot"] == steal["slot"]), None)
+        steal["owner"] = seat["owner"] if seat else f"Seat {steal['slot']}"
+    return {"ready": True, "draft_id": draft_id, "practice": practice,
+            "teams": teams, "steal": steal}
+
 
 def league_rosters(conn: sqlite3.Connection) -> dict:
     """Every roster with its owner and ranked players — feeds the Parlor's

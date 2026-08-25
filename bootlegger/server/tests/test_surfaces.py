@@ -74,6 +74,69 @@ def test_waivers_refuse_predraft(predraft_world):
     assert "draft" in out["note"].lower()
 
 
+@pytest.fixture()
+def graded_world():
+    """Demo world with a fabricated COMPLETE draft: each roster's players are
+    laid into snake picks (the demo seed itself is mid-draft with no picks)."""
+    import json
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.init_db(conn)
+    demo.seed(conn)
+    rosters = conn.execute(
+        "SELECT roster_id, players_json FROM rosters ORDER BY roster_id").fetchall()
+    lists = [json.loads(r["players_json"]) for r in rosters]
+    teams, rounds = len(rosters), min(len(li) for li in lists)
+    pick_no = 0
+    for rnd in range(rounds):
+        order = range(teams) if rnd % 2 == 0 else reversed(range(teams))
+        for idx in order:
+            pick_no += 1
+            conn.execute(
+                "INSERT INTO draft_picks(draft_id,pick_no,round,draft_slot,roster_id,"
+                "player_id,ts) VALUES(?,?,?,?,?,?,?)",
+                (demo.DEMO_DRAFT_ID, pick_no, rnd + 1, idx + 1,
+                 rosters[idx]["roster_id"], lists[idx][rnd], db.utcnow()))
+    conn.execute("UPDATE drafts SET status='complete'")
+    conn.commit()
+    return conn
+
+
+def test_draft_grades(graded_world):
+    """The Report Card: every seat graded on the league curve, one seat mine,
+    ranks ordered by composite, notes written."""
+    g = brain.draft_grades(graded_world)
+    assert g["ready"]
+    teams = g["teams"]
+    assert len(teams) >= 8
+    assert sum(1 for t in teams if t["mine"]) == 1
+    assert len({t["grade"] for t in teams}) > 1, "a curve must spread grades"
+    assert [t["rank"] for t in teams] == list(range(1, len(teams) + 1))
+    comps = [t["composite"] for t in teams]
+    assert comps == sorted(comps, reverse=True)
+    for t in teams:
+        assert t["starters"] > 0
+        assert t["note"]
+        assert set(t["components"]) >= {"starters", "vbd", "surplus", "depth"}
+
+
+def test_grades_refuse_mid_draft(predraft_world):
+    """Half a draft gets no report card — completion is derived from the
+    pick count, not just the status label."""
+    predraft_world.execute("UPDATE drafts SET status='drafting'")
+    predraft_world.execute("DELETE FROM draft_picks WHERE pick_no > 40")
+    g = brain.draft_grades(predraft_world)
+    assert g["ready"] is False and g["note"]
+
+
+def test_grade_letter_curve():
+    from app.engines import grades as ge
+    assert ge.letter(2.0) == "A+"
+    assert ge.letter(0.0) == "B"
+    assert ge.letter(-2.0) == "D"
+
+
 def test_parse_draft_id():
     """Scrimmage paste box: room URLs, bare ids, and junk."""
     good = "1397719078969278464"

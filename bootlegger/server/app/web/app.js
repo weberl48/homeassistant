@@ -498,6 +498,7 @@ async function pollBoard() {
     const practice = !!state.board?.draft?.practice;
     $("#practice-banner").hidden = !practice;
     applyPhase(status, practice);
+    maybeLoadGrades();
     // Wayfinding: rooms that have nothing until the season starts read dim.
     // Still clickable — inside, each explains when it opens.
     document.querySelectorAll(".tab").forEach((b) => {
@@ -835,6 +836,68 @@ async function loadLedger() {
     }).join("") : `<div class="ledger-empty">Nothing on the books yet.</div>`;
     wireOK();
   } catch { wireFail(); }
+}
+
+/* ------------------------------ the report card ---------------------------
+   Grades appear once, when the bound draft (real or scrimmage) completes —
+   every seat on the league's own curve, my row opened up. */
+const COMP_LABELS = { starters: "starting nine", vbd: "value", surplus: "discounts",
+                      depth: "the shelf", risk: "sturdiness" };
+
+function gradeCls(g) {
+  return { A: "gA", B: "gB", C: "gC" }[g[0]] || "gD";
+}
+
+async function maybeLoadGrades() {
+  const d = state.board?.draft;
+  const el = $("#report-card");
+  if (!d || d.status !== "complete") {
+    el.hidden = true;
+    state.gradesFor = null;
+    return;
+  }
+  if (state.gradesFor === d.id) return;
+  try {
+    const g = await fetchJSON("/api/draft/grades");
+    if (!g.ready) { el.hidden = true; return; }
+    state.gradesFor = d.id;
+    renderReportCard(g);
+    el.hidden = false;
+  } catch { /* the board stands without the card */ }
+}
+
+function renderReportCard(g) {
+  const rows = g.teams.map((t) => `
+    <tr class="${t.mine ? "is-me" : ""}">
+      <td class="num">${t.rank}</td>
+      <td><span class="gradechip ${gradeCls(t.grade)}">${esc(t.grade)}</span></td>
+      <td>${esc(t.owner)}${t.mine ? ' <span class="me-tag">YOU</span>' : ""}</td>
+      <td class="num" title="season-total points of the optimal starting lineup">${t.starters.toFixed(1)}</td>
+      <td class="num" title="picks of market value captured vs ADP — positive means discounts">${t.surplus > 0 ? "+" : ""}${Math.round(t.surplus)}</td>
+      <td class="rc-note">${esc(t.note)}</td>
+    </tr>`).join("");
+  const me = g.teams.find((t) => t.mine);
+  const comps = me ? Object.entries(me.components).map(([k, c]) => `
+    <span class="rc-comp"><span class="lbl">${esc(COMP_LABELS[k] || k)}</span>
+      <span class="gradechip ${gradeCls(c.grade)}">${esc(c.grade)}</span></span>`).join("") : "";
+  const detail = me ? `
+    <div class="rc-mine">
+      <div class="rc-comps">${comps}</div>
+      ${me.best_pick ? `<p>Best call: <b>${esc(me.best_pick.name)}</b> at P${me.best_pick.pick_no}
+        — the room had him ${Math.round(Math.max(0, me.best_pick.surplus))} picks earlier (ADP ${me.best_pick.adp}).</p>` : ""}
+      ${me.reach && me.reach.surplus < -3 ? `<p>The reach: <b>${esc(me.reach.name)}</b> at
+        P${me.reach.pick_no}, ${Math.round(-me.reach.surplus)} picks before his ADP of ${me.reach.adp}.</p>` : ""}
+    </div>` : "";
+  $("#report-card").innerHTML = `
+    <h2 class="room-title">The Report Card${g.practice ? " — scrimmage" : ""}</h2>
+    ${g.steal ? `<p class="room-note">Steal of the draft: <b>${esc(g.steal.name)}</b> to
+      ${esc(g.steal.owner)} at P${g.steal.pick_no} — the room had him
+      ${Math.round(g.steal.surplus)} picks earlier.</p>` : ""}
+    <table class="wtable rc-table"><thead><tr>
+      <th></th><th></th><th>Seat</th><th style="text-align:right">proj starters</th>
+      <th style="text-align:right">value</th><th>the read</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    ${detail}`;
 }
 
 /* -------------------------------- scrimmage -------------------------------

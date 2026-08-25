@@ -344,6 +344,13 @@ class PracticeBody(BaseModel):
     url: str
 
 
+@app.get("/api/draft/grades")
+def get_draft_grades():
+    """The Report Card — every seat graded on the league's curve once the
+    draft (real or scrimmage) is in the books."""
+    return brain.draft_grades(get_conn())
+
+
 @app.get("/api/practice")
 def practice_status():
     return {"draft_id": db.meta_get(get_conn(), "practice_draft_id")}
