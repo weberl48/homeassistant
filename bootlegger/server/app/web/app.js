@@ -931,7 +931,7 @@ async function loadSlip() {
     const armed = data.pilot_armed;
     $("#pilot-status").textContent = armed
       ? `ARMED${data.pilot_dry_run ? " · dry run — logs only" : " · LIVE"}`
-      : `parked${data.pilot_ready ? "" : " · no session key on the Pi"}${data.pilot_dry_run ? " · dry run" : ""}`;
+      : `parked${data.pilot_ready ? "" : " · auth lives with the pilot host"}${data.pilot_dry_run ? " · dry run" : ""}`;
     $("#pilot-arm").textContent = armed ? "Disarm the pilot" : "Arm the pilot";
     $("#pilot-banner").hidden = !armed;
   } catch { /* rail panel only — the board stands */ }

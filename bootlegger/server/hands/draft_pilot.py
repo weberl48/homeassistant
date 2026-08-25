@@ -20,7 +20,8 @@ Architecture (proven in the rehearsal, in this order of hard lessons):
 Safety locks (ALL must open before a real click):
   1. /api/queue reports pilot_armed (the UI toggle; disarm reacts in ~1s)
   2. HANDS_DRY_RUN=0 (env; default 1 logs would-picks only)
-  3. session state file present (BOOTLEGGER_STATE_FILE or the defaults)
+  3. auth: SLEEPER_LOGIN_USER/PW set (preferred — logs in fresh at launch,
+     immune to session staleness) OR a session state file present
   4. selector_map.json draft_room.calibrated == true
 
 Run:  python -m hands.draft_pilot [--api http://192.168.1.160:8484]
@@ -36,7 +37,12 @@ from pathlib import Path
 
 import httpx
 
+from . import sleeper_login
+
 log = logging.getLogger("bootlegger.pilot")
+
+LOGIN_USER = os.environ.get("SLEEPER_LOGIN_USER", "")
+LOGIN_PW = os.environ.get("SLEEPER_LOGIN_PW", "")
 
 SELECTOR_MAP_PATH = Path(__file__).parent / "selector_map.json"
 _STATE_CANDIDATES = [Path(os.environ.get("BOOTLEGGER_STATE_FILE", "")),
@@ -135,9 +141,11 @@ def main() -> None:
     api = Api(args.api, os.environ.get("BOOTLEGGER_API_TOKEN", ""))
     m = draft_map()
     st = state_file()
-    if st is None and not DRY_RUN:
-        raise SystemExit("no session state file — export it first")
-    log.info("pilot up (dry_run=%s, api=%s, state=%s)", DRY_RUN, args.api, st)
+    has_creds = bool(LOGIN_USER and LOGIN_PW)
+    if not has_creds and st is None and not DRY_RUN:
+        raise SystemExit("no auth — set SLEEPER_LOGIN_USER/PW or a state file")
+    log.info("pilot up (dry_run=%s, api=%s, auth=%s)", DRY_RUN, args.api,
+             "credentials" if has_creds else st)
 
     from playwright.sync_api import sync_playwright  # lazy: pilot-only dep
 
@@ -174,8 +182,20 @@ def main() -> None:
             if page is None and not DRY_RUN:
                 browser = pw.chromium.launch(
                     args=["--no-sandbox", "--disable-dev-shm-usage"])
-                ctx = browser.new_context(storage_state=str(st))
-                page = ctx.new_page()
+                if has_creds:
+                    ctx = browser.new_context()
+                    page = ctx.new_page()
+                    if not sleeper_login.login(page, LOGIN_USER, LOGIN_PW):
+                        log.error("credential login failed — DISARMING")
+                        api.disarm()
+                        browser.close()
+                        browser = ctx = page = None
+                        time.sleep(30)
+                        continue
+                    log.info("logged in fresh with credentials")
+                else:
+                    ctx = browser.new_context(storage_state=str(st))
+                    page = ctx.new_page()
                 page.goto(f"https://sleeper.com/draft/nfl/{d['id']}", timeout=60000)
                 for _ in range(25):
                     time.sleep(1.5)
