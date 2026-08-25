@@ -80,7 +80,10 @@ def get_queue(conn: sqlite3.Connection) -> dict:
     return {"queue": rows,
             "pilot_armed": db.meta_get(conn, "pilot_armed") == "1",
             "pilot_dry_run": settings.hands_dry_run,
-            "pilot_ready": Path("/run/secrets/sleeper_storage_state").exists()}
+            # Session key lives with the other secrets in the data volume
+            # (the .ds_cookie pattern); /run/secrets kept for a compose future.
+            "pilot_ready": Path("/data/.sleeper_storage_state").exists()
+            or Path("/run/secrets/sleeper_storage_state").exists()}
 
 
 def set_queue(conn: sqlite3.Connection, ids: list[str]) -> int:
