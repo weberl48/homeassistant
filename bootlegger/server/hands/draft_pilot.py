@@ -20,8 +20,10 @@ Architecture (proven in the rehearsal, in this order of hard lessons):
 Safety locks (ALL must open before a real click):
   1. /api/queue reports pilot_armed (the UI toggle; disarm reacts in ~1s)
   2. HANDS_DRY_RUN=0 (env; default 1 logs would-picks only)
-  3. auth: SLEEPER_LOGIN_USER/PW set (preferred — logs in fresh at launch,
-     immune to session staleness) OR a session state file present
+  3. auth: a session state file captured from the owner's own browser
+     (BOOTLEGGER_STATE_FILE or the defaults). Credential login is NOT a
+     substitute — Sleeper gates it behind hCaptcha for automated browsers
+     (see hands/sleeper_login); creds are tried only as a last resort.
   4. selector_map.json draft_room.calibrated == true
 
 Run:  python -m hands.draft_pilot [--api http://192.168.1.160:8484]
@@ -141,11 +143,13 @@ def main() -> None:
     api = Api(args.api, os.environ.get("BOOTLEGGER_API_TOKEN", ""))
     m = draft_map()
     st = state_file()
+    # Session file FIRST: credential login is captcha-gated, so it is only a
+    # fallback for an interactive host where a human can solve the puzzle.
     has_creds = bool(LOGIN_USER and LOGIN_PW)
-    if not has_creds and st is None and not DRY_RUN:
-        raise SystemExit("no auth — set SLEEPER_LOGIN_USER/PW or a state file")
+    if st is None and not has_creds and not DRY_RUN:
+        raise SystemExit("no auth — capture a session state file first")
     log.info("pilot up (dry_run=%s, api=%s, auth=%s)", DRY_RUN, args.api,
-             "credentials" if has_creds else st)
+             st or "credentials (captcha risk)")
 
     from playwright.sync_api import sync_playwright  # lazy: pilot-only dep
 
@@ -182,20 +186,24 @@ def main() -> None:
             if page is None and not DRY_RUN:
                 browser = pw.chromium.launch(
                     args=["--no-sandbox", "--disable-dev-shm-usage"])
-                if has_creds:
+                if st is not None:
+                    ctx = browser.new_context(storage_state=str(st))
+                    page = ctx.new_page()
+                else:
                     ctx = browser.new_context()
                     page = ctx.new_page()
-                    if not sleeper_login.login(page, LOGIN_USER, LOGIN_PW):
-                        log.error("credential login failed — DISARMING")
+                    try:
+                        ok = sleeper_login.login(page, LOGIN_USER, LOGIN_PW)
+                    except sleeper_login.CaptchaBlocked as e:
+                        log.error("%s — DISARMING", e)
+                        ok = False
+                    if not ok:
                         api.disarm()
                         browser.close()
                         browser = ctx = page = None
                         time.sleep(30)
                         continue
-                    log.info("logged in fresh with credentials")
-                else:
-                    ctx = browser.new_context(storage_state=str(st))
-                    page = ctx.new_page()
+                    log.info("logged in with credentials")
                 page.goto(f"https://sleeper.com/draft/nfl/{d['id']}", timeout=60000)
                 for _ in range(25):
                     time.sleep(1.5)
