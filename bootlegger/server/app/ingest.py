@@ -315,21 +315,30 @@ def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
     return {"rows": n, "failed": fetched["failed"]}
 
 
-def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: str) -> int:
-    d = client.draft(draft_id)
-    # A snake draft cares about the DRAFT SLOT, not the roster id. Sleeper
-    # publishes draft_order (user_id -> slot) once the order is set; merge our
-    # slot into the stored settings so the board tracks it automatically.
-    dsettings = d.get("settings", {}) or {}
-    order = d.get("draft_order") or {}
-    if settings.user_id and settings.user_id in order:
-        dsettings = {**dsettings, "slot": order[settings.user_id]}
-    conn.execute(
-        "INSERT INTO drafts(draft_id,status,settings_json,updated_at) VALUES(?,?,?,?) "
-        "ON CONFLICT(draft_id) DO UPDATE SET status=excluded.status,"
-        "settings_json=excluded.settings_json,updated_at=excluded.updated_at",
-        (draft_id, d.get("status"), json.dumps(dsettings), db.utcnow()),
-    )
+def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: str,
+                    full: bool = True) -> int:
+    """full=True refreshes the draft document (status, draft_order) too;
+    full=False is the hot path — picks only, one HTTP call — so the poller
+    can run a sub-second cadence during a live draft. Both paths touch
+    drafts.updated_at: that row is the freshness heartbeat the board watches."""
+    if full:
+        d = client.draft(draft_id)
+        # A snake draft cares about the DRAFT SLOT, not the roster id. Sleeper
+        # publishes draft_order (user_id -> slot) once the order is set; merge
+        # our slot into the stored settings so the board tracks it automatically.
+        dsettings = d.get("settings", {}) or {}
+        order = d.get("draft_order") or {}
+        if settings.user_id and settings.user_id in order:
+            dsettings = {**dsettings, "slot": order[settings.user_id]}
+        conn.execute(
+            "INSERT INTO drafts(draft_id,status,settings_json,updated_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(draft_id) DO UPDATE SET status=excluded.status,"
+            "settings_json=excluded.settings_json,updated_at=excluded.updated_at",
+            (draft_id, d.get("status"), json.dumps(dsettings), db.utcnow()),
+        )
+    else:
+        conn.execute("UPDATE drafts SET updated_at=? WHERE draft_id=?",
+                     (db.utcnow(), draft_id))
     picks = client.draft_picks(draft_id)
     for p in picks:
         conn.execute(
@@ -411,16 +420,33 @@ def main() -> None:
             draft_id = drafts[0]["draft_id"] if drafts else ""
         if not draft_id:
             raise SystemExit("no draft id; set SLEEPER_DRAFT_ID or SLEEPER_LEAGUE_ID")
+        # Draft-night latency: a snappy client timeout (a hung call must not
+        # blind the board), picks-only fetches on the hot path with the full
+        # draft doc every 10th cycle, and adaptive cadence — sub-second while
+        # the draft is live, polite when nothing is happening.
+        client = SleeperClient(timeout=5.0)
+        status = None
+        cycle = 0
         while True:
             # The poller must outlive Sleeper hiccups: if this process dies,
             # the API keeps serving stale picks while claiming wire-live. The
             # board watches drafts.updated_at and banners when it goes stale.
             try:
-                n = etl_draft_picks(client, conn, draft_id)
-                print(f"picks={n}", flush=True)
+                full = cycle % 10 == 0 or status is None
+                n = etl_draft_picks(client, conn, draft_id, full=full)
+                row = conn.execute("SELECT status FROM drafts WHERE draft_id=?",
+                                   (draft_id,)).fetchone()
+                status = row["status"] if row else None
+                print(f"picks={n} status={status}", flush=True)
             except Exception as e:
                 print(f"poll error (retrying): {e}", flush=True)
-            time.sleep(settings.draft_poll_seconds)
+            cycle += 1
+            if status == "drafting":
+                time.sleep(0.6)
+            elif status == "complete":
+                time.sleep(30.0)
+            else:
+                time.sleep(settings.draft_poll_seconds)
 
 
 if __name__ == "__main__":

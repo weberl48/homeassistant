@@ -195,6 +195,8 @@
     return out;
   }
 
+  let drafting = false;
+
   async function tick() {
     if (document.hidden) return;
     let res = null;
@@ -203,8 +205,13 @@
       $("dot").classList.add("bad");
       return;
     }
+    drafting = res.board.draft.status === "drafting";
     render(res.board);
   }
+
+  (function loop() {
+    // 1s while the draft is live (server caches per pick), relaxed otherwise
+    setTimeout(async () => { await tick(); loop(); }, drafting ? 1000 : POLL_MS);
+  })();
   tick();
-  setInterval(tick, POLL_MS);
 })();

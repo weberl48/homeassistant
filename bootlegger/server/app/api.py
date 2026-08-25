@@ -92,9 +92,32 @@ def health():
     }
 
 
+# Board cache: the payload is fully determined by (draft, pick count, status)
+# until the nightly refreshes source tables, so 1 Hz draft-night polling from
+# the web board + overlay costs one rebuild per actual pick, not per request.
+# synced_at is patched fresh every hit — it's the staleness heartbeat and must
+# never be served stale itself. TTL backstops nightly-data refresh.
+_board_cache: dict = {"key": None, "board": None, "ts": 0.0}
+
+
 @app.get("/api/draft/board")
 def draft_board():
-    return brain.get_board(get_conn())
+    conn = get_conn()
+    drow = conn.execute(
+        "SELECT draft_id, status, updated_at FROM drafts "
+        "ORDER BY updated_at DESC LIMIT 1").fetchone()
+    if drow:
+        n = conn.execute("SELECT COUNT(*) FROM draft_picks WHERE draft_id=?",
+                         (drow["draft_id"],)).fetchone()[0]
+        key = (drow["draft_id"], n, drow["status"])
+        if _board_cache["key"] == key and time.time() - _board_cache["ts"] < 20:
+            board = _board_cache["board"]
+            board["draft"]["synced_at"] = drow["updated_at"]
+            return board
+    board = brain.get_board(conn)
+    if drow:
+        _board_cache.update(key=key, board=board, ts=time.time())
+    return board
 
 
 @app.post("/api/draft/reset", dependencies=MUTATES)

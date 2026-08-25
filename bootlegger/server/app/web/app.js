@@ -589,7 +589,12 @@ async function boot() {
   } catch { wireFail(); }
   await pollBoard();
   await pollWeek();
-  setInterval(pollBoard, 2000);
+  // Adaptive cadence: 1s while the draft is live (the server caches the board
+  // per pick, so fast polling is nearly free), relaxed otherwise.
+  (function boardLoop() {
+    const drafting = state.board?.draft?.status === "drafting";
+    setTimeout(async () => { await pollBoard(); boardLoop(); }, drafting ? 1000 : 2500);
+  })();
   setInterval(() => {
     const fast = Date.now() < state.fastWeekUntil;
     if (state.tab === "week" || fast) pollWeek();
