@@ -445,6 +445,12 @@ def nightly(conn: sqlite3.Connection) -> dict:
         except Exception as e:
             out[f"fp_w{wk}"] = f"failed: {e}"
         out[f"consensus_w{wk}"] = compute_consensus(conn, week=wk)
+    # Persist the report — /health serves it so a quietly dying scrape source
+    # becomes visible on the board and alertable from HA, not buried in
+    # docker logs nobody reads.
+    db.meta_set(conn, "nightly_report", json.dumps({"ts": db.utcnow(), "out": {
+        k: v for k, v in out.items()}}, default=str))
+    conn.commit()
     ping_healthchecks(ok=True)
     return out
 

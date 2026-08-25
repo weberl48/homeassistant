@@ -246,6 +246,11 @@ function renderBoard(board) {
 function renderClock(d) {
   const plate = $("#clockplate");
   plate.classList.toggle("is-mine", !!d.on_the_clock_me);
+  if (d.status === "pre_draft") {
+    $("#clock-line").textContent = "AWAITING KICKOFF";
+    $("#clock-sub").textContent = "the draft hasn't started — the board warms up";
+    return;
+  }
   if (d.status === "complete") {
     $("#clock-line").textContent = "DRAFT COMPLETE";
     $("#clock-sub").textContent = `${d.rounds} rounds in the books`;
@@ -663,6 +668,15 @@ async function boot() {
   try {
     state.health = await fetchJSON("/health");
     if (state.health.mode === "demo") $("#reset-mock").hidden = false;
+    // Source health in the colophon: a dead scrape must never be a secret.
+    const h = state.health;
+    if (h.sources_live != null) {
+      const note = h.sources_missing.length
+        ? ` · ${h.sources_live}/${h.sources_expected} projection sources on the wire — down: ${h.sources_missing.join(", ")}`
+        : ` · all ${h.sources_expected} projection sources on the wire`;
+      const el = document.querySelector(".colophon p");
+      if (el) el.append(note);
+    }
     wireOK(); renderWire();
   } catch { wireFail(); }
   await pollBoard();

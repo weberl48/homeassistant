@@ -77,11 +77,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Bootlegger", lifespan=lifespan)
 
 
+EXPECTED_SOURCES = ("sleeper", "espn", "fantasypros", "cbs", "fftoday")
+
+
 @app.get("/health")
 def health():
     conn = get_conn()
-    drow = conn.execute("SELECT status FROM drafts LIMIT 1").fetchone()
+    drow = conn.execute("SELECT status FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
     last = conn.execute("SELECT MAX(updated_at) AS t FROM players").fetchone()
+    # Source health: a scrape that quietly dies must be visible here — the
+    # board's colophon and an HA sensor both read this.
+    counts = {r["source"]: r["n"] for r in conn.execute(
+        "SELECT source, COUNT(*) AS n FROM projections WHERE week=0 GROUP BY source")}
+    live_sources = [s for s in EXPECTED_SOURCES if counts.get(s, 0) >= 50]
+    nightly = db.meta_get(conn, "nightly_report")
     return {
         "ok": True,
         "mode": settings.mode,
@@ -89,6 +98,12 @@ def health():
         "players_updated_at": last["t"],
         "approve_required": settings.approve_required,
         "hands_dry_run": settings.hands_dry_run,
+        "projection_sources": counts,
+        "sources_live": len(live_sources) if settings.mode == "live" else None,
+        "sources_expected": len(EXPECTED_SOURCES),
+        "sources_missing": [s for s in EXPECTED_SOURCES if s not in live_sources]
+                           if settings.mode == "live" else [],
+        "nightly_report": json.loads(nightly) if nightly else None,
     }
 
 

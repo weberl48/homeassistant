@@ -13,14 +13,14 @@
   --line-soft: rgba(242, 247, 239, .14);
   --ink: #f2f7ef;
   --ink-dim: #c9dccd;
-  --ink-faint: #96b6a0;
+  --ink-faint: #9fc2ab;
   --brass: #f7c948;
   --brass-bright: #ffdd6b;
   --brass-deep: #c29a25;
   --lamp: #58c07c;
   --lamp-bright: #86e6a8;
   --marigold: #ff9838;
-  --oxblood: #ff6b5e;
+  --oxblood: #ff8177;
   --oxblood-deep: #c23b30;
   --qb: #ff7a95; --rb: #52d98b; --wr: #6fb1ff;
   --te: #f0954a; --k: #b591ff; --def: #d8d060;
@@ -744,3 +744,9 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   .chalk-live .route { animation: none; stroke-dashoffset: 0; }
   .prow.is-mine.just-picked::before { animation: none; display: none; }
 }
+
+
+/* Legibility floor: the smallest, densest labels stay in the condensed
+   gothic — the hand-drawn face is the voice, not the microscope. */
+.prow .lbl, .prow .team, .need, .call-meta .stat span, .wtable th,
+.col-head .count, .shelf-list .rd, .est, .stamp { font-family: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif; }

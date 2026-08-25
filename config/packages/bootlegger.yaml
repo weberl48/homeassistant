@@ -17,6 +17,10 @@ rest:
           - draft_status
           - approve_required
           - hands_dry_run
+          - sources_missing
+      - name: "Bootlegger Projection Sources"
+        unique_id: bootlegger_projection_sources
+        value_template: "{{ value_json.sources_live if value_json.sources_live is not none else 'n/a' }}"
 
   - resource: http://192.168.1.160:8484/api/week/1
     scan_interval: 120
@@ -76,6 +80,30 @@ automation:
                 title: "Approve & Execute"
               - action: "BOOTLEGGER_SNOOZE_{{ rid }}"
                 title: "Snooze 30m"
+
+  # A projection source dying (site redesign kills a scrape) must not be a
+  # secret for weeks — a thinned consensus is quiet by design, so alert on it.
+  - id: bootlegger_source_down_alert
+    alias: "Bootlegger: projection source down"
+    mode: single
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.bootlegger_projection_sources
+        below: 5
+        for: "06:00:00"
+    action:
+      - service: notify.mobile_app_sm_s926u
+        data:
+          title: "Bootlegger — a source went quiet"
+          message: >-
+            Only {{ states('sensor.bootlegger_projection_sources') }} of 5
+            projection sources on the wire (down:
+            {{ state_attr('sensor.bootlegger_status', 'sources_missing') | join(', ') }}).
+            The consensus still works, thinner. Probably a site redesign broke
+            a scrape.
+          data:
+            tag: bootlegger_source_down
+            channel: Bootlegger
 
   # Dead-man switch, in-house: the product promise is "never a silent failure",
   # so HA itself alarms when the board stops answering. No external service.

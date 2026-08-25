@@ -65,7 +65,8 @@ def sanity_ok(players, roster: list[str], pid: str, rnd: int) -> bool:
     pos = pos_of(players, pid)
     n = sum(1 for p in roster if pos_of(players, p) == pos)
     if pos in ("K", "DEF"):
-        return rnd >= 12 and n < 1
+        # real mock data: first DST went R8, first K R9 — rooms do not wait
+        return rnd >= 8 and n < 1
     if pos in ("QB", "TE") and n >= 2:
         return False
     if pos in ("RB", "WR") and n >= 7:

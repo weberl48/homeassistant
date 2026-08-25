@@ -1,3 +1,15 @@
+import os as _os
+
+import pytest as _pytest
+
+# Structural guard against a mistake made twice this project: running the
+# suite inside a live-configured container (real league env + mounted live
+# DB) sends test traffic to real APIs and produces phantom failures.
+if _os.environ.get("SLEEPER_LEAGUE_ID"):
+    _pytest.exit(
+        "refusing to run: SLEEPER_LEAGUE_ID is set. Run tests in a clean "
+        "container (no live env vars, no /data mount).", returncode=2)
+
 import sys
 from pathlib import Path
 

@@ -21,7 +21,7 @@ AUTO_EDGE_PTS = 2.0            # auto_execute needs at least this projection edg
 AUTO_KICKOFF_BUFFER_H = 2.0    # auto_execute needs this many hours before kickoff
 SOURCE_DISAGREEMENT_MAX = 0.25 # don't-act: relative stdev across sources
 ADP_SIGMA_FALLBACK = 0.15      # sigma = 0.15 * ADP when no source stdev
-ADP_SIGMA_FLOOR = 2.0          # never model a pick tighter than ±2 slots
+ADP_SIGMA_FLOOR = 3.0          # real Sleeper mock (n=180): early picks deviate σ≈2.9
 
 
 def _env(name: str, default: str) -> str:
