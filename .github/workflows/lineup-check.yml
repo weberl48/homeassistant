@@ -32,6 +32,8 @@ jobs:
           mine = next(r for r in rosters if r["roster_id"] == roster_id)
           starters = mine.get("starters") or []
           state = get("https://api.sleeper.app/v1/state/nfl")
+          if state.get("season_type") != "regular":
+              print(f"{state.get('season_type')}: nothing to check yet"); sys.exit(0)
           players = get("https://api.sleeper.app/v1/players/nfl")
 
           # Bye detection from the public nflverse schedule: any team without
