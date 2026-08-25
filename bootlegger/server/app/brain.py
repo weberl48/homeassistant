@@ -13,6 +13,7 @@ from .config import DEMO_ROSTER_POSITIONS, settings
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import draft as draft_engine
 from .engines import trades as trades_engine
+from .engines import waivers as waivers_engine
 from .engines.draft import Candidate
 from .engines.lineup import INactive, PlayerProj, diff_lineup, optimize
 
@@ -619,3 +620,86 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
         "balance": balance,
         "insights": insights,
     }
+
+
+def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None) -> dict:
+    """Free agents ranked by FA score with tier-bucketed bid sizing and a
+    would-he-start lineup signal. `heat` is Sleeper trending-add counts."""
+    heat = heat or {}
+    rp = roster_positions(conn)
+    rostered: set[str] = set()
+    for r in conn.execute("SELECT players_json FROM rosters"):
+        rostered |= set(json.loads(r["players_json"]))
+    my = my_roster_row(conn)
+    my_ids = json.loads(my["players_json"]) if my else []
+    cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
+    players = {r["sleeper_id"]: r for r in conn.execute("SELECT * FROM players")}
+
+    # Bid history bucketed by value tier (the engine's contract). Demo history
+    # labels each txn's tier in adds_json; unlabeled (live) bids bucket by bid
+    # size, mirroring the demo generator's bands (hot 18+, solid 6+, dart <6).
+    hist_by_tier: dict[str, list[float]] = {"hot": [], "solid": [], "dart": []}
+    bids_hist: list[float] = []
+    for r in conn.execute(
+            "SELECT faab, adds_json FROM transactions WHERE type='waiver' AND faab IS NOT NULL"):
+        faab = r["faab"]
+        bids_hist.append(faab)
+        try:
+            tier = (json.loads(r["adds_json"] or "{}") or {}).get("tier")
+        except (ValueError, TypeError):
+            tier = None
+        if tier not in hist_by_tier:
+            tier = "hot" if faab >= 18 else "solid" if faab >= 6 else "dart"
+        hist_by_tier[tier].append(faab)
+
+    worst_by_pos: dict[str, float] = {}
+    for pid in my_ids:
+        if pid not in players or pid not in cons:
+            continue
+        pos = players[pid]["pos"]
+        v = cons[pid]["pts_robust"] or 0
+        worst_by_pos[pos] = min(worst_by_pos.get(pos, 1e9), v)
+
+    out = []
+    for pid, c in cons.items():
+        if pid in rostered or pid not in players:
+            continue
+        p = players[pid]
+        score = waivers_engine.fa_score(c["pts_robust"] or 0,
+                                        worst_by_pos.get(p["pos"], 0))
+        if score <= 0:
+            continue
+        band = "hot" if score >= 30 else "solid" if score >= 10 else "dart"
+        tier_hist = hist_by_tier[band]
+        # thin tier history (< 3 bids) falls back to the whole book
+        advice = waivers_engine.size_bid(
+            score, tier_hist if len(tier_hist) >= 3 else bids_hist,
+            settings.faab_budget)
+        out.append({
+            "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
+            "fa_score": round(score, 1), "bid": advice.bid,
+            "hard_confirm": advice.hard_confirm, "tier": c["tier"],
+            "heat": heat.get(pid, 0),
+        })
+    out.sort(key=lambda r: -r["fa_score"])
+    top = out[:20]
+
+    # "Would he start?" — adding the candidate to my roster and re-optimizing
+    # tells whether he cracks the lineup (gain > 0) or is depth.
+    if my_ids:
+        base = [PlayerProj(pid, players[pid]["pos"],
+                           (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
+                           players[pid]["name"], players[pid]["injury_status"])
+                for pid in my_ids if pid in players]
+        base_total = optimize(base, rp).total
+        for t in top:
+            cand = PlayerProj(t["id"], t["pos"],
+                              (cons[t["id"]]["pts_robust"] or 0.0) if t["id"] in cons else 0.0,
+                              t["name"], players[t["id"]]["injury_status"])
+            t["lineup_gain"] = round(optimize(base + [cand], rp).total - base_total, 1)
+    else:
+        for t in top:
+            t["lineup_gain"] = None
+
+    return {"targets": top, "history_n": len(bids_hist),
+            "note": "Advisory only — waivers have no actuation path."}

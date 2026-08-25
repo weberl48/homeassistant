@@ -41,6 +41,10 @@ def main() -> None:
     players, cons, projs, adp, ecr = world
     rng = random.Random(42)
 
+    print("RUNBOOK: stop bootlegger-ingest before running; afterwards run "
+          "'python tools/live_mock.py cleanup' and 'docker start "
+          "bootlegger-ingest'. On any crash this script cleans up after "
+          "itself so the board rebinds to the league draft.", flush=True)
     cleanup(conn)
     conn.execute(
         "INSERT INTO drafts(draft_id,status,settings_json,updated_at) VALUES(?,?,?,?)",
@@ -52,6 +56,16 @@ def main() -> None:
     rosters = {s: [] for s in range(1, TEAMS + 1)}
     next_pick_at = time.time() + PICK_SECONDS
     pick_no = 1
+    try:
+        _run_draft(conn, world, rng, taken, rosters, next_pick_at, pick_no)
+    except BaseException:
+        # A dead sim must not leave the board bound to a phantom draft.
+        cleanup(conn)
+        raise
+
+
+def _run_draft(conn, world, rng, taken, rosters, next_pick_at, pick_no) -> None:
+    players, cons, projs, adp, ecr = world
     while pick_no <= TEAMS * ROUNDS:
         # heartbeat every second, like the real poller — the staleness banner
         # must stay dark for the whole show

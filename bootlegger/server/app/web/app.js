@@ -267,9 +267,20 @@ function renderClock(d) {
   }
 }
 
+let _callSig = "";
+
 function renderCall(board) {
   const body = $("#call-body");
   const s = board.suggestions;
+  // Rebuild only when the plate's content actually changes — at draft-time
+  // 1 Hz polling an unconditional innerHTML rebuild restarts the ref's bob
+  // and the route-draw every second (they'd never finish a loop).
+  const sig = JSON.stringify([
+    board.draft.status, board.draft.on_the_clock_me, board.experts_call?.id,
+    (s || []).slice(0, 5).map((r) => [r.id, r.score]),
+  ]);
+  if (sig === _callSig) return;
+  _callSig = sig;
   if (board.draft.status === "complete") {
     body.innerHTML = `<div class="call-done">
       <svg class="chalk-goal" viewBox="0 0 64 62" fill="none" stroke="currentColor"

@@ -130,8 +130,10 @@ def etl_adp(conn: sqlite3.Connection) -> int:
     """FFC ADP joined to sleeper ids by normalized name+position."""
     now = db.utcnow()
     ffc = fetch_ffc_adp(teams=settings.teams, year=settings.season)
-    if ffc:
+    if len(ffc) >= MIN_WEEKLY_ROWS:
         conn.execute("DELETE FROM adp WHERE source='ffc'")
+    else:
+        return 0  # stub response — keep yesterday's ADP
     lookup = {}
     for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
@@ -190,12 +192,18 @@ def etl_projections(client: SleeperClient, conn: sqlite3.Connection, week: int =
     adp_field = {"ppr": "adp_ppr", "half": "adp_half_ppr", "std": "adp_std"}[scoring]
     have = {r["sleeper_id"] for r in conn.execute("SELECT sleeper_id FROM players")}
     blob = client.projections(settings.season, week)
-    # Replace, don't accrete: a player dropped from the feed must not keep his
-    # last projection forever (season-ending injuries would stay draftable).
-    if blob:
+    # Replace, don't accrete — but only when the batch is real: an API hiccup
+    # returning placeholder-only entries must not wipe the source for a day.
+    usable_pts = sum(1 for v in blob.values() if v.get(pts_field) or v.get("pts_ppr"))
+    usable_adp = sum(1 for v in blob.values()
+                     if (v.get(adp_field) or v.get("adp_ppr") or 999) < 900)
+    floor = MIN_SOURCE_ROWS if week == 0 else MIN_WEEKLY_ROWS
+    if usable_pts >= floor:
         conn.execute("DELETE FROM projections WHERE week=? AND source='sleeper'", (week,))
-        if week == 0:
+        if week == 0 and usable_adp >= MIN_WEEKLY_ROWS:
             conn.execute("DELETE FROM adp WHERE source='sleeper'")
+    else:
+        return 0  # keep yesterday's rows; the skip shows in the nightly report
     n = 0
     now = db.utcnow()
     for pid, v in blob.items():
@@ -230,8 +238,11 @@ def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
     for row in conn.execute("SELECT sleeper_id, name, pos FROM players").fetchall():
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
     now = db.utcnow()
-    if data["players"]:  # only clear when the scrape actually delivered
+    if len(data["players"]) >= MIN_SOURCE_ROWS:  # a real delivery, not a stub
         conn.execute("DELETE FROM adp WHERE source='fp_ecr'")
+    else:
+        return {"experts": data["experts"], "matched": 0, "byes": 0,
+                "skipped": f"only {len(data['players'])} players parsed"}
     matched = byes = 0
     for p in data["players"]:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
@@ -290,23 +301,45 @@ def _name_lookup(conn: sqlite3.Connection) -> dict:
             for r in conn.execute("SELECT sleeper_id, name, pos FROM players")}
 
 
+# Guards on delete-then-write: one half-broken fetch must never thin a source.
+# A batch must join enough players AND land in a sane points range before it
+# is allowed to replace yesterday's data (a misparsed column reads ~20 pts).
+MIN_SOURCE_ROWS = 100
+MIN_WEEKLY_ROWS = 40
+SANE_MEDIAN = (50.0, 500.0)
+SANE_WEEKLY_MEDIAN = (4.0, 40.0)
+
+
+def _batch_ok(joined: list[tuple], week: int) -> bool:
+    floor = MIN_SOURCE_ROWS if week == 0 else MIN_WEEKLY_ROWS
+    if len(joined) < floor:
+        return False
+    pts = sorted(p for _, p in joined)
+    med = pts[len(pts) // 2]
+    lo, hi = SANE_MEDIAN if week == 0 else SANE_WEEKLY_MEDIAN
+    return lo <= med <= hi
+
+
 def _write_source_projections(conn: sqlite3.Connection, source: str,
                               rows: list[dict], week: int = 0) -> int:
-    """Name+pos join and delete-then-write for a scraped projections source."""
+    """Name+pos join, batch sanity, then delete-then-write. A batch that is
+    too small or has an insane median keeps yesterday's rows and returns 0 —
+    the nightly report and the source-health sensor surface the skip."""
     lookup = _name_lookup(conn)
-    if rows:
-        conn.execute("DELETE FROM projections WHERE week=? AND source=?", (week, source))
-    n = 0
+    joined = []
     for p in rows:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
-        if not pid:
-            continue
+        if pid:
+            joined.append((pid, p["pts"]))
+    if not _batch_ok(joined, week):
+        return 0
+    conn.execute("DELETE FROM projections WHERE week=? AND source=?", (week, source))
+    for pid, pts in joined:
         conn.execute(
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
-            "VALUES(?,?,?,?,?,?)", (pid, week, source, p["pts"], None, None))
-        n += 1
+            "VALUES(?,?,?,?,?,?)", (pid, week, source, pts, None, None))
     conn.commit()
-    return n
+    return len(joined)
 
 
 def etl_cbs_projections(conn: sqlite3.Connection) -> int:
@@ -336,23 +369,21 @@ def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
         lookup[(normalize_name(row["name"]), row["pos"])] = row["sleeper_id"]
     fetched = fetch_fantasypros_projections(settings.fantasypros_api_key,
                                             settings.season, scoring, week=week)
-    # Full success clears stale rows; a partial fetch only upserts, so the
-    # failed positions keep yesterday's numbers instead of vanishing.
-    if fetched["rows"] and not fetched["failed"]:
-        conn.execute("DELETE FROM projections WHERE week=? AND source='fantasypros'", (week,))
-    n = 0
+    joined = []
     for p in fetched["rows"]:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
-        if not pid:
-            continue
+        if pid:
+            joined.append((pid, p["pts"]))
+    # Full, sane success clears stale rows; a partial or suspicious batch only
+    # upserts, so old rows survive instead of vanishing on a bad fetch.
+    if not fetched["failed"] and _batch_ok(joined, week):
+        conn.execute("DELETE FROM projections WHERE week=? AND source='fantasypros'", (week,))
+    for pid, pts in joined:
         conn.execute(
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
-            "VALUES(?,?,?,?,?,?)",
-            (pid, week, "fantasypros", p["pts"], None, None),
-        )
-        n += 1
+            "VALUES(?,?,?,?,?,?)", (pid, week, "fantasypros", pts, None, None))
     conn.commit()
-    return {"rows": n, "failed": fetched["failed"]}
+    return {"rows": len(joined), "failed": fetched["failed"]}
 
 
 def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: str,
