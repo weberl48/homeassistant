@@ -13,6 +13,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -337,6 +338,65 @@ def trade_suggestions(limit: int = 8):
 def get_league_rosters():
     """Owners + ranked players per roster — the deal checker's picker."""
     return brain.league_rosters(get_conn())
+
+
+class PracticeBody(BaseModel):
+    url: str
+
+
+@app.get("/api/practice")
+def practice_status():
+    return {"draft_id": db.meta_get(get_conn(), "practice_draft_id")}
+
+
+@app.post("/api/practice", dependencies=MUTATES)
+def practice_start(body: PracticeBody):
+    """Scrimmage mode: point the wire at a pasted practice room. Sleeper never
+    lists practice drafts under the league or the user, so a pasted room URL
+    is the only way in — the poller re-resolves its target from meta every
+    cycle and the board banners hard while a scrimmage is bound."""
+    did = brain.parse_draft_id(body.url)
+    if not did:
+        raise HTTPException(400, "no draft id in that — paste the practice room's URL")
+    conn = get_conn()
+    # Validate against Sleeper before binding: a typo'd id must fail loudly
+    # here, not silently starve the poller. Also fetch the league's own draft
+    # id — pasting the real room should be a friendly no, not a rebind.
+    try:
+        r = httpx.get(f"https://api.sleeper.app/v1/draft/{did}", timeout=6.0)
+        doc = r.json() if r.status_code == 200 else None
+        if settings.league_id:
+            lr = httpx.get(
+                f"https://api.sleeper.app/v1/league/{settings.league_id}/drafts", timeout=6.0)
+            if lr.status_code == 200 and lr.json() and \
+                    any(d.get("draft_id") == did for d in lr.json()):
+                raise HTTPException(400, "that's the league draft — the board already tracks it")
+    except httpx.HTTPError:
+        raise HTTPException(502, "couldn't reach Sleeper to check that room — try again")
+    if not doc:
+        raise HTTPException(404, "Sleeper doesn't know that draft id — check the link")
+    # Swapping rooms: sweep the previous scrimmage's rows so they can't
+    # outrank the new target on the newest-draft rule.
+    old = db.meta_get(conn, "practice_draft_id")
+    if old and old != did:
+        conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (old,))
+        conn.execute("DELETE FROM drafts WHERE draft_id=?", (old,))
+    db.meta_set(conn, "practice_draft_id", did)
+    return {"ok": True, "draft_id": did, "status": doc.get("status")}
+
+
+@app.post("/api/practice/clear", dependencies=MUTATES)
+def practice_clear():
+    """Back to the real thing: drop the scrimmage rows so the board rebinds
+    to the league draft on the next poll."""
+    conn = get_conn()
+    did = db.meta_get(conn, "practice_draft_id")
+    if did:
+        conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (did,))
+        conn.execute("DELETE FROM drafts WHERE draft_id=?", (did,))
+        conn.execute("DELETE FROM meta WHERE key='practice_draft_id'")
+        conn.commit()
+    return {"ok": True, "cleared": did}
 
 
 class DeviceBody(BaseModel):

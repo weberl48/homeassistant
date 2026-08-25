@@ -74,6 +74,18 @@ def test_waivers_refuse_predraft(predraft_world):
     assert "draft" in out["note"].lower()
 
 
+def test_parse_draft_id():
+    """Scrimmage paste box: room URLs, bare ids, and junk."""
+    good = "1397719078969278464"
+    assert brain.parse_draft_id(f"https://sleeper.com/draft/nfl/{good}") == good
+    assert brain.parse_draft_id(f"https://sleeper.com/draft/nfl/{good}?ftue=commish") == good
+    assert brain.parse_draft_id(good) == good
+    assert brain.parse_draft_id("  " + good + "  ") == good
+    assert brain.parse_draft_id("https://sleeper.com/leagues/settings") is None
+    assert brain.parse_draft_id("draft 1234") is None   # too short to be a snowflake
+    assert brain.parse_draft_id("") is None
+
+
 def test_league_rosters_shape(world):
     """The deal checker's picker: one roster flagged mine, owners named,
     every pool sorted like a depth chart."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from typing import Any
 
@@ -18,6 +19,16 @@ from .engines.draft import Candidate
 from .engines.lineup import INactive, PlayerProj, diff_lineup, optimize
 
 SUGGESTION_COUNT = 5
+
+_DRAFT_ID_RE = re.compile(r"(\d{15,20})")
+
+
+def parse_draft_id(text: str) -> str | None:
+    """Pull a Sleeper draft id out of a pasted room URL — or accept a bare id.
+    Sleeper ids are snowflake-style, always well over 15 digits, so a plain
+    'first long number wins' scan is unambiguous."""
+    m = _DRAFT_ID_RE.search(text or "")
+    return m.group(1) if m else None
 
 
 def lineup_hash(starters: list[str]) -> str:
@@ -51,6 +62,10 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     my_slot = int(dsettings.get("slot", settings.my_roster_id))
     draft_id = drow["draft_id"] if drow else None
     status = drow["status"] if drow else "pre_draft"
+    # Scrimmage flag: the UI banners hard when the board is tracking a pasted
+    # practice room instead of the league draft — a rehearsal must never be
+    # mistakable for the real thing.
+    practice = bool(draft_id) and draft_id == db.meta_get(conn, "practice_draft_id")
 
     picks = conn.execute(
         "SELECT * FROM draft_picks WHERE draft_id=? ORDER BY pick_no", (draft_id,)
@@ -235,7 +250,8 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
 
     return {
         "draft": {
-            "id": draft_id, "status": status, "teams": teams, "rounds": rounds,
+            "id": draft_id, "status": status, "practice": practice,
+            "teams": teams, "rounds": rounds,
             "current_pick": min(current_pick, total_picks),
             "total_picks": total_picks,
             "round": min((current_pick - 1) // teams + 1, rounds),

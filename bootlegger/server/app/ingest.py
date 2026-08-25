@@ -534,17 +534,25 @@ def main() -> None:
         client = SleeperClient(timeout=5.0)
         status = None
         cycle = 0
+        last_target = None
         while True:
             # The poller must outlive Sleeper hiccups: if this process dies,
             # the API keeps serving stale picks while claiming wire-live. The
             # board watches drafts.updated_at and banners when it goes stale.
             try:
+                # Scrimmage mode: the UI can point the wire at a practice room
+                # by writing its draft id to meta; clearing it reverts to the
+                # league draft. Resolved every cycle — no container surgery.
+                target = db.meta_get(conn, "practice_draft_id") or draft_id
+                if target != last_target:
+                    status, cycle = None, 0   # full doc immediately on a switch
+                    last_target = target
                 full = cycle % 10 == 0 or status is None
-                n = etl_draft_picks(client, conn, draft_id, full=full)
+                n = etl_draft_picks(client, conn, target, full=full)
                 row = conn.execute("SELECT status FROM drafts WHERE draft_id=?",
-                                   (draft_id,)).fetchone()
+                                   (target,)).fetchone()
                 status = row["status"] if row else None
-                print(f"picks={n} status={status}", flush=True)
+                print(f"draft={target} picks={n} status={status}", flush=True)
             except Exception as e:
                 print(f"poll error (retrying): {e}", flush=True)
             cycle += 1

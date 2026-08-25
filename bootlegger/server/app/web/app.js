@@ -47,8 +47,17 @@ const state = {
    in the books, This Week is. When the phase turns a corner the right room
    meets you at the door — otherwise your remembered tab is respected. */
 const PHASE_ROOM = { pre_draft: "board", drafting: "board", complete: "week" };
-function applyPhase(status) {
+let _practicePhase = null;
+function applyPhase(status, practice) {
   if (!status) return;
+  if (practice) {
+    // A scrimmage may grab the board when it goes live — but it never writes
+    // the remembered season phase, and its "complete" moves nobody.
+    if (status === "drafting" && _practicePhase !== "drafting") setTab("board");
+    _practicePhase = status;
+    return;
+  }
+  _practicePhase = null;
   if (status === localStorage.getItem("bootlegger.phase")) return;
   localStorage.setItem("bootlegger.phase", status);
   // Mid-session, only a draft going live is urgent enough to move you.
@@ -486,7 +495,9 @@ async function pollBoard() {
   try {
     renderBoard(await fetchJSON("/api/draft/board"));
     const status = state.board?.draft?.status;
-    applyPhase(status);
+    const practice = !!state.board?.draft?.practice;
+    $("#practice-banner").hidden = !practice;
+    applyPhase(status, practice);
     // Wayfinding: rooms that have nothing until the season starts read dim.
     // Still clickable — inside, each explains when it opens.
     document.querySelectorAll(".tab").forEach((b) => {
@@ -825,6 +836,44 @@ async function loadLedger() {
     wireOK();
   } catch { wireFail(); }
 }
+
+/* -------------------------------- scrimmage -------------------------------
+   Practice rooms are invisible on Sleeper's listing APIs, so the only way in
+   is the room's URL. The server validates the id against Sleeper before
+   binding — a typo fails loudly here, not silently on the wire. */
+async function practiceCall(path, body) {
+  const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
+  if (TOKEN) opts.headers["X-Bootlegger-Token"] = TOKEN;
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || `the wire said ${r.status}`);
+  return data;
+}
+
+$("#scrimmage-go").addEventListener("click", async () => {
+  const input = $("#scrimmage-url"), msg = $("#scrimmage-msg"), btn = $("#scrimmage-go");
+  if (!input.value.trim()) { msg.textContent = "Paste the practice room's link first."; return; }
+  btn.disabled = true;
+  msg.textContent = "Checking the room with Sleeper…";
+  try {
+    const res = await practiceCall("/api/practice", { url: input.value.trim() });
+    msg.textContent = `Tracking it — the wire turns over in a couple seconds (room is ${res.status.replace("_", " ")}).`;
+    input.value = "";
+  } catch (e) { msg.textContent = e.message; }
+  btn.disabled = false;
+});
+$("#scrimmage-url").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#scrimmage-go").click();
+});
+
+$("#practice-clear").addEventListener("click", async () => {
+  try {
+    await practiceCall("/api/practice/clear");
+    $("#scrimmage-msg").textContent = "Scrimmage over — rebinding to the league draft.";
+    state.builtPickCount = -1;   // full rebuild: the practice picks must vanish
+  } catch { wireFail(); }
+});
 
 /* ---------------------------------- boot ---------------------------------- */
 $("#reset-mock").addEventListener("click", async () => {

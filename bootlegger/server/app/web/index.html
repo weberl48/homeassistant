@@ -67,6 +67,11 @@ provenance.
   WIRE DOWN — showing the last board from <span id="wire-age">—</span> ago. Retrying.
 </div>
 
+<div class="practice-banner" id="practice-banner" hidden>
+  SCRIMMAGE — the board is tracking a practice room, not the league draft.
+  <button class="btn-link" id="practice-clear">Back to the real draft</button>
+</div>
+
 <main id="main">
 
   <!-- ============================ THE BOARD ============================ -->
@@ -85,6 +90,19 @@ provenance.
           <ol id="shelf-list" class="shelf-list"></ol>
         </div>
         <button class="btn btn-ghost btn-small" id="reset-mock" hidden>Re-run the mock draft</button>
+
+        <div class="scrimmage">
+          <h3 class="scrimmage-title">Scrimmage</h3>
+          <p class="scrimmage-note">Practice rooms don't show on Sleeper's wire —
+          paste the room's link and the board tracks it like the real thing.</p>
+          <div class="scrimmage-form">
+            <input id="scrimmage-url" type="text" inputmode="url" spellcheck="false"
+              placeholder="https://sleeper.com/draft/nfl/…"
+              aria-label="Practice draft room URL">
+            <button class="btn btn-ghost btn-small" id="scrimmage-go">Track it</button>
+          </div>
+          <p class="scrimmage-msg" id="scrimmage-msg" aria-live="polite"></p>
+        </div>
       </aside>
 
       <div class="board-main">
