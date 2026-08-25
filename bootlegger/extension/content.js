@@ -125,7 +125,16 @@
     }
   }
 
-  const pageDraftId = (location.pathname.match(/\/draft\/nfl\/(\d+)/) || [])[1];
+  /* Sleeper is an SPA: entering the draft room from the league page changes
+     the URL with no page load, so the script must inject on ALL sleeper pages
+     and show/hide itself as the location moves. Recomputed live — never
+     cached at inject time. */
+  const draftPathId = () => (location.pathname.match(/\/draft\/nfl\/(\d+)/) || [])[1];
+
+  function syncVisibility() {
+    host.style.display = draftPathId() ? "" : "none";
+  }
+  syncVisibility();
 
   function render(b) {
     const d = b.draft;
@@ -133,6 +142,7 @@
     const top = s[0];
     const sheet = b.experts_call;
     const stale = d.synced_at ? Date.now() - Date.parse(d.synced_at) > STALE_MS : false;
+    const pageDraftId = draftPathId();
     const wrongDraft = pageDraftId && d.id && String(d.id) !== pageDraftId;
     $("dot").classList.toggle("bad", stale);
 
@@ -145,7 +155,7 @@
       `<span class="need ${n.have < n.want ? "open" : ""}">${esc(n.pos)} ${n.have}/${n.want}</span>`).join("");
 
     $("body").innerHTML = `
-      ${wrongDraft ? `<p class="warn">Board is tracking a different draft — repoint the poller.</p>` : ""}
+      ${wrongDraft ? `<p class="warn">Board is tracking a different draft — paste this room's URL into the Scrimmage box on the board.</p>` : ""}
       ${stale ? `<p class="warn">PICK FEED STALE — poller heartbeat is old.</p>` : ""}
       <p class="clock ${d.on_the_clock_me ? "mine" : ""}">${esc(clock)}</p>
       ${d.status === "complete" ? `<p class="muted">The shelf is stocked — the room pours one out.</p>` : top ? `
@@ -198,7 +208,8 @@
   let drafting = false;
 
   async function tick() {
-    if (document.hidden) return;
+    syncVisibility();
+    if (document.hidden || !draftPathId()) return;
     let res = null;
     try { res = await chrome.runtime.sendMessage({ type: "board" }); } catch { /* worker asleep */ }
     if (!res || !res.ok) {
