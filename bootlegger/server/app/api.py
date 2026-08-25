@@ -61,6 +61,31 @@ async def _demo_loops(app: FastAPI) -> None:
         await asyncio.sleep(1.0)
 
 
+async def _season_loop() -> None:
+    """LIVE mode's lineup scanner.
+
+    Without this nothing in the live stack ever writes a recommendation:
+    /api/week stays rec:null forever, the HA lineup-state sensor never
+    reaches proposed/notified, so the Sunday push and the whole approve
+    chain never fire. (Found by the season simulator — the scanner used to
+    exist only inside the demo loop.)
+    """
+    conn = db.connect()
+    while True:
+        try:
+            week = int(db.meta_get(conn, "current_week") or 1)
+            drow = conn.execute(
+                "SELECT status FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+            my = brain.my_roster_row(conn)
+            in_season = (drow and drow["status"] == "complete"
+                         and my and json.loads(my["players_json"]))
+            if in_season:
+                recs.scan_lineup(conn, week=week)
+        except Exception:
+            log.exception("season scan error")
+        await asyncio.sleep(settings.scan_seconds)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conn = db.connect()
@@ -72,7 +97,10 @@ async def lifespan(app: FastAPI):
         yield
         task.cancel()
     else:
+        task = asyncio.create_task(_season_loop())
+        log.info("live mode: in-season lineup scanner every %ss", settings.scan_seconds)
         yield
+        task.cancel()
 
 
 app = FastAPI(title="Bootlegger", lifespan=lifespan)
@@ -288,10 +316,12 @@ def analyze_trade(body: TradeBody):
     # Roster context — the question a raw value delta can't answer: does MY
     # best lineup actually improve? A trade can win VBD and hand me a third TE.
     def _projs(ids: list[str]) -> list[lineup_engine.PlayerProj]:
+        # ROS math: a one-week Out tag must not zero a season-long asset
         return [lineup_engine.PlayerProj(
                     pid, players[pid]["pos"],
                     (cons.get(pid) or {"pts_robust": 0})["pts_robust"] or 0.0,
-                    players[pid]["name"], players[pid]["injury_status"])
+                    players[pid]["name"],
+                    lineup_engine.ros_status(players[pid]["injury_status"]))
                 for pid in ids if pid in players]
 
     my = brain.my_roster_row(conn)

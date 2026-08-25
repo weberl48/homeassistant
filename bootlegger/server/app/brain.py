@@ -18,7 +18,7 @@ from .engines import grades as grades_engine
 from .engines import trades as trades_engine
 from .engines import waivers as waivers_engine
 from .engines.draft import Candidate
-from .engines.lineup import INactive, PlayerProj, diff_lineup, optimize
+from .engines.lineup import INactive, PlayerProj, diff_lineup, optimize, ros_status
 
 SUGGESTION_COUNT = 5
 
@@ -540,7 +540,8 @@ def draft_grades(conn: sqlite3.Connection) -> dict:
         ids = [p["player_id"] for p in picks if p["player_id"] in players]
         pool = [PlayerProj(pid, players[pid]["pos"],
                            (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
-                           players[pid]["name"], players[pid]["injury_status"])
+                           players[pid]["name"],
+                           ros_status(players[pid]["injury_status"]))
                 for pid in ids]
         starters = optimize(pool, rp).total
         vbd_total = sum(max(0.0, (cons[pid]["vbd"] or 0.0)) for pid in ids if pid in cons)
@@ -640,9 +641,10 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
         return _worth[pid]
 
     def projs(ids: list[str]) -> list[PlayerProj]:
+        # ROS math: a one-week Out tag must not zero a season asset
         return [PlayerProj(pid, players[pid]["pos"],
                            ((cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0),
-                           players[pid]["name"], players[pid]["injury_status"])
+                           players[pid]["name"], ros_status(players[pid]["injury_status"]))
                 for pid in ids if pid in players]
 
     def best(ids: list[str]):
@@ -783,7 +785,7 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
 
     def projs(ids):
         return [PlayerProj(i, players[i]["pos"], cons_pts.get(i, 0.0),
-                           players[i]["name"], players[i]["injury_status"])
+                           players[i]["name"], ros_status(players[i]["injury_status"]))
                 for i in ids if i in players]
 
     base = optimize(projs(my_ids), rp)
@@ -912,7 +914,11 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         v = cons[pid]["pts_robust"] or 0
         worst_by_pos[pos] = min(worst_by_pos.get(pos, 1e9), v)
 
-    out = []
+    # Score everyone first, then band by RANK within this week's pool. Fixed
+    # point thresholds silently break when the value scale changes: fa_score
+    # runs on season-scale consensus in-season, so a 30/10 cut put every
+    # target in "hot" and every bid flat-lined at the same dollar.
+    scored = []
     for pid, c in cons.items():
         if pid in rostered or pid not in players:
             continue
@@ -921,12 +927,35 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
                                         worst_by_pos.get(p["pos"], 0))
         if score <= 0:
             continue
-        band = "hot" if score >= 30 else "solid" if score >= 10 else "dart"
+        scored.append((pid, p, score))
+    scored.sort(key=lambda t: -t[2])
+    n = len(scored)
+    hot_cut, solid_cut = max(1, round(n * 0.10)), max(2, round(n * 0.35))
+
+    # Band prices come from the league's own history, so a THIN band (the hot
+    # bucket every September) falls back to the whole book — which can price
+    # a hot target below a solid one. The ladder must never invert.
+    band_bid: dict[str, int] = {}
+    for b in ("hot", "solid", "dart"):
+        h = hist_by_tier[b]
+        band_bid[b] = waivers_engine.size_bid(
+            1.0, h if len(h) >= 3 else bids_hist, settings.faab_budget).bid
+    band_bid["solid"] = min(band_bid["solid"], band_bid["hot"])
+    band_bid["dart"] = min(band_bid["dart"], band_bid["solid"])
+
+    out = []
+    for rank, (pid, p, score) in enumerate(scored):
+        band = "hot" if rank < hot_cut else "solid" if rank < solid_cut else "dart"
         tier_hist = hist_by_tier[band]
         # thin tier history (< 3 bids) falls back to the whole book
         advice = waivers_engine.size_bid(
             score, tier_hist if len(tier_hist) >= 3 else bids_hist,
             settings.faab_budget)
+        if bids_hist:                      # ladder-clamped price for the band
+            advice = waivers_engine.BidAdvice(
+                fa_score=advice.fa_score, bid=band_bid[band],
+                hard_confirm=band_bid[band] > 0.5 * settings.faab_budget,
+                history_n=advice.history_n)
         out.append({
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
             "fa_score": round(score, 1), "bid": advice.bid,
@@ -941,13 +970,15 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
     if my_ids:
         base = [PlayerProj(pid, players[pid]["pos"],
                            (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
-                           players[pid]["name"], players[pid]["injury_status"])
+                           players[pid]["name"],
+                           ros_status(players[pid]["injury_status"]))
                 for pid in my_ids if pid in players]
         base_total = optimize(base, rp).total
         for t in top:
             cand = PlayerProj(t["id"], t["pos"],
                               (cons[t["id"]]["pts_robust"] or 0.0) if t["id"] in cons else 0.0,
-                              t["name"], players[t["id"]]["injury_status"])
+                              t["name"],
+                              ros_status(players[t["id"]]["injury_status"]))
             t["lineup_gain"] = round(optimize(base + [cand], rp).total - base_total, 1)
     else:
         for t in top:

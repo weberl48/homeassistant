@@ -461,6 +461,17 @@ def nightly(conn: sqlite3.Connection) -> dict:
     """The nightly ETL bundle for live mode."""
     client = SleeperClient()
     out = {"players": etl_players(client, conn)}
+    # The season's clock. Everything week-shaped (the lineup scanner, the
+    # week card, weekly projections) needs to know what week it is; without
+    # this they were all pinned to week 1 forever.
+    try:
+        state = client.nfl_state() or {}
+        wk = int(state.get("week") or 0)
+        if wk > 0:
+            db.meta_set(conn, "current_week", str(wk))
+            out["current_week"] = wk
+    except Exception as e:
+        print(f"state/nfl unavailable ({e}); keeping last known week", flush=True)
     if settings.league_id:
         etl_league(client, conn)
         etl_rosters(client, conn)

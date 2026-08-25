@@ -503,11 +503,13 @@ async function pollBoard() {
     applyPhase(status, practice);
     maybeLoadGrades();
     // Wayfinding: rooms that have nothing until the season starts read dim.
-    // Still clickable — inside, each explains when it opens. The season rooms
-    // follow the REAL league, so a finished scrimmage never lights them.
+    // The honest signal is whether I OWN PLAYERS — not which draft is bound.
+    // (Keying off the draft made a bound scrimmage dim the real season's
+    // rooms, and a finished scrimmage light them; the roster never lies.)
+    const seasonOn = (state.board?.my_roster || []).length > 0;
     document.querySelectorAll(".tab").forEach((b) => {
       if (["week", "waivers", "parlor"].includes(b.dataset.tab))
-        b.classList.toggle("is-dormant", status !== "complete" || practice);
+        b.classList.toggle("is-dormant", !seasonOn);
     });
     wireOK();
   } catch { wireFail(); }

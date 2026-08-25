@@ -44,6 +44,7 @@ class Settings:
     demo_pick_seconds: float = 5.0         # sim cadence between opponent picks
     demo_my_clock_seconds: float = 16.0    # how long the sim leaves you "on the clock"
     draft_poll_seconds: float = 2.0        # live draft poll cadence
+    scan_seconds: float = 300.0            # in-season lineup scan cadence
     approve_required: bool = True          # actuation gate (design doc §5.5)
     hands_dry_run: bool = True             # dry-run applies swaps to the local mirror only
     healthchecks_url: str = ""             # dead-man ping target, empty = disabled
@@ -67,6 +68,7 @@ class Settings:
         s.rounds = int(_env("BOOTLEGGER_ROUNDS", str(s.rounds)))
         s.demo_pick_seconds = float(_env("DEMO_PICK_SECONDS", str(s.demo_pick_seconds)))
         s.demo_my_clock_seconds = float(_env("DEMO_MY_CLOCK_SECONDS", str(s.demo_my_clock_seconds)))
+        s.scan_seconds = float(_env("BOOTLEGGER_SCAN_SECONDS", str(s.scan_seconds)))
         s.approve_required = _env("BOOTLEGGER_APPROVE_REQUIRED", "1") not in ("0", "false", "no")
         s.hands_dry_run = _env("HANDS_DRY_RUN", "1") not in ("0", "false", "no")
         s.healthchecks_url = _env("HEALTHCHECKS_URL", s.healthchecks_url)

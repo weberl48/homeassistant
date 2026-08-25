@@ -1,6 +1,7 @@
 """Behavior tests for the read surfaces added late in the build: the Scout's
 File dossier, the Parlor trade suggester, and brain-level waiver targets.
 World = the demo seed (full rosters, tiered FAAB history, complete draft)."""
+import json
 import sqlite3
 
 import pytest
@@ -214,6 +215,56 @@ def test_resolve_pilot_pick():
     assert brain.resolve_pilot_pick(["a", "b"], {"a", "b"}, sugg) == ("c1", "call")
     assert brain.resolve_pilot_pick(["a"], {"a", "c1"}, sugg) == ("c2", "call")
     assert brain.resolve_pilot_pick([], {"c1", "c2"}, sugg) is None
+
+
+def test_ros_status_separates_weekly_from_season():
+    """A one-week Out/Doubtful tag must NOT zero a player for rest-of-season
+    math (the season sim caught the Parlor valuing a dump of a healthy
+    starter at +49.5 because of this); IR/PUP/Sus must still carry."""
+    from app.engines import lineup as le
+    assert le.ros_status("Out") is None
+    assert le.ros_status("Doubtful") is None
+    assert le.ros_status("Questionable") is None
+    assert le.ros_status(None) is None
+    for long_term in ("IR", "PUP", "Sus", "NA"):
+        assert le.ros_status(long_term) == long_term
+    # and the weekly optimizer still zeroes a weekly Out
+    p = le.PlayerProj("x", "RB", 20.0, "Guy", "Out")
+    assert p.startable_proj == 0.0
+    assert le.PlayerProj("x", "RB", 20.0, "Guy",
+                         le.ros_status("Out")).startable_proj == 20.0
+
+
+def test_trades_ignore_weekly_injury(world):
+    """Tagging a rostered starter Doubtful must not make trading him away
+    look like a windfall."""
+    my = brain.my_roster_row(world)
+    pid = json.loads(my["players_json"])[0] if my else None
+    assert pid
+    before = brain.suggest_trades(world, limit=8)["trades"]
+    world.execute("UPDATE players SET injury_status='Doubtful' WHERE sleeper_id=?", (pid,))
+    world.commit()
+    after = brain.suggest_trades(world, limit=8)["trades"]
+    world.execute("UPDATE players SET injury_status=NULL WHERE sleeper_id=?", (pid,))
+    world.commit()
+    gain = lambda ts: max((t["my_gain"] for t in ts
+                           if any(p["id"] == pid for p in t["give"])), default=0.0)
+    assert gain(after) <= gain(before) + 5.0, \
+        "a weekly injury tag must not inflate the value of dumping him"
+
+
+def test_waiver_bids_spread_across_bands(world):
+    """Bids must differentiate. Fixed point thresholds flat-lined every bid
+    at one dollar once fa_score ran on season-scale value; banding is by rank
+    in the pool now, which is scale-free."""
+    out = brain.waiver_targets(world)
+    bids = [t["bid"] for t in out["targets"]]
+    assert len(bids) >= 4
+    assert len(set(bids)) > 1, "tier-bucketed bids must vary, not flat-line"
+    # the ladder must never invert: bids are non-increasing down the ranking
+    # (a thin hot band falling back to the whole book used to price the best
+    # target BELOW the second-best)
+    assert bids == sorted(bids, reverse=True), f"bid ladder inverted: {bids}"
 
 
 def test_parse_draft_id():

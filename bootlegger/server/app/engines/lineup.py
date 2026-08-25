@@ -12,6 +12,16 @@ from scipy.optimize import linear_sum_assignment
 from ..config import FLEX_ELIGIBLE, MATERIALITY_PTS, SUPER_FLEX_ELIGIBLE
 
 INactive = {"Out", "Doubtful", "IR", "Sus", "PUP", "NA"}
+# Out/Doubtful are THIS WEEK's condition; IR/PUP/Sus/NA carry across the
+# season. Rest-of-season math (trades, waiver value, dossier, draft grades)
+# must only zero the long-term ones — treating a one-week Out tag as
+# season-worthless made the Parlor value dumping a healthy starter at +50.
+SEASON_INACTIVE = {"IR", "Sus", "PUP", "NA"}
+
+
+def ros_status(status: str | None) -> str | None:
+    """The injury tag as rest-of-season math should see it."""
+    return status if (status or "") in SEASON_INACTIVE else None
 _PENALTY = 1e6  # cost of an ineligible pairing; also flags unfillable slots
 
 
