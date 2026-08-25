@@ -146,7 +146,7 @@ a { color: var(--brass); text-underline-offset: 3px; }
   background: linear-gradient(180deg, #1e4737, #1a4030);
   color: var(--ink-dim); font: 600 .86rem/1 var(--font-ui);
   letter-spacing: .08em; text-transform: uppercase;
-  padding: 11px 16px 12px; cursor: pointer;
+  padding: 8px 16px 9px; cursor: pointer; /* tighter — the subtitle adds a line */
 }
 .tab:hover { color: var(--ink); background: linear-gradient(180deg, #245544, #1d4737); }
 .tab.is-active {
@@ -154,6 +154,16 @@ a { color: var(--brass); text-underline-offset: 3px; }
   border-color: var(--brass-deep);
   box-shadow: inset 0 2px 0 var(--brass);
 }
+/* Ghost subtitle: the in-world names stay, the plain word rides underneath. */
+.tab small {
+  display: block; margin-top: 3px;
+  font-size: .56rem; font-weight: 500; letter-spacing: .12em;
+  text-transform: lowercase; color: var(--ink-faint); opacity: .85;
+}
+.tab.is-active small { color: var(--ink-dim); }
+/* Rooms with nothing until the season starts read dim (set from draft status). */
+.tab.is-dormant:not(.is-active) { opacity: .55; }
+.tab.is-dormant:not(.is-active):hover { opacity: 1; }
 
 .wire {
   grid-area: wire; display: flex; align-items: center; gap: 8px; padding-bottom: 10px;
@@ -283,6 +293,11 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   border: 1px solid var(--line); border-radius: 999px; padding: 9px 15px;
 }
 .chip:hover { color: var(--ink); border-color: var(--brass-deep); }
+.shelf-n {
+  font-size: .62rem; color: var(--ink-faint); letter-spacing: .08em;
+  border: 1px dashed var(--line); border-radius: 999px; padding: 2px 8px;
+  margin-left: 6px;
+}
 .chip.is-active { color: var(--ground); background: var(--brass); border-color: var(--brass); font-weight: 700; }
 
 .columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -315,6 +330,12 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   display: grid; gap: 3px;
 }
 .prow:hover { background: var(--panel-2); }
+/* The row opens the scout's file — say so before the click, and give the
+   keyboard a visible place to stand. */
+.prow:hover .name, .prow:focus-visible .name {
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.prow:focus-visible { outline: 2px dashed var(--brass); outline-offset: -2px; }
 .prow .l1 { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
 .prow .name {
   font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden;
@@ -676,6 +697,10 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   .col { max-height: none; }
   .col-body { overflow: visible; }
   .col.pos-hidden { display: none; }
+  /* The deep shelf folds behind its tier rule on the phone; tap to open. */
+  .tier-rule.depth { cursor: pointer; }
+  .col:not(.shelf-open) .tier-rule.depth ~ .prow { display: none; }
+  .col.shelf-open .shelf-n::after { content: " · fold"; }
   .lineup-tables { grid-template-columns: minmax(0, 1fr); }
   /* approval actions stack full-width on the one-thumb surface — the primary
      never wraps to two lines in a half-width cell */

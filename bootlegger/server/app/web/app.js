@@ -39,7 +39,21 @@ const state = {
   builtPickCount: -1,
   approving: false,
   fastWeekUntil: 0,
+  booted: false,
 };
+
+/* The IA is phase-aware: the season has rooms that matter and rooms that are
+   dark. Pre-draft and draft night the Board is the house; once the draft is
+   in the books, This Week is. When the phase turns a corner the right room
+   meets you at the door — otherwise your remembered tab is respected. */
+const PHASE_ROOM = { pre_draft: "board", drafting: "board", complete: "week" };
+function applyPhase(status) {
+  if (!status) return;
+  if (status === localStorage.getItem("bootlegger.phase")) return;
+  localStorage.setItem("bootlegger.phase", status);
+  // Mid-session, only a draft going live is urgent enough to move you.
+  if (!state.booted || status === "drafting") setTab(PHASE_ROOM[status] || "board");
+}
 
 /* ---------------------------------- icons -------------------------------- */
 /* The ref: cartoon zebra with rotatable arms — TOUCHDOWN pose on your clock. */
@@ -89,7 +103,10 @@ function renderWire() {
   const wire = $("#wire"), banner = $("#wire-banner");
   const down = state.wireDown, stale = state.pickFeedStale;
   wire.classList.toggle("is-down", down || stale);
-  $("#wire-text").textContent = down ? "wire down" : stale ? "wire stale" : "wire live";
+  // A thinned consensus shows on the lamp itself, not just the colophon —
+  // during a draft nobody reads the basement.
+  $("#wire-text").textContent = down ? "wire down" : stale ? "wire stale"
+    : state.sourcesShort ? `wire live · ${state.sourcesShort} sources` : "wire live";
   banner.hidden = !(down || stale);
   if (!banner.hidden)
     banner.innerHTML = down
@@ -133,7 +150,13 @@ function playerRow(p) {
   const el = document.createElement("div");
   el.className = "prow";
   el.dataset.id = p.id;
+  el.tabIndex = 0;
+  el.setAttribute("role", "button");
+  el.setAttribute("aria-label", `Open the scout's file — ${p.name}`);
   el.addEventListener("click", () => openDossier(p.id));
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDossier(p.id); }
+  });
   const injury = p.injury
     ? `<span class="hurt">${icon.cross}${esc(p.injury.toUpperCase())}</span>` : "";
   el.innerHTML = `
@@ -214,6 +237,17 @@ function buildColumns(board) {
     }
     wrap.appendChild(col);
   }
+  // Mobile: the deep shelf starts folded — even one position ran ~12k px tall
+  // with it open. The tier rule itself is the toggle (CSS folds only ≤900px).
+  wrap.querySelectorAll(".tier-rule.depth").forEach((rule) => {
+    const col = rule.closest(".col");
+    // A column that is ALL shelf (K/DEF) must not fold to an empty box.
+    if (rule === rule.parentElement.firstElementChild) { col.classList.add("shelf-open"); return; }
+    const n = [...rule.parentElement.querySelectorAll(".prow")].filter(
+      (el) => rule.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).length;
+    rule.innerHTML = `The deep shelf <span class="shelf-n">${n} more</span>`;
+    rule.addEventListener("click", () => col.classList.toggle("shelf-open"));
+  });
   applyPosFilter();
 }
 
@@ -423,6 +457,8 @@ let activePos = "ALL";
 $("#pos-filters").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
+  // A human tap is a preference and sticks; the boot-time auto-default isn't.
+  if (e.isTrusted) localStorage.setItem("bootlegger.pos.chosen", "1");
   activePos = chip.dataset.pos;
   document.querySelectorAll("#pos-filters .chip").forEach((c) => {
     c.classList.toggle("is-active", c === chip);
@@ -430,6 +466,17 @@ $("#pos-filters").addEventListener("click", (e) => {
   });
   applyPosFilter();
 });
+
+/* On a phone, ALL stacks every column into a ~14,000px scroll. Until the user
+   picks a chip themselves, open on the position The Call is pointing at —
+   that's where the decision is. */
+function chipDefault() {
+  if (!matchMedia("(max-width: 900px)").matches) return;
+  if (localStorage.getItem("bootlegger.pos.chosen")) return;
+  const top = state.board?.suggestions?.[0];
+  if (!top) return;
+  document.querySelector(`#pos-filters .chip[data-pos="${posOf(top)}"]`)?.click();
+}
 function applyPosFilter() {
   document.querySelectorAll(".col").forEach((col) =>
     col.classList.toggle("pos-hidden", activePos !== "ALL" && col.dataset.pos !== activePos));
@@ -438,6 +485,14 @@ function applyPosFilter() {
 async function pollBoard() {
   try {
     renderBoard(await fetchJSON("/api/draft/board"));
+    const status = state.board?.draft?.status;
+    applyPhase(status);
+    // Wayfinding: rooms that have nothing until the season starts read dim.
+    // Still clickable — inside, each explains when it opens.
+    document.querySelectorAll(".tab").forEach((b) => {
+      if (["week", "waivers", "parlor"].includes(b.dataset.tab))
+        b.classList.toggle("is-dormant", status !== "complete");
+    });
     wireOK();
   } catch { wireFail(); }
 }
@@ -477,7 +532,7 @@ function lineupTable(title, rows, total, marks) {
 function renderWeek(card) {
   const wrap = $("#week-layout");
   if (!card.ready) {
-    wrap.innerHTML = `<p class="muted">No roster on file yet.</p>`;
+    wrap.innerHTML = `<p class="muted">${esc(card.note || "No roster on file yet.")}</p>`;
     return;
   }
   const rec = card.rec;
@@ -600,7 +655,7 @@ async function loadWaivers() {
         <th></th></tr></thead>
         <tbody>${rows}</tbody></table>
       <p class="optimal-note">Sized at the P70 of the league's bids for each value tier (${data.history_n} on the books), +$1 over round numbers.</p>`
-      : `<p class="muted">Nobody on the street worth a dollar this week.</p>`;
+      : `<p class="muted">${esc(data.note || "Nobody on the street worth a dollar this week.")}</p>`;
     wireOK();
   } catch { wireFail(); }
 }
@@ -689,10 +744,16 @@ async function boot() {
         : ` · all ${h.sources_expected} projection sources on the wire`;
       const el = document.querySelector(".colophon p");
       if (el) el.append(note);
+      if (h.sources_missing.length) {
+        state.sourcesShort = `${h.sources_live}/${h.sources_expected}`;
+        $("#wire").title = `sources down: ${h.sources_missing.join(", ")}`;
+      }
     }
     wireOK(); renderWire();
   } catch { wireFail(); }
-  await pollBoard();
+  await pollBoard();   // runs applyPhase — a phase turn re-homes the tab here
+  chipDefault();
+  state.booted = true;
   await pollWeek();
   // Adaptive cadence: 1s while the draft is live (the server caches the board
   // per pick, so fast polling is nearly free), relaxed otherwise.

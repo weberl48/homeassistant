@@ -48,6 +48,32 @@ def test_suggest_trades_mutual_benefit(world):
         assert give and get and not give & get
 
 
+@pytest.fixture()
+def predraft_world():
+    """The demo world before anyone owns a player — every roster emptied."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.init_db(conn)
+    demo.seed(conn)
+    conn.execute("UPDATE rosters SET players_json='[]', starters_json='[]'")
+    return conn
+
+
+def test_week_card_refuses_predraft(predraft_world):
+    """Empty roster must NOT read 'lineup optimal, projected 0.0'."""
+    card = brain.get_week_card(predraft_world)
+    assert card["ready"] is False
+    assert card.get("note"), "the refusal must explain when the room opens"
+
+
+def test_waivers_refuse_predraft(predraft_world):
+    """With nobody rostered, 'top free agents' is just the player pool —
+    the street must decline instead of bidding $100 on Josh Allen."""
+    out = brain.waiver_targets(predraft_world)
+    assert out["targets"] == []
+    assert "draft" in out["note"].lower()
+
+
 def test_waiver_targets_shape(world):
     out = brain.waiver_targets(world, heat={"demo-heat": 3})
     assert out["targets"], "demo street must have targets"

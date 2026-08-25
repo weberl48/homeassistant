@@ -297,10 +297,17 @@ def my_roster_row(conn: sqlite3.Connection) -> sqlite3.Row | None:
 def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
     roster = my_roster_row(conn)
     if not roster:
-        return {"week": week, "ready": False}
+        return {"week": week, "ready": False,
+                "note": "No roster on the books — the wire opens once the league seats you."}
     players = _players_index(conn)
     projs = week_projections(conn, week)
     ids = json.loads(roster["players_json"])
+    # Pre-draft the roster row exists but holds nobody. Without this gate the
+    # card reports "Lineup optimal — projected 0.0", which is confidently wrong.
+    if not ids:
+        return {"week": week, "ready": False,
+                "note": "This room opens after the draft — no roster to set yet. "
+                        "The Board is where the season starts."}
     starters = json.loads(roster["starters_json"])
     rp = roster_positions(conn)
     pool = [
@@ -643,6 +650,12 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
     rostered: set[str] = set()
     for r in conn.execute("SELECT players_json FROM rosters"):
         rostered |= set(json.loads(r["players_json"]))
+    # Pre-draft, nobody is rostered, so "free agents ranked by score" is just
+    # the top of the player pool — Josh Allen at a $100 bid. Refuse honestly.
+    if not rostered:
+        return {"targets": [], "history_n": 0,
+                "note": "Everyone's a free agent until the draft — "
+                        "the street opens once rosters exist."}
     my = my_roster_row(conn)
     my_ids = json.loads(my["players_json"]) if my else []
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
