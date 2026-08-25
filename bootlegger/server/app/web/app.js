@@ -111,6 +111,7 @@ function playerRow(p) {
   const el = document.createElement("div");
   el.className = "prow";
   el.dataset.id = p.id;
+  el.addEventListener("click", () => openDossier(p.id));
   const injury = p.injury
     ? `<span class="hurt">${icon.cross}${esc(p.injury.toUpperCase())}</span>` : "";
   el.innerHTML = `
@@ -281,6 +282,11 @@ function renderCall(board) {
         <span class="sheet-ecr">ECR ${sheet.ecr}</span></p>` : ""}
     </div>
     <ul class="runners">${runners}</ul>`;
+  body.querySelector(".call-name")?.addEventListener("click", () => openDossier(top.id));
+  body.querySelectorAll(".runners li").forEach((li, i) =>
+    li.addEventListener("click", () => openDossier(s[i + 1].id)));
+  if (disagree)
+    body.querySelector(".call-sheet b")?.addEventListener("click", () => openDossier(sheet.id));
 }
 
 function renderShelf(board) {
@@ -321,6 +327,54 @@ function renderTicker(picks) {
       <span class="pos pos-${posOf(p)}">${posOf(p)}</span>
     </li>`).join("");
 }
+
+/* ------------------------------ scout's file ------------------------------ */
+async function openDossier(pid) {
+  let d;
+  try { d = await fetchJSON(`/api/draft/player/${encodeURIComponent(pid)}`); }
+  catch { return; }
+  const srcRows = Object.entries(d.sources).map(([s, v]) =>
+    `<span>${esc(s)}</span><span class="rule"></span><b>${v}</b>`).join("");
+  const surv = d.survival_next != null
+    ? `<div class="d-src"><span>reaches your pick #${d.my_next_pick}</span><span class="rule"></span><b>${Math.round(d.survival_next * 100)}%</b>
+       ${d.survival_wait != null ? `<span>lasts until your next turn</span><span class="rule"></span><b>${Math.round(d.survival_wait * 100)}%</b>` : ""}</div>` : "";
+  const bal = d.balance.map((b) => {
+    const w1 = Math.min(b.before, 100), w2 = Math.min(b.after, 100);
+    const add = w2 > w1 ? `<div class="d-bar-add" style="left:${w1}%;width:${w2 - w1}%"></div>` : "";
+    const num = b.after !== b.before ? `${b.before}→<b>${b.after}%</b>` : `${b.before}%`;
+    return `<div class="d-bal-row"><span class="blb">${esc(b.pos)} ${b.have}/${b.want}</span>
+      <div class="d-bar"><div class="d-bar-fill" style="width:${w1}%"></div>${add}</div>
+      <span class="num">${num}</span></div>`;
+  }).join("");
+  $("#dossier-body").innerHTML = `
+    <div class="d-file">Scout's file · tier ${esc(d.tier ?? "–")}</div>
+    <div class="d-head">
+      <span class="d-name">${esc(d.name)}</span>
+      <span class="pos pos-${esc(d.pos === "DST" ? "DEF" : d.pos)}">${esc(d.pos)}</span>
+      <span class="d-meta">${esc(d.team ?? "")} · bye ${esc(d.bye ?? "–")}${d.injury ? " · " + esc(d.injury) : ""}</span>
+    </div>
+    ${d.insights.length ? `<div class="d-title">The read</div>
+      <div class="d-insights">${d.insights.map((i) => `<div>${esc(i)}</div>`).join("")}</div>` : ""}
+    <div class="d-title">The figures</div>
+    <div class="d-src">${srcRows}
+      <span class="d-cons">consensus</span><span class="rule"></span><b class="d-cons">${d.consensus ?? "–"}</b>
+      ${d.spread ? `<span>spread</span><span class="rule"></span><b>±${d.spread}</b>` : ""}
+      ${d.vbd != null ? `<span>value over replacement</span><span class="rule"></span><b>${d.vbd}</b>` : ""}
+      ${d.ecr ? `<span>experts' sheet rank</span><span class="rule"></span><b>${d.ecr}</b>` : ""}
+      ${d.street_adp ? `<span>the street drafts him</span><span class="rule"></span><b>${d.street_adp}</b>` : ""}
+    </div>
+    ${surv ? `<div class="d-title">The odds</div>${surv}` : ""}
+    ${bal ? `<div class="d-title">Your shelf, with him</div><div class="d-bal">${bal}</div>` : ""}`;
+  $("#dossier").hidden = false;
+}
+
+$("#dossier-close").addEventListener("click", () => { $("#dossier").hidden = true; });
+$("#dossier").addEventListener("click", (e) => {
+  if (e.target === $("#dossier")) $("#dossier").hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") $("#dossier").hidden = true;
+});
 
 /* position filter (mobile chips) */
 let activePos = "ALL";

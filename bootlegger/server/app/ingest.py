@@ -17,9 +17,10 @@ from .engines import consensus as cx
 from .engines import tiers as tiers_engine
 from .engines import vbd as vbd_engine
 from .sleeper import SleeperClient
-from .sources import (fetch_espn_projections, fetch_fantasycalc_values,
-                      fetch_fantasypros_projections, fetch_ffc_adp,
-                      fetch_fp_ecr, normalize_name)
+from .sources import (fetch_cbs_projections, fetch_espn_projections,
+                      fetch_fantasycalc_values, fetch_fantasypros_projections,
+                      fetch_ffc_adp, fetch_fftoday_projections, fetch_fp_ecr,
+                      normalize_name)
 
 # Tiering pools per position: deep enough to cover draftable players, shallow
 # enough that the GMM sees structure instead of a waiver-wire tail.
@@ -284,6 +285,45 @@ def etl_espn_projections(conn: sqlite3.Connection, week: int = 0) -> int:
     return n
 
 
+def _name_lookup(conn: sqlite3.Connection) -> dict:
+    return {(normalize_name(r["name"]), r["pos"]): r["sleeper_id"]
+            for r in conn.execute("SELECT sleeper_id, name, pos FROM players")}
+
+
+def _write_source_projections(conn: sqlite3.Connection, source: str,
+                              rows: list[dict], week: int = 0) -> int:
+    """Name+pos join and delete-then-write for a scraped projections source."""
+    lookup = _name_lookup(conn)
+    if rows:
+        conn.execute("DELETE FROM projections WHERE week=? AND source=?", (week, source))
+    n = 0
+    for p in rows:
+        pid = lookup.get((normalize_name(p["name"]), p["position"]))
+        if not pid:
+            continue
+        conn.execute(
+            "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
+            "VALUES(?,?,?,?,?,?)", (pid, week, source, p["pts"], None, None))
+        n += 1
+    conn.commit()
+    return n
+
+
+def etl_cbs_projections(conn: sqlite3.Connection) -> int:
+    """CBS season projections (their PPR pages — full-PPR leagues only)."""
+    if _league_scoring(conn) != "ppr":
+        return 0
+    return _write_source_projections(conn, "cbs", fetch_cbs_projections(settings.season))
+
+
+def etl_fftoday_projections(conn: sqlite3.Connection) -> int:
+    """FFToday raw-stat projections scored with the league's own settings."""
+    row = conn.execute("SELECT scoring_json FROM league").fetchone()
+    scoring = (json.loads(row["scoring_json"]) or {}) if row and row["scoring_json"] else {}
+    return _write_source_projections(
+        conn, "fftoday", fetch_fftoday_projections(settings.season, scoring))
+
+
 def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
     """FantasyPros aggregate point projections -> projections table (source
     fantasypros). No-ops without FANTASYPROS_API_KEY. Partial position
@@ -385,6 +425,11 @@ def nightly(conn: sqlite3.Connection) -> dict:
         out["fp_projections"] = etl_fp_projections(conn)
     except Exception as e:
         out["fp_projections"] = f"failed: {e}"
+    for label, etl in (("cbs", etl_cbs_projections), ("fftoday", etl_fftoday_projections)):
+        try:
+            out[label] = etl(conn)
+        except Exception as e:  # scrapes break; the consensus must not
+            out[label] = f"failed: {e}"
     out["consensus"] = compute_consensus(conn, week=0)
     # In-season: weekly projections feed the Sunday lineup card.
     state = client.nfl_state() or {}

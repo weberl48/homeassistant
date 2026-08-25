@@ -120,6 +120,15 @@ def draft_board():
     return board
 
 
+@app.get("/api/draft/player/{player_id}")
+def draft_player(player_id: str):
+    """The scout's file: everything the board knows about one player."""
+    d = brain.player_dossier(get_conn(), player_id)
+    if not d:
+        raise HTTPException(404, "unknown player")
+    return d
+
+
 @app.post("/api/draft/reset", dependencies=MUTATES)
 def draft_reset():
     if settings.mode != "demo":

@@ -30,6 +30,23 @@ FP_API_UA = "bootlegger/0.1 (personal use)"
 ESPN_PROJ_URL = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{year}/segments/0/leaguedefaults/3"
 ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DEF"}
 
+# The two ffanalytics-lineage scrape sources that still serve plain
+# server-rendered tables (Yahoo needs OAuth, NFL.com's API is dead,
+# NumberFire went JS-only under FanDuel).
+CBS_URL = "https://www.cbssports.com/fantasy/football/stats/{pos}/{year}/season/projections/ppr/"
+FFT_URL = ("https://www.fftoday.com/rankings/playerproj.php"
+           "?Season={year}&PosID={posid}&LeagueID=1&cur_page={page}")
+# FFToday stat columns per position (after Team, Bye; FPts trails and is
+# IGNORED — LeagueID=1 is not our scoring; points are computed by the caller
+# from the league's own scoring settings, the ffanalytics approach).
+FFT_COLS = {
+    10: ("QB", ["cmp", "pass_att", "pass_yd", "pass_td", "pass_int",
+                "rush_att", "rush_yd", "rush_td"]),
+    20: ("RB", ["rush_att", "rush_yd", "rush_td", "rec", "rec_yd", "rec_td"]),
+    30: ("WR", ["rec", "rec_yd", "rec_td", "rush_att", "rush_yd", "rush_td"]),
+    40: ("TE", ["rec", "rec_yd", "rec_td"]),
+}
+
 
 def normalize_name(name: str) -> str:
     """'Amon-Ra St. Brown Jr.' -> 'amonra st brown' — good enough to join ADP rows."""
@@ -169,6 +186,72 @@ def fetch_espn_projections(year: int, week: int = 0,
                 continue
             out.append({"name": p.get("fullName", ""), "position": pos,
                         "pts": float(pts)})
+    return out
+
+
+def _num(s: str) -> float:
+    try:
+        return float(s.replace(",", "").replace("%", "") or 0)
+    except ValueError:
+        return 0.0
+
+
+def fetch_cbs_projections(year: int, timeout: float = 25.0) -> list[dict[str, Any]]:
+    """CBS season projections from their server-rendered PPR pages. The fpts
+    column is CBS's PPR scoring — use only for full-PPR leagues (the caller
+    guards). Rows: {name, position, pts}."""
+    out = []
+    for i, pos in enumerate(("QB", "RB", "WR", "TE", "K")):
+        if i:
+            time.sleep(1.0)
+        r = httpx.get(CBS_URL.format(pos=pos, year=year), timeout=timeout,
+                      headers={"User-Agent": FP_UA}, follow_redirects=True)
+        r.raise_for_status()
+        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.S):
+            if "CellPlayerName--long" not in tr:
+                continue
+            name_m = re.search(r'CellPlayerName--long.*?<a[^>]*>([^<]+)</a>', tr, re.S)
+            cells = [re.sub(r"<[^>]+>", "", c).strip()
+                     for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+            if not name_m or len(cells) < 4:
+                continue
+            pts = _num(cells[-2])  # fpts; fppg is last
+            if pts:
+                out.append({"name": name_m.group(1).strip(), "position": pos, "pts": pts})
+    return out
+
+
+def fetch_fftoday_projections(year: int, scoring: dict[str, float],
+                              timeout: float = 25.0) -> list[dict[str, Any]]:
+    """FFToday season stat projections, scored HERE with the league's own
+    scoring settings (their FPts column is ignored). Rows: {name, position, pts}."""
+    weights = {
+        "pass_yd": scoring.get("pass_yd", 0.04), "pass_td": scoring.get("pass_td", 4.0),
+        "pass_int": scoring.get("pass_int", -1.0), "rush_yd": scoring.get("rush_yd", 0.1),
+        "rush_td": scoring.get("rush_td", 6.0), "rec": scoring.get("rec", 1.0),
+        "rec_yd": scoring.get("rec_yd", 0.1), "rec_td": scoring.get("rec_td", 6.0),
+    }
+    out = []
+    for posid, (pos, cols) in FFT_COLS.items():
+        for page in (0, 1):
+            if posid in (10, 40) and page:  # 50 QBs / 50 TEs are plenty
+                continue
+            time.sleep(1.0)
+            r = httpx.get(FFT_URL.format(year=year, posid=posid, page=page),
+                          timeout=timeout, headers={"User-Agent": FP_UA},
+                          follow_redirects=True)
+            r.raise_for_status()
+            for m in re.finditer(r'<A HREF="/stats/players/[^"]*"[^>]*>([^<]+)</A>(.*?)</TR>',
+                                 r.text, re.S | re.I):
+                cells = [re.sub(r"<[^>]+>", "", c).strip()
+                         for c in re.findall(r"<TD[^>]*>(.*?)</TD>", m.group(2), re.S | re.I)]
+                stats = cells[2:]  # after Team, Bye; FPts trails
+                if len(stats) != len(cols) + 1:
+                    continue
+                pts = sum(_num(v) * weights.get(k, 0.0) for k, v in zip(cols, stats))
+                if pts > 0:
+                    out.append({"name": m.group(1).strip(), "position": pos,
+                                "pts": round(pts, 1)})
     return out
 
 

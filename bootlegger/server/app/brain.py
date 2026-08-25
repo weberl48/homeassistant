@@ -485,3 +485,132 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
     top = sorted(proposals.values(), key=lambda t: -t["score"])[:limit]
     return {"trades": top,
             "note": "Both lineups improve or the other side isn't hurt — deals that can actually close. Advisory only."}
+
+
+# ---------------------------------------------------------------------------
+# The Scout's File — per-player dossier for the board
+# ---------------------------------------------------------------------------
+
+def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
+    """Everything the board can say about one player when clicked: per-source
+    projections, expert-vs-street read, survival to my picks, roster-balance
+    impact, and a few dry insight lines. Draft-time roster = my picks so far."""
+    players = _players_index(conn)
+    if player_id not in players:
+        return None
+    p = players[player_id]
+    rp = roster_positions(conn)
+
+    srcs = {r["source"]: r["pts"] for r in conn.execute(
+        "SELECT source, pts FROM projections WHERE week=0 AND player_id=?", (player_id,))}
+    cons = conn.execute("SELECT * FROM consensus WHERE week=0 AND player_id=?",
+                        (player_id,)).fetchone()
+    adp_rows = {r["source"]: r for r in conn.execute(
+        "SELECT * FROM adp WHERE player_id=?", (player_id,))}
+    ecr = adp_rows.get("fp_ecr")
+    street = next((adp_rows[s] for s in ("sleeper", "demo", "ffc") if s in adp_rows), None)
+
+    # Draft context: my roster so far + my next two picks.
+    drow = conn.execute("SELECT * FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone() \
+        if settings.mode == "demo" else conn.execute(
+            "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+    dsettings = json.loads(drow["settings_json"]) if drow and drow["settings_json"] else {}
+    teams = int(dsettings.get("teams", settings.teams))
+    rounds = int(dsettings.get("rounds", settings.rounds))
+    my_slot = int(dsettings.get("slot", settings.my_roster_id))
+    picks = conn.execute("SELECT * FROM draft_picks WHERE draft_id=? ORDER BY pick_no",
+                         (drow["draft_id"],)).fetchall() if drow else []
+    current_pick = len(picks) + 1
+    my_next = draft_engine.next_pick_after(current_pick - 1, my_slot, teams, rounds)
+    my_after = (draft_engine.next_pick_after(my_next, my_slot, teams, rounds)
+                if my_next else None)
+    my_ids = [x["player_id"] for x in picks if x["draft_slot"] == my_slot]
+
+    surv_next = surv_wait = None
+    if street or ecr:
+        a = street or ecr
+        stds = [r["stdev"] for r in adp_rows.values() if r["stdev"]]
+        sigma = max(stds) if stds else None
+        if my_next:
+            surv_next = round(draft_engine.survival_prob(a["adp"], sigma, my_next), 3)
+        if my_after:
+            surv_wait = round(draft_engine.survival_prob(a["adp"], sigma, my_after), 3)
+
+    cons_pts = {pid: (c["pts_robust"] or 0.0) for pid, c in
+                ((r["player_id"], r) for r in conn.execute("SELECT * FROM consensus WHERE week=0"))}
+
+    def projs(ids):
+        return [PlayerProj(i, players[i]["pos"], cons_pts.get(i, 0.0),
+                           players[i]["name"], players[i]["injury_status"])
+                for i in ids if i in players]
+
+    base = optimize(projs(my_ids), rp)
+    with_him = optimize(projs(my_ids + [player_id]), rp)
+    lineup_gain = round(with_him.total - base.total, 1)
+
+    # Balance bars: my best current points per dedicated slot vs the position's
+    # last-starter benchmark (teams × dedicated slots deep in consensus).
+    dedicated = {q: rp.count(q) for q in ("QB", "RB", "WR", "TE", "K", "DEF")}
+    by_pos_pts: dict[str, list[float]] = {}
+    for pid2, pts in cons_pts.items():
+        if pid2 in players:
+            by_pos_pts.setdefault(players[pid2]["pos"], []).append(pts)
+    balance = []
+    for q, want in dedicated.items():
+        if not want:
+            continue
+        ranked = sorted(by_pos_pts.get(q, []), reverse=True)
+        bench_idx = min(teams * want - 1, len(ranked) - 1)
+        benchmark = ranked[bench_idx] if ranked else 1.0
+        mine = sorted((cons_pts.get(i, 0.0) for i in my_ids
+                       if players[i]["pos"] == q), reverse=True)[:want]
+        before = round(100 * (sum(mine) / max(want * benchmark, 1.0)))
+        after_mine = sorted(mine + ([cons_pts.get(player_id, 0.0)] if p["pos"] == q else []),
+                            reverse=True)[:want]
+        after = round(100 * (sum(after_mine) / max(want * benchmark, 1.0)))
+        balance.append({"pos": q, "have": len(mine), "want": want,
+                        "before": min(before, 160), "after": min(after, 160)})
+
+    # Insight lines, in the house voice.
+    insights = []
+    if ecr and street and (street["adp"] - ecr["adp"]) >= 4:
+        insights.append(f"The room lets him fall — the experts have him {street['adp'] - ecr['adp']:.0f} "
+                        "picks earlier than the street drafts him. A value window.")
+    elif ecr and street and (ecr["adp"] - street["adp"]) >= 4:
+        insights.append("The street reaches for him ahead of the experts' sheet — "
+                        "you'll pay a premium over the consensus read.")
+    if cons and cons["stdev"] and cons["pts_robust"]:
+        rel = cons["stdev"] / max(cons["pts_robust"], 1)
+        if rel > 0.06:
+            insights.append(f"The sources argue about him (±{cons['stdev']:.0f} pts) — a swing pick.")
+        elif len(srcs) >= 4:
+            insights.append("Every source reads him the same — low-drama projection.")
+    if p["bye"]:
+        stacked = sum(1 for i in my_ids
+                      if players[i]["bye"] == p["bye"] and players[i]["pos"] == p["pos"])
+        if stacked:
+            insights.append(f"Bye {p['bye']} stacks with {stacked} of your {p['pos']}s — "
+                            "one dead week if you double up.")
+    if my_ids:
+        insights.append(f"Adds {lineup_gain:+.1f} season points to your best lineup today."
+                        if lineup_gain > 0 else
+                        "Depth today — he doesn't crack your starting lineup yet.")
+    if p["injury_status"]:
+        insights.append(f"Carries a {p['injury_status']} tag — the wire will tell you more than the sheet.")
+
+    return {
+        "id": player_id, "name": p["name"], "pos": p["pos"], "team": p["team"],
+        "bye": p["bye"], "injury": p["injury_status"],
+        "sources": {k: round(v, 1) for k, v in sorted(srcs.items())},
+        "consensus": round(cons["pts_robust"], 1) if cons else None,
+        "spread": round(cons["stdev"], 1) if cons and cons["stdev"] else None,
+        "tier": cons["tier"] if cons else None,
+        "vbd": round(cons["vbd"], 1) if cons and cons["vbd"] is not None else None,
+        "ecr": round(ecr["adp"], 1) if ecr else None,
+        "street_adp": round(street["adp"], 1) if street else None,
+        "survival_next": surv_next, "survival_wait": surv_wait,
+        "my_next_pick": my_next,
+        "lineup_gain": lineup_gain,
+        "balance": balance,
+        "insights": insights,
+    }

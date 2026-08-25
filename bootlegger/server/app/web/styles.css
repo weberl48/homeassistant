@@ -586,6 +586,51 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .ledger-line .step-name.bad { color: var(--paper-bad); }
 .ledger-empty { color: var(--paper-faint); font-family: var(--font-ledger); padding: 10px 2px; }
 
+/* ============================= SCOUT'S FILE ============================= */
+
+.dossier-backdrop {
+  position: fixed; inset: 0; z-index: 60; background: rgba(10, 7, 5, .74);
+  display: grid; place-items: center; padding: 18px;
+}
+/* display:grid would beat the hidden attribute's UA display:none — and an
+   invisible full-screen backdrop eats every click on the page */
+.dossier-backdrop[hidden] { display: none; }
+.dossier { max-width: 560px; width: 100%; max-height: 86vh; overflow-y: auto; position: relative; }
+.dossier-close {
+  position: absolute; top: 6px; right: 10px; appearance: none; background: none;
+  border: none; color: var(--paper-faint); font-size: 24px; line-height: 1;
+  cursor: pointer; padding: 4px 8px;
+}
+.dossier-close:hover { color: var(--paper-bad); }
+.dossier .pos { color: var(--paper-faint); }
+.d-file { font-family: var(--font-ledger); font-size: .68rem; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--paper-faint); }
+.d-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
+.d-name { font-size: 1.45rem; font-weight: 700; color: var(--paper-ink); }
+.d-meta { color: var(--paper-faint); font-size: .85rem; }
+.d-title {
+  font-size: .7rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--paper-faint); margin: 15px 0 6px; border-bottom: 1px solid var(--paper-rule);
+  padding-bottom: 4px;
+}
+.d-insights { color: var(--paper-ink); font-size: .92rem; display: grid; gap: 5px; }
+.d-src {
+  font-family: var(--font-ledger); font-size: .84rem; color: var(--paper-faint);
+  display: grid; grid-template-columns: auto 1fr auto; gap: 3px 10px; align-items: baseline;
+}
+.d-src .rule { border-bottom: 1px dotted var(--paper-rule); transform: translateY(-4px); }
+.d-src b { color: var(--paper-ink); }
+.d-src .d-cons { color: var(--paper-ok); font-weight: 700; }
+.d-bal { display: grid; gap: 7px; }
+.d-bal-row { display: grid; grid-template-columns: 2.9em 1fr auto; gap: 9px; align-items: center; }
+.d-bal-row .blb { font-size: .66rem; font-weight: 700; letter-spacing: .12em; color: var(--paper-faint); }
+.d-bar { height: 8px; background: var(--paper-rule); border-radius: 2px; position: relative; overflow: hidden; }
+.d-bar-fill { position: absolute; top: 0; bottom: 0; left: 0; background: #8d7c58; }
+.d-bar-add { position: absolute; top: 0; bottom: 0; background: var(--paper-ok); }
+.d-bal-row .num { font-family: var(--font-ledger); font-size: .74rem; color: var(--paper-faint); min-width: 7ch; text-align: right; }
+.d-bal-row .num b { color: var(--paper-ok); }
+.prow, .runners li { cursor: pointer; }
+
 /* ============================= COLOPHON ============================= */
 
 .colophon {
