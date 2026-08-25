@@ -42,6 +42,28 @@ const state = {
 };
 
 /* ---------------------------------- icons -------------------------------- */
+/* The ref: cartoon zebra with rotatable arms — TOUCHDOWN pose on your clock. */
+const REF_SVG = (td) => `
+<svg class="ref ${td ? "is-td" : ""}" viewBox="0 0 48 62" aria-hidden="true">
+  <g fill="none" stroke="#20241f" stroke-width="2" stroke-linecap="round">
+    <circle cx="24" cy="13" r="8" fill="#f0c9a0"/>
+    <path d="M16 10a8 8 0 0 1 16 0z" fill="#20241f"/>
+    <rect x="15" y="24" width="18" height="20" rx="5" fill="#f2f7ef"/>
+    <path d="M15 29h18M15 34h18M15 39h18" stroke="#20241f" stroke-width="3.4"/>
+    <g class="arm-l"><path d="M17 30 L7 42" stroke="#f2f7ef" stroke-width="4.6"/><circle cx="7" cy="42" r="2.6" fill="#f0c9a0" stroke="none"/></g>
+    <g class="arm-r"><path d="M31 30 L41 42" stroke="#f2f7ef" stroke-width="4.6"/><circle cx="41" cy="42" r="2.6" fill="#f0c9a0" stroke="none"/></g>
+    <path d="M20 44 L18 58 M28 44 L30 58" stroke="#20241f" stroke-width="4"/>
+  </g>
+</svg>`;
+
+const CHALK_LIVE = `
+<svg class="chalk-live" viewBox="0 0 150 100" aria-hidden="true" fill="none"
+  stroke="#f2f7ef" stroke-width="2.2" stroke-linecap="round">
+  <circle cx="22" cy="82" r="7" stroke-opacity=".55"/>
+  <path class="route" d="M28 76 C 52 66, 60 48, 78 44 S 118 30, 138 12" stroke-dasharray="7 8"/>
+  <path d="M138 12l-11 1M138 12l-4 10" stroke-opacity=".8"/>
+</svg>`;
+
 const icon = {
   cross: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 2h4v4h4v4h-4v4H6v-4H2V6h4z"/></svg>`,
   hold: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 1.5 15 14H1z"/><path d="M8 6v4M8 12.2v.3"/></svg>`,
@@ -268,6 +290,8 @@ function renderCall(board) {
       <span>${esc(r.name)}</span>
       <span class="r-score">${r.score}</span></li>`).join("");
   body.innerHTML = `
+    ${REF_SVG(!!board.draft.on_the_clock_me)}
+    ${CHALK_LIVE}
     <div class="call-top">
       <div class="call-name">${esc(top.name)}</div>
       <div class="call-meta">
