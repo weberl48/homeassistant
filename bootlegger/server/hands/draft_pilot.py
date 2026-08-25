@@ -1,155 +1,239 @@
 """The Draft Pilot — unattended picking, behind every lock we own.
 
 Sleeper's public API is read-only: there is no pick endpoint. Picking for an
-absent owner therefore means driving the logged-in draft room in a browser,
-exactly like the lineup hands. This worker:
+absent owner therefore means driving the logged-in draft room in a browser.
+Calibrated LIVE 2026-08-25 (practice room, verified pick Harold Fannin P71):
+search box placeholder "Find player", row control `.draft-button-wrapper`,
+text confirm "Draft".
 
-  watch the board (same DB the API serves)
-    -> on MY clock, ARMED, and not dry-run:
-         choose: first slip player still available, else The Call
-         drive the room: search the name, tap the player, tap Draft, confirm
-         verify: the pick must appear in the pick feed within the window
-    -> anything unexpected: STOP, disarm, log — Sleeper's own timer/queue
-       autopick is the fallback of last resort, so a dead pilot costs at
-       worst what having no pilot would have cost.
+Architecture (proven in the rehearsal, in this order of hard lessons):
+  - HTTP transport: the pilot talks to the board API, not the DB, so it can
+    run on ANY machine with Playwright + LAN access. The Pi's Chromium
+    crashed under a live room (renderer OOM at ~1.9GB free); the desktop
+    flew the same draft flawlessly. Host is a deploy-time choice.
+  - Persistent page: the room stays open across picks. A fresh browser per
+    pick burns ~30s of a 60s clock on hydration alone.
+  - One attempt per clock, verified against the pick feed; any failure or
+    unverified pick DISARMS via the API and leaves the rest to Sleeper's
+    own timer autopick — a dead pilot costs exactly what no pilot costs.
 
-Safety locks (ALL must open):
-  1. meta pilot_armed == "1"  (the UI toggle — disarm any time, takes effect
-     within a second)
-  2. HANDS_DRY_RUN=0          (env; default 1 logs would-picks only)
-  3. /run/secrets/sleeper_storage_state mounted (your logged-in session)
-  4. selector_map.json draft_room section calibrated:true (rehearsed in a
-     practice room first — scrimmage mode exists for exactly this)
+Safety locks (ALL must open before a real click):
+  1. /api/queue reports pilot_armed (the UI toggle; disarm reacts in ~1s)
+  2. HANDS_DRY_RUN=0 (env; default 1 logs would-picks only)
+  3. session state file present (BOOTLEGGER_STATE_FILE or the defaults)
+  4. selector_map.json draft_room.calibrated == true
 
-Run:  python -m hands.draft_pilot   (needs playwright in the environment;
-      the main API/ingest containers deliberately do not carry it)
+Run:  python -m hands.draft_pilot [--api http://192.168.1.160:8484]
 """
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
-from app import brain, db
-from app.config import settings
+import httpx
 
 log = logging.getLogger("bootlegger.pilot")
 
 SELECTOR_MAP_PATH = Path(__file__).parent / "selector_map.json"
-STORAGE_STATE_PATH = Path("/run/secrets/sleeper_storage_state")
-POST_VERIFY_TIMEOUT_S = 12.0
-POLL_S = 1.0
+_STATE_CANDIDATES = [Path(os.environ.get("BOOTLEGGER_STATE_FILE", "")),
+                     Path("/run/secrets/sleeper_storage_state"),
+                     Path("/data/.sleeper_storage_state")]
+POST_VERIFY_TIMEOUT_S = 15.0
+DRY_RUN = os.environ.get("HANDS_DRY_RUN", "1") != "0"
 
 
-def _armed(conn) -> bool:
-    return db.meta_get(conn, "pilot_armed") == "1"
+def state_file() -> Path | None:
+    return next((p for p in _STATE_CANDIDATES if str(p) and p.exists()), None)
 
 
-def _log_event(conn, kind: str, detail: dict) -> None:
-    events = json.loads(db.meta_get(conn, "pilot_log") or "[]")
-    events.append({"ts": db.utcnow(), "kind": kind, **detail})
-    db.meta_set(conn, "pilot_log", json.dumps(events[-50:]))  # last 50 only
-
-
-def _draft_map() -> dict:
-    m = json.loads(SELECTOR_MAP_PATH.read_text()).get("draft_room") or {}
+def draft_map() -> dict:
+    m = json.loads(SELECTOR_MAP_PATH.read_text(encoding="utf-8")).get("draft_room") or {}
     if not m.get("calibrated"):
-        raise RuntimeError("draft_room selectors not calibrated — rehearse in "
-                           "a scrimmage before arming for real")
+        raise SystemExit("draft_room selectors not calibrated — rehearse in a "
+                         "scrimmage before flying")
     return m
 
 
-def _perform_pick(conn, draft_id: str, name: str) -> None:
-    """Drive the room. Role/text locators only (React class churn); every
-    step screenshots to the audit dir; any surprise raises."""
-    from playwright.sync_api import sync_playwright  # lazy: pilot-only dep
+class Api:
+    def __init__(self, base: str, token: str = ""):
+        self.c = httpx.Client(base_url=base, timeout=6.0,
+                              headers={"X-Bootlegger-Token": token} if token else {})
 
-    m = _draft_map()
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-        ctx = browser.new_context(storage_state=str(STORAGE_STATE_PATH))
-        page = ctx.new_page()
-        page.goto(f"https://sleeper.com/draft/nfl/{draft_id}", timeout=30000)
-        page.wait_for_timeout(2500)
-        settings.audit_dir.mkdir(parents=True, exist_ok=True)
+    def board(self) -> dict:
+        return self.c.get("/api/draft/board").json()
 
-        def shoot(step: str) -> None:
-            page.screenshot(
-                path=str(settings.audit_dir / f"pilot_{int(time.time())}_{step}.png"))
+    def queue(self) -> dict:
+        return self.c.get("/api/queue").json()
 
-        search = page.get_by_role(m["search"]["role"], name=None).or_(
-            page.get_by_placeholder(m["search"]["placeholder_re"]))
-        search.first.fill(name)
-        shoot("searched")
-        page.get_by_text(name, exact=False).first.click()
-        shoot("selected")
-        page.get_by_role("button", name=m["draft_button"]["name_re"]).first.click()
-        shoot("drafted")
-        browser.close()
+    def disarm(self) -> None:
+        try:
+            self.c.post("/api/pilot/arm", json={"armed": False})
+        except httpx.HTTPError:
+            log.error("could not disarm via API — kill this process")
 
 
-def run_once(conn) -> None:
-    board = brain.get_board(conn)
-    d = board["draft"]
-    if d["status"] != "drafting" or not d["on_the_clock_me"]:
-        return
-    if not _armed(conn):
-        return
-
+def choose(board: dict, queue: list[dict]) -> tuple[str, str, str] | None:
+    """Slip first, The Call when the slip runs dry. (id, name, source).
+    Deliberately mirrors brain.resolve_pilot_pick (test-pinned) rather than
+    importing it — the pilot may run on a host without the app's deps."""
     picked = {p["id"] for p in board["players"] if p.get("pick_no")}
-    queue_ids = json.loads(db.meta_get(conn, "draft_queue") or "[]")
-    choice = brain.resolve_pilot_pick(queue_ids, picked, board["suggestions"])
-    if choice is None:
-        _log_event(conn, "no_pick", {"pick_no": d["current_pick"]})
-        return
-    pid, source = choice
-    name = next((p["name"] for p in board["players"] if p["id"] == pid), pid)
+    for p in queue:
+        if p["id"] not in picked:
+            return p["id"], p["name"], "slip"
+    for s in board["suggestions"]:
+        if s["id"] not in picked:
+            return s["id"], s["name"], "call"
+    return None
 
-    if settings.hands_dry_run:
-        log.info("DRY RUN — would draft %s (from the %s) at pick %s",
-                 name, source, d["current_pick"])
-        _log_event(conn, "dry_run", {"name": name, "source": source,
-                                     "pick_no": d["current_pick"]})
-        time.sleep(5.0)  # don't spam the log every poll while on the clock
-        return
 
-    log.info("PILOT PICKING: %s (from the %s) at pick %s",
-             name, source, d["current_pick"])
-    try:
-        _perform_pick(conn, d["id"], name)
-    except Exception as e:
-        # One failure disarms the pilot entirely: a wounded automaton must
-        # not flail at the room. Sleeper's own autopick takes over on timer.
-        db.meta_set(conn, "pilot_armed", "0")
-        _log_event(conn, "failed_disarmed", {"name": name, "error": str(e)[:200]})
-        log.exception("pilot pick failed — DISARMED")
-        return
+def find_controls(page, m: dict, name: str):
+    """Pre-click phase: search and locate the row's draft button. Failures
+    here touched NOTHING and are retryable within the same clock (the
+    rehearsal saw one transient locator timeout that the next attempt would
+    have cleared)."""
+    box = page.get_by_placeholder(m["search_placeholder"], exact=False).first
+    box.fill(name)
+    time.sleep(1.8)
+    btn = page.get_by_text(name, exact=False).first.evaluate_handle(
+        """(el, css) => { let n = el;
+             for (let i = 0; i < 6 && n.parentElement; i++) {
+               n = n.parentElement;
+               const b = n.querySelector(css);
+               if (b) return b; }
+             return null; }""", m["row_draft_button_css"])
+    el = btn.as_element()
+    if el is None:
+        raise RuntimeError("draft button not found in the result row")
+    return box, el
 
-    deadline = time.time() + POST_VERIFY_TIMEOUT_S
-    while time.time() < deadline:
-        fresh = {p["id"] for p in brain.get_board(conn)["players"] if p.get("pick_no")}
-        if pid in fresh:
-            _log_event(conn, "picked", {"name": name, "source": source,
-                                        "pick_no": d["current_pick"]})
-            return
-        time.sleep(1.5)
-    db.meta_set(conn, "pilot_armed", "0")
-    _log_event(conn, "verify_timeout_disarmed", {"name": name})
-    log.error("pick did not verify in the feed — DISARMED, check the room")
+
+def click_draft(page, m: dict, box, el) -> None:
+    """Post-click phase: from here the room's state is unknown on failure —
+    the caller must disarm, never retry."""
+    el.click()
+    time.sleep(1.2)
+    confirm = page.get_by_text(m["confirm_text"], exact=False)
+    if confirm.count():
+        try:
+            confirm.first.click(timeout=2000)
+        except Exception:
+            pass                       # no dialog — the row click drafted
+    box.fill("")
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    conn = db.connect()
-    log.info("draft pilot up (dry_run=%s, storage_state=%s)",
-             settings.hands_dry_run, STORAGE_STATE_PATH.exists())
-    while True:
-        try:
-            run_once(conn)
-        except Exception:
-            log.exception("pilot loop error")
-        time.sleep(POLL_S)
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--api", default=os.environ.get(
+        "BOOTLEGGER_API", "http://192.168.1.160:8484"))
+    args = ap.parse_args()
+    api = Api(args.api, os.environ.get("BOOTLEGGER_API_TOKEN", ""))
+    m = draft_map()
+    st = state_file()
+    if st is None and not DRY_RUN:
+        raise SystemExit("no session state file — export it first")
+    log.info("pilot up (dry_run=%s, api=%s, state=%s)", DRY_RUN, args.api, st)
+
+    from playwright.sync_api import sync_playwright  # lazy: pilot-only dep
+
+    browser = ctx = page = None
+    last_done = 0
+    attempt_pick, attempts = 0, 0
+    with sync_playwright() as pw:
+        while True:
+            try:
+                board = api.board()
+            except httpx.HTTPError:
+                time.sleep(3); continue
+            d = board["draft"]
+            drafting = d["status"] == "drafting"
+
+            if not drafting and browser:
+                log.info("draft over — closing the room")
+                browser.close(); browser = ctx = page = None
+            if not drafting:
+                time.sleep(10); continue
+
+            armed = False
+            queue: list[dict] = []
+            try:
+                q = api.queue()
+                armed, queue = q["pilot_armed"], q["queue"]
+            except httpx.HTTPError:
+                pass
+            if not armed:
+                time.sleep(2); continue
+
+            # Hold the room open the whole draft (hydration is too slow to
+            # pay per pick).
+            if page is None and not DRY_RUN:
+                browser = pw.chromium.launch(
+                    args=["--no-sandbox", "--disable-dev-shm-usage"])
+                ctx = browser.new_context(storage_state=str(st))
+                page = ctx.new_page()
+                page.goto(f"https://sleeper.com/draft/nfl/{d['id']}", timeout=60000)
+                for _ in range(25):
+                    time.sleep(1.5)
+                    if page.evaluate("document.body.innerText.length") > 3000:
+                        break
+                log.info("room open and hydrated")
+
+            if not d["on_the_clock_me"] or d["current_pick"] == last_done:
+                time.sleep(0.8); continue
+
+            pick_no = d["current_pick"]
+            ch = choose(board, queue)
+            if ch is None:
+                log.warning("pick %s: nothing to take", pick_no)
+                last_done = pick_no; continue
+            pid, name, source = ch
+            if DRY_RUN:
+                log.info("DRY RUN — would draft %s (from the %s) at pick %s",
+                         name, source, pick_no)
+                last_done = pick_no
+                time.sleep(3); continue
+
+            log.info("pick %s: taking %s (from the %s)", pick_no, name, source)
+            if pick_no != attempt_pick:
+                attempt_pick, attempts = pick_no, 0
+            try:
+                box, el = find_controls(page, m, name)
+            except Exception as e:
+                attempts += 1
+                log.warning("find failed (attempt %s/3): %s", attempts, str(e)[:120])
+                if attempts >= 3:
+                    log.error("giving this clock to the timer — pilot stays armed")
+                    last_done = pick_no
+                time.sleep(1.2); continue
+            try:
+                click_draft(page, m, box, el)
+            except Exception:
+                log.exception("CLICK PATH failed — DISARMING (room state unknown)")
+                api.disarm()
+                last_done = pick_no; continue
+            deadline = time.time() + POST_VERIFY_TIMEOUT_S
+            ok = False
+            while time.time() < deadline:
+                time.sleep(1.5)
+                try:
+                    fresh = api.board()
+                except httpx.HTTPError:
+                    continue
+                got = next((p for p in fresh["players"]
+                            if p["id"] == pid and p.get("pick_no")), None)
+                if got:
+                    log.info("  VERIFIED %s at pick %s mine=%s",
+                             name, got["pick_no"], got.get("mine"))
+                    ok = True; break
+            if not ok:
+                log.error("  NOT verified — DISARMING, check the room")
+                api.disarm()
+            last_done = pick_no
 
 
 if __name__ == "__main__":

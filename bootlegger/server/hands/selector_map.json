@@ -4,16 +4,32 @@
   "calibrated": false,
   "team_page_url": "https://sleeper.com/leagues/{league_id}/team",
   "locators": {
-    "logged_in_probe": {"role": "button", "name_re": "(?i)my team|roster"},
-    "starter_row": {"role": "button", "name_re": "(?i){player_name}"},
-    "bench_row": {"role": "button", "name_re": "(?i){player_name}"},
-    "confirm_swap": {"role": "button", "name_re": "(?i)confirm|save"}
+    "logged_in_probe": {
+      "role": "button",
+      "name_re": "(?i)my team|roster"
+    },
+    "starter_row": {
+      "role": "button",
+      "name_re": "(?i){player_name}"
+    },
+    "bench_row": {
+      "role": "button",
+      "name_re": "(?i){player_name}"
+    },
+    "confirm_swap": {
+      "role": "button",
+      "name_re": "(?i)confirm|save"
+    }
   },
-  "pacing_seconds": {"min": 0.8, "max": 2.5},
+  "pacing_seconds": {
+    "min": 0.8,
+    "max": 2.5
+  },
   "draft_room": {
-    "_comment": "Draft pilot locators — placeholders until calibrated in a live LOGGED-IN practice room (scrimmage mode). calibrated stays false until then; the pilot refuses to act on placeholders.",
-    "calibrated": false,
-    "search": {"role": "searchbox", "placeholder_re": "(?i)search"},
-    "draft_button": {"name_re": "(?i)^draft\\b"}
+    "_comment": "Calibrated LIVE 2026-08-25 in practice room 1398024983728377856 (verified pick: Harold Fannin P71, mine=true). draft-button-wrapper is a semantic Sleeper class, not a build hash — the one deliberate exception to the role/text rule; the confirm stays text-based.",
+    "calibrated": true,
+    "search_placeholder": "Find player",
+    "row_draft_button_css": ".draft-button-wrapper, .draft-button",
+    "confirm_text": "Draft"
   }
 }
