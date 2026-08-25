@@ -131,6 +131,27 @@ provenance.
       improve, or the other side isn't hurt enough to decline. Advisory only;
       you make the offer.</p>
       <div id="parlor-body"><p class="muted">Working the room…</p></div>
+
+      <div class="checker" id="deal-checker" hidden>
+        <h3 class="checker-title">The back table</h3>
+        <p class="room-note">Got your own deal in mind? Pick a partner, tap the
+        pieces on both sides, and the room grades it — value math, package
+        math, and what it does to both starting lineups.</p>
+        <label class="checker-partner">with
+          <select id="deal-partner" aria-label="Trade partner"></select>
+        </label>
+        <div class="checker-sides">
+          <div class="checker-side"><h4>you send</h4>
+            <div id="deal-mine" class="deal-pool"></div></div>
+          <div class="checker-side"><h4>you get</h4>
+            <div id="deal-theirs" class="deal-pool"></div></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="deal-run" disabled>Run it by the room</button>
+          <button class="btn btn-ghost" id="deal-clear">Clear the table</button>
+        </div>
+        <div id="deal-verdict" aria-live="polite"></div>
+      </div>
     </div>
   </section>
 

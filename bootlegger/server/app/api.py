@@ -333,6 +333,12 @@ def trade_suggestions(limit: int = 8):
     return brain.suggest_trades(get_conn(), limit=max(1, min(limit, 20)))
 
 
+@app.get("/api/league/rosters")
+def get_league_rosters():
+    """Owners + ranked players per roster — the deal checker's picker."""
+    return brain.league_rosters(get_conn())
+
+
 class DeviceBody(BaseModel):
     push_token: str
     platform: str = "android"

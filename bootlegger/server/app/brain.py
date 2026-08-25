@@ -385,6 +385,27 @@ def rationale_for_swaps(conn: sqlite3.Connection, card: dict) -> str:
 # The Parlor — trade suggestions
 # ---------------------------------------------------------------------------
 
+def league_rosters(conn: sqlite3.Connection) -> dict:
+    """Every roster with its owner and ranked players — feeds the Parlor's
+    back-table deal checker. Players sorted by consensus points so each pool
+    reads like a depth chart, not an id dump."""
+    players = _players_index(conn)
+    cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
+    out = []
+    for r in conn.execute("SELECT * FROM rosters ORDER BY roster_id"):
+        ids = json.loads(r["players_json"])
+        ps = [{"id": pid, "name": players[pid]["name"], "pos": players[pid]["pos"],
+               "team": players[pid]["team"],
+               "pts": round((cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0, 1)}
+              for pid in ids if pid in players]
+        ps.sort(key=lambda p: -p["pts"])
+        out.append({"roster_id": r["roster_id"],
+                    "owner": r["owner"] or f"roster {r['roster_id']}",
+                    "mine": r["roster_id"] == settings.my_roster_id,
+                    "players": ps})
+    return {"rosters": out}
+
+
 def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
     """Scan every opposing roster for deals that help BOTH starting lineups —
     mutual benefit is what actually gets accepted (the trade-finder lesson

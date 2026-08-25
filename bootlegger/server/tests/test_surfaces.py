@@ -74,6 +74,19 @@ def test_waivers_refuse_predraft(predraft_world):
     assert "draft" in out["note"].lower()
 
 
+def test_league_rosters_shape(world):
+    """The deal checker's picker: one roster flagged mine, owners named,
+    every pool sorted like a depth chart."""
+    rs = brain.league_rosters(world)["rosters"]
+    assert len(rs) >= 2
+    assert sum(1 for r in rs if r["mine"]) == 1
+    for r in rs:
+        assert r["owner"]
+        assert r["players"], "demo rosters are drafted"
+        pts = [p["pts"] for p in r["players"]]
+        assert pts == sorted(pts, reverse=True)
+
+
 def test_waiver_targets_shape(world):
     out = brain.waiver_targets(world, heat={"demo-heat": 3})
     assert out["targets"], "demo street must have targets"

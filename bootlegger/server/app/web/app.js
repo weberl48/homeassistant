@@ -168,8 +168,8 @@ function playerRow(p) {
     <div class="l2">
       <span class="team">${esc(p.team ?? "")} · bye ${esc(p.bye ?? "–")}</span>
       <span class="nums">
-        <span><span class="lbl">vbd</span><b data-vbd>${p.vbd}</b></span>
-        <span><span class="lbl">adp</span><span data-adp>${p.adp ?? "–"}</span></span>
+        <span title="value over the last starter at his position"><span class="lbl">vbd</span><b data-vbd>${p.vbd}</b></span>
+        <span title="average draft position across the sources on the wire"><span class="lbl">adp</span><span data-adp>${p.adp ?? "–"}</span></span>
       </span>
     </div>
     <div class="surv" data-surv hidden>
@@ -346,9 +346,9 @@ function renderCall(board) {
       <div class="call-name">${esc(top.name)}</div>
       <div class="call-meta">
         <span class="pos pos-${posOf(top)}">${posOf(top)} · ${esc(top.team ?? "")}</span>
-        <span class="stat"><span>score</span>${top.score}</span>
-        <span class="stat"><span>vbd</span>${top.vbd}</span>
-        <span class="stat"><span>survives</span>${fmtSurv(top.survival ?? 0)}</span>
+        <span class="stat" title="the room's regret math — points lost if you pass and take the next-best at your return pick"><span>score</span>${top.score}</span>
+        <span class="stat" title="value over the last starter at his position, season-total"><span>vbd</span>${top.vbd}</span>
+        <span class="stat" title="odds he's still on the board at your next pick"><span>survives</span>${fmtSurv(top.survival ?? 0)}</span>
       </div>
       <p class="call-reason">${esc(top.reason)}</p>
       ${disagree ? `<p class="call-sheet">The experts' sheet says
@@ -683,9 +683,110 @@ async function loadParlor() {
         <p class="deal-summary">${esc(t.summary)}</p>
       </div>`).join("")
       : `<p class="muted">${esc(data.note || "Nothing worth whispering this week.")}</p>`;
+    initDealChecker();
     wireOK();
   } catch { wireFail(); }
 }
+
+/* ---- the back table: run your own deal by the room ----------------------
+   Constraint-based input on purpose: both pools are the actual rosters, so
+   an unknown-player error can't happen. Any change to the table hides the
+   previous verdict — a read must never sit next to a deal it wasn't run on. */
+const deal = { rosters: null, partner: null, give: new Set(), get: new Set(), running: false };
+
+function dealRowBtn(p, side) {
+  const on = (side === "give" ? deal.give : deal.get).has(p.id);
+  return `<button type="button" class="deal-row ${on ? "is-in" : ""}" data-id="${esc(p.id)}"
+    data-side="${side}" aria-pressed="${on}">
+    <span class="pos pos-${posOf(p)}">${posOf(p)}</span>
+    <span class="deal-row-name">${esc(p.name)}</span>
+    <span class="deal-row-pts">${p.pts.toFixed(1)}</span></button>`;
+}
+
+function renderDealPools() {
+  const mine = deal.rosters.find((r) => r.mine);
+  const theirs = deal.rosters.find((r) => r.roster_id === deal.partner);
+  $("#deal-mine").innerHTML = mine.players.map((p) => dealRowBtn(p, "give")).join("");
+  $("#deal-theirs").innerHTML = (theirs?.players || []).map((p) => dealRowBtn(p, "get")).join("");
+  $("#deal-run").disabled = deal.running || !deal.give.size || !deal.get.size;
+}
+
+async function initDealChecker() {
+  if (deal.rosters) return;
+  try {
+    const data = await fetchJSON("/api/league/rosters");
+    const mine = data.rosters.find((r) => r.mine);
+    if (!mine || !mine.players.length) return;   // pre-draft: the table stays folded
+    deal.rosters = data.rosters;
+    const sel = $("#deal-partner");
+    sel.innerHTML = data.rosters.filter((r) => !r.mine).map((r) =>
+      `<option value="${r.roster_id}">${esc(r.owner)}</option>`).join("");
+    deal.partner = Number(sel.value);
+    $("#deal-checker").hidden = false;
+    renderDealPools();
+  } catch { /* the suggestions above still render; the table just stays folded */ }
+}
+
+$("#deal-partner").addEventListener("change", (e) => {
+  deal.partner = Number(e.target.value);
+  deal.get.clear();                 // their pool changed — old picks are meaningless
+  $("#deal-verdict").textContent = "";
+  renderDealPools();
+});
+
+for (const poolId of ["#deal-mine", "#deal-theirs"])
+  $(poolId).addEventListener("click", (e) => {
+    const btn = e.target.closest(".deal-row");
+    if (!btn) return;
+    const set = btn.dataset.side === "give" ? deal.give : deal.get;
+    set.has(btn.dataset.id) ? set.delete(btn.dataset.id) : set.add(btn.dataset.id);
+    $("#deal-verdict").textContent = "";
+    renderDealPools();
+  });
+
+$("#deal-clear").addEventListener("click", () => {
+  deal.give.clear(); deal.get.clear();
+  $("#deal-verdict").textContent = "";
+  renderDealPools();
+});
+
+function fmtDelta(n) { return n == null ? "–" : `${n > 0 ? "+" : ""}${n.toFixed(1)}`; }
+
+$("#deal-run").addEventListener("click", async () => {
+  const btn = $("#deal-run");
+  deal.running = true;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Running it…';
+  try {
+    const v = await fetchJSON("/api/trades/analyze", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ give: [...deal.give], receive: [...deal.get],
+                             their_roster_id: deal.partner }),
+    });
+    const edges = [
+      `value ${fmtDelta(v.vbd_edge)} VBD`,
+      `market ${v.market_edge > 0 ? "+" : ""}${Math.round(v.market_edge)}`,
+      v.consolidation_edge != null ? `package ${fmtDelta(v.consolidation_edge)}` : null,
+    ].filter(Boolean).join(" · ");
+    $("#deal-verdict").innerHTML = `
+      <div class="deal deal-verdict-card">
+        <div class="deal-head">
+          <span class="deal-partner">the room's read</span>
+          <span class="deal-gains"><b>${fmtDelta(v.lineup_impact?.starters_delta)}</b> you ·
+            ${fmtDelta(v.their_lineup_impact?.starters_delta)} them</span>
+        </div>
+        <p class="deal-summary">${esc(v.summary)}</p>
+        <p class="optimal-note">${edges} — the you/them figures are season-total
+        optimal-lineup points, positive means that side's starters improve.</p>
+      </div>`;
+  } catch {
+    $("#deal-verdict").innerHTML =
+      `<p class="muted">The room couldn't get a read — the wire hiccuped. Run it again.</p>`;
+  }
+  deal.running = false;
+  btn.innerHTML = "Run it by the room";
+  renderDealPools();
+});
 
 /* --------------------------------- ledger --------------------------------- */
 function ruleDetail(r) {
