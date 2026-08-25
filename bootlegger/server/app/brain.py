@@ -509,6 +509,9 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
 
     srcs = {r["source"]: r["pts"] for r in conn.execute(
         "SELECT source, pts FROM projections WHERE week=0 AND player_id=?", (player_id,))}
+    ds_range = conn.execute(
+        "SELECT floor, ceiling FROM projections WHERE week=0 AND source='draftsharks' "
+        "AND player_id=?", (player_id,)).fetchone()
     cons = conn.execute("SELECT * FROM consensus WHERE week=0 AND player_id=?",
                         (player_id,)).fetchone()
     adp_rows = {r["source"]: r for r in conn.execute(
@@ -603,6 +606,13 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
                         "Depth today — he doesn't crack your starting lineup yet.")
     if p["injury_status"]:
         insights.append(f"Carries a {p['injury_status']} tag — the wire will tell you more than the sheet.")
+    try:
+        risk, games = p["injury_risk"], p["proj_games"]
+    except (IndexError, KeyError):
+        risk = games = None
+    if risk is not None and risk >= 40:
+        insights.append(f"The sharks put his injury risk at {risk:.0f}%"
+                        + (f" — {games:.0f} games projected." if games else "."))
 
     return {
         "id": player_id, "name": p["name"], "pos": p["pos"], "team": p["team"],
@@ -614,6 +624,9 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
         "vbd": round(cons["vbd"], 1) if cons and cons["vbd"] is not None else None,
         "ecr": round(ecr["adp"], 1) if ecr else None,
         "street_adp": round(street["adp"], 1) if street else None,
+        "ds_floor": round(ds_range["floor"], 1) if ds_range and ds_range["floor"] else None,
+        "ds_ceiling": round(ds_range["ceiling"], 1) if ds_range and ds_range["ceiling"] else None,
+        "injury_risk": risk, "proj_games": games,
         "survival_next": surv_next, "survival_wait": surv_wait,
         "my_next_pick": my_next,
         "lineup_gain": lineup_gain,

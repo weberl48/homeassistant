@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Bootlegger", lifespan=lifespan)
 
 
-EXPECTED_SOURCES = ("sleeper", "espn", "fantasypros", "cbs", "fftoday")
+EXPECTED_SOURCES = ("sleeper", "espn", "fantasypros", "cbs", "fftoday", "draftsharks")
 
 
 @app.get("/health")

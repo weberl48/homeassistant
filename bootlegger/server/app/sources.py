@@ -275,3 +275,43 @@ def fetch_fantasycalc_values(ppr: float = 1.0, num_qbs: int = 1,
             "trend_30d": float(row.get("trend30Day", 0) or 0),
         })
     return out
+
+
+# Draft Sharks (paid sub): the rankings lazy-load endpoint serves the full
+# table as HTML fragments. Auth = session cookie exported after login, stored
+# mode-600 at DS_COOKIE_FILE — never in the repo. Slug is PPR; other scorings
+# have different slugs we have not mapped (caller guards).
+DS_ROWS_URL = ("https://www.draftsharks.com/rankings/load-rows?offset=0&limit=400"
+               "&fantasyPosition=&pprSuperflexSlug=ppr&sort=-dsValue&researchDepth=rankings")
+
+
+def fetch_draftsharks(cookie: str, timeout: float = 40.0) -> list[dict[str, Any]]:
+    """Rows: {name, position, pts (their DS projection), floor, ceiling,
+    injury_pct, proj_games}. Their 3-year award-winning house numbers."""
+    r = httpx.get(DS_ROWS_URL, timeout=timeout, follow_redirects=True,
+                  headers={"Cookie": cookie, "User-Agent": FP_UA,
+                           "X-Requested-With": "XMLHttpRequest"})
+    r.raise_for_status()
+    out = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.S):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        if len(cells) < 12:
+            continue
+        nm = re.search(r'first-name="([^"]*)"\s+last-name="([^"]*)"', cells[1])
+        pm = re.search(r'pos-roster-spot="(QB|RB|WR|TE|K|DST|DEF)"', cells[1])
+        if not nm:
+            continue
+        txt = [re.sub(r"<[^>]+>", " ", c) for c in cells]
+        txt = [re.sub(r"\s+", " ", t).strip() for t in txt]
+        floor, cons, ds, ceil = (_num(txt[i]) for i in (7, 8, 9, 10))
+        if not ds:
+            continue
+        pos = (pm.group(1) if pm else "").replace("DST", "DEF")
+        out.append({
+            "name": f"{nm.group(1)} {nm.group(2)}".strip(),
+            "position": pos,
+            "pts": ds, "floor": floor or None, "ceiling": ceil or None,
+            "injury_pct": _num(txt[6]) or None,
+            "proj_games": _num(txt[2]) or None,
+        })
+    return out

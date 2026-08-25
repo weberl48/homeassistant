@@ -89,14 +89,14 @@ automation:
     trigger:
       - platform: numeric_state
         entity_id: sensor.bootlegger_projection_sources
-        below: 5
+        below: 6
         for: "06:00:00"
     action:
       - service: notify.mobile_app_sm_s926u
         data:
           title: "Bootlegger — a source went quiet"
           message: >-
-            Only {{ states('sensor.bootlegger_projection_sources') }} of 5
+            Only {{ states('sensor.bootlegger_projection_sources') }} of 6
             projection sources on the wire (down:
             {{ state_attr('sensor.bootlegger_status', 'sources_missing') | join(', ') }}).
             The consensus still works, thinner. Probably a site redesign broke

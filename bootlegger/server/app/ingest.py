@@ -17,7 +17,7 @@ from .engines import consensus as cx
 from .engines import tiers as tiers_engine
 from .engines import vbd as vbd_engine
 from .sleeper import SleeperClient
-from .sources import (fetch_cbs_projections, fetch_espn_projections,
+from .sources import (fetch_cbs_projections, fetch_draftsharks, fetch_espn_projections,
                       fetch_fantasycalc_values, fetch_fantasypros_projections,
                       fetch_ffc_adp, fetch_fftoday_projections, fetch_fp_ecr,
                       normalize_name)
@@ -330,14 +330,14 @@ def _write_source_projections(conn: sqlite3.Connection, source: str,
     for p in rows:
         pid = lookup.get((normalize_name(p["name"]), p["position"]))
         if pid:
-            joined.append((pid, p["pts"]))
-    if not _batch_ok(joined, week):
+            joined.append((pid, p["pts"], p.get("floor"), p.get("ceiling")))
+    if not _batch_ok([(a, b) for a, b, *_ in joined], week):
         return 0
     conn.execute("DELETE FROM projections WHERE week=? AND source=?", (week, source))
-    for pid, pts in joined:
+    for pid, pts, floor, ceiling in joined:
         conn.execute(
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
-            "VALUES(?,?,?,?,?,?)", (pid, week, source, pts, None, None))
+            "VALUES(?,?,?,?,?,?)", (pid, week, source, pts, floor, ceiling))
     conn.commit()
     return len(joined)
 
@@ -355,6 +355,30 @@ def etl_fftoday_projections(conn: sqlite3.Connection) -> int:
     scoring = (json.loads(row["scoring_json"]) or {}) if row and row["scoring_json"] else {}
     return _write_source_projections(
         conn, "fftoday", fetch_fftoday_projections(settings.season, scoring))
+
+
+def etl_draftsharks(conn: sqlite3.Connection) -> int:
+    """Draft Sharks house projections (their 3-year award-winning numbers)
+    with floor/ceiling, plus injury risk + projected games onto players.
+    Session cookie from DS_COOKIE_FILE; missing/expired = source off, which
+    the source-health alert surfaces."""
+    if _league_scoring(conn) != "ppr":  # only the PPR slug is mapped
+        return 0
+    from pathlib import Path
+    cf = Path(settings.ds_cookie_file)
+    if not cf.exists():
+        return 0
+    rows = fetch_draftsharks(cf.read_text().strip())
+    n = _write_source_projections(conn, "draftsharks", rows)
+    if n:
+        lookup = _name_lookup(conn)
+        for p in rows:
+            pid = lookup.get((normalize_name(p["name"]), p["position"]))
+            if pid and (p.get("injury_pct") is not None or p.get("proj_games") is not None):
+                conn.execute("UPDATE players SET injury_risk=?, proj_games=? WHERE sleeper_id=?",
+                             (p.get("injury_pct"), p.get("proj_games"), pid))
+        conn.commit()
+    return n
 
 
 def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
@@ -456,7 +480,8 @@ def nightly(conn: sqlite3.Connection) -> dict:
         out["fp_projections"] = etl_fp_projections(conn)
     except Exception as e:
         out["fp_projections"] = f"failed: {e}"
-    for label, etl in (("cbs", etl_cbs_projections), ("fftoday", etl_fftoday_projections)):
+    for label, etl in (("cbs", etl_cbs_projections), ("fftoday", etl_fftoday_projections),
+                       ("draftsharks", etl_draftsharks)):
         try:
             out[label] = etl(conn)
         except Exception as e:  # scrapes break; the consensus must not

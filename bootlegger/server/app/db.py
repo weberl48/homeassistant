@@ -164,6 +164,17 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Guarded ALTERs for columns added after first ship."""
+    for stmt in ("ALTER TABLE players ADD COLUMN injury_risk REAL",
+                 "ALTER TABLE players ADD COLUMN proj_games REAL"):
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass  # already there
+    conn.commit()
+
+
 def connect(db_path: Path | None = None) -> sqlite3.Connection:
     """One connection per thread; WAL so the pollers and API can share the file."""
     path = Path(db_path or settings.db_path)
@@ -191,6 +202,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             (name, threshold),
         )
     conn.commit()
+    _migrate(conn)
 
 
 def meta_get(conn: sqlite3.Connection, key: str, default: str | None = None) -> str | None:

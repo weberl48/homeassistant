@@ -49,6 +49,7 @@ class Settings:
     healthchecks_url: str = ""             # dead-man ping target, empty = disabled
     fantasypros_api_key: str = ""          # unlocks FP point projections (fantasypros.com/apis)
     api_token: str = ""                    # gates mutating routes; REQUIRED before hands go live
+    ds_cookie_file: str = "/data/.ds_cookie"  # Draft Sharks session (mode 600); missing = source off
     expo_push_tokens: list[str] = field(default_factory=list)
 
     @classmethod
@@ -71,6 +72,7 @@ class Settings:
         s.healthchecks_url = _env("HEALTHCHECKS_URL", s.healthchecks_url)
         s.fantasypros_api_key = _env("FANTASYPROS_API_KEY", s.fantasypros_api_key)
         s.api_token = _env("BOOTLEGGER_API_TOKEN", s.api_token)
+        s.ds_cookie_file = _env("DS_COOKIE_FILE", s.ds_cookie_file)
         tokens = _env("EXPO_PUSH_TOKENS", "")
         s.expo_push_tokens = [t.strip() for t in tokens.split(",") if t.strip()]
         return s

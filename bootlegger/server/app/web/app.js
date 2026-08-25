@@ -402,6 +402,8 @@ async function openDossier(pid) {
       ${d.vbd != null ? `<span>value over replacement</span><span class="rule"></span><b>${d.vbd}</b>` : ""}
       ${d.ecr ? `<span>experts' sheet rank</span><span class="rule"></span><b>${d.ecr}</b>` : ""}
       ${d.street_adp ? `<span>the street drafts him</span><span class="rule"></span><b>${d.street_adp}</b>` : ""}
+      ${d.ds_floor ? `<span>sharks' floor / ceiling</span><span class="rule"></span><b>${d.ds_floor} – ${d.ds_ceiling}</b>` : ""}
+      ${d.injury_risk != null ? `<span>injury risk (sharks)</span><span class="rule"></span><b>${Math.round(d.injury_risk)}%${d.proj_games ? " · " + Math.round(d.proj_games) + " gm" : ""}</b>` : ""}
     </div>
     ${surv ? `<div class="d-title">The odds</div>${surv}` : ""}
     ${bal ? `<div class="d-title">Your shelf, with him</div><div class="d-bal">${bal}</div>` : ""}`;
