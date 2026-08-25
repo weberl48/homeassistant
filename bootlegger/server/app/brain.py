@@ -149,6 +149,11 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     reasons: dict[str, str] = {}
     for pos, pool in pools.items():
         mult = draft_engine.roster_need_multiplier(pos, my_counts, rp)
+        # A filled K/DEF slot makes further K/DEF picks dead weight — leave
+        # them unscored so they sort behind even negative-VBD skill depth
+        # (a tiny positive DST edge beat lottery-ticket RBs at the last pick).
+        if pos in ("K", "DEF") and mult <= 0.05:
+            continue
         for cand in pool:
             s = draft_engine.suggestion_score(cand, pool, mult)
             scores[cand.player_id] = s

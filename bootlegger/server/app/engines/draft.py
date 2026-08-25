@@ -105,7 +105,10 @@ def roster_need_multiplier(pos: str, my_pos_counts: dict[str, int],
     if pos in ("K", "DEF"):
         if skill_starters_open or flex_open:
             return 0.25
-        return 1.0 if unfilled_dedicated(pos) else 0.55
+        # A second kicker/defense is dead weight — you start exactly one and
+        # never bench-stash them. (The live UI mock drafted THREE defenses
+        # before this clamp.)
+        return 1.0 if unfilled_dedicated(pos) else 0.05
     if unfilled_dedicated(pos):
         return 1.0
     if pos in FLEX_ELIGIBLE and flex_open:
