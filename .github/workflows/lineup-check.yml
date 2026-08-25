@@ -1,0 +1,66 @@
+# Off-Pi safety net (design doc §6): Sunday-morning "is my lineup set" check
+# that runs on GitHub's infrastructure and reads only public APIs — it works
+# even when the Pi is dead. Armed 2026-08-25 (canonical copy; ops/github/
+# lineup-check.yml is a pointer here).
+#
+# Needs repo variables SLEEPER_LEAGUE_ID and SLEEPER_ROSTER_ID (Settings →
+# Secrets and variables → Actions → Variables). A failing run emails via
+# GitHub's built-in workflow-failure notification.
+name: sunday-lineup-check
+
+on:
+  schedule:
+    - cron: "0 13 * * 0"   # 13:00 UTC ≈ 9am ET during the season (DST)
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    if: ${{ vars.SLEEPER_LEAGUE_ID != '' }}
+    steps:
+      - name: Any starter OUT / BYE / empty?
+        env:
+          LEAGUE: ${{ vars.SLEEPER_LEAGUE_ID }}
+          ROSTER: ${{ vars.SLEEPER_ROSTER_ID }}
+        run: |
+          python3 - <<'EOF'
+          import csv, io, json, os, sys, urllib.request
+
+          league = os.environ["LEAGUE"]; roster_id = int(os.environ["ROSTER"])
+          get = lambda u: json.load(urllib.request.urlopen(u))
+          rosters = get(f"https://api.sleeper.app/v1/league/{league}/rosters")
+          mine = next(r for r in rosters if r["roster_id"] == roster_id)
+          starters = mine.get("starters") or []
+          state = get("https://api.sleeper.app/v1/state/nfl")
+          players = get("https://api.sleeper.app/v1/players/nfl")
+
+          # Bye detection from the public nflverse schedule: any team without
+          # a game this week is on bye (Sleeper's blob carries no byes).
+          week, season = int(state.get("week") or 0), int(state.get("season") or 0)
+          playing = set()
+          try:
+              url = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+              text = urllib.request.urlopen(url, timeout=60).read().decode()
+              for row in csv.DictReader(io.StringIO(text)):
+                  if (row.get("game_type") == "REG" and row.get("season") == str(season)
+                          and row.get("week") == str(week)):
+                      for t in (row.get("home_team"), row.get("away_team")):
+                          playing.add({"LA": "LAR"}.get(t, t))
+          except Exception as e:
+              print(f"bye check skipped (schedule unreachable: {e})")
+
+          bad = []
+          for pid in starters:
+              if pid in ("0", None, ""):
+                  bad.append("EMPTY SLOT"); continue
+              p = players.get(pid, {})
+              status = p.get("injury_status") or ""
+              if status in ("Out", "Doubtful", "IR", "Sus"):
+                  bad.append(f"{p.get('full_name', pid)} is {status}")
+              elif playing and p.get("team") and p["team"] not in playing:
+                  bad.append(f"{p.get('full_name', pid)} is on BYE ({p['team']})")
+          if bad:
+              print("LINEUP TROUBLE:", "; ".join(bad))
+              sys.exit(1)
+          print(f"week {week}: all {len(starters)} starters active")
+          EOF
