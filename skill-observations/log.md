@@ -140,3 +140,12 @@ the mutation that proves the test works.
 **Issue:** The week-3 URL returned HTTP 200 and 410 well-formed rows, so every check a normal integration does passed. The rows were SEASON totals (Josh Allen 419 pts) — the site ignored the new segment. Had the consensus not carried an independent weekly-median sanity band, every lineup call for the week would have been an order of magnitude high, silently. The request succeeded; the parameter did nothing.
 **Suggested improvement:** In Move 4 ("assumption-independent evidence"), add a line for parameterised fetches: when a new dimension is added to an existing request (week, region, scoring, date), the proof that it took effect is a change in the OUTPUT's own distribution — scale, row count, or a value that must differ — never the status code or a successful parse. State the expected shift before fetching and check it.
 **Principle:** A source that ignores your parameter answers 200 and hands you the wrong question's answer.
+
+### Observation 12: A rule written through a code generator needs its escaping checked, not just its logic
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Adding regex guards to Bootlegger's news classifier by rewriting the module through a python heredoc.
+**Skill:** New skill candidate: generated-code-escaping (or a rule inside an existing implementation skill)
+**Issue:** Two word-boundary escapes were written through a NON-raw Python string in the generator, so each became a literal backspace (chr 8). The patterns compiled, the module imported, the source looked correct in every render — the control character is invisible — and both new guards silently matched nothing. Three debugging rounds; found only by printing the pattern with repr. It then recurred immediately, in this same session, writing a one-line pointer into MEMORY.md the same way.
+**Suggested improvement:** Any generated edit whose inserted text contains a backslash must use a raw string, or be verified afterwards. The check is one line and worth making standard: assert the written file contains no control characters outside newline/carriage-return/tab. Better: prefer the Edit tool over a generator script for any content containing backslashes — it does not re-interpret them.
+**Principle:** A generator can produce a file that is wrong in a way no reader can see. Check the bytes, not the rendering.
