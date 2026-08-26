@@ -195,10 +195,22 @@ def room_tendencies(conn: sqlite3.Connection) -> dict[str, room_engine.Tendency]
     if len(curves) < room_engine.MIN_DRAFTS:
         return {}
 
-    adp_rows = [{"pos": players[r["player_id"]]["pos"], "adp": r["adp"]}
-                for r in conn.execute(
-                    "SELECT player_id, adp FROM adp WHERE source IN ('sleeper','ffc','demo')")
-                if r["player_id"] in players]
+    # ONE row per player. The adp table holds a row per (player, source), and
+    # feeding both a player's Sleeper and FFC rows into the market curve counts
+    # him twice — which makes the k-th man at every position look like he goes
+    # earlier than he does, and read out as "every position slides here".
+    # Sleeper's platform ADP wins because that is where this room drafts.
+    best: dict[str, tuple[int, float]] = {}
+    for r in conn.execute(
+            "SELECT player_id, source, adp FROM adp "
+            "WHERE source IN ('sleeper','ffc','demo')"):
+        if r["player_id"] not in players:
+            continue
+        rank = {"sleeper": 0, "demo": 1, "ffc": 2}.get(r["source"], 9)
+        cur = best.get(r["player_id"])
+        if cur is None or rank < cur[0]:
+            best[r["player_id"]] = (rank, r["adp"])
+    adp_rows = [{"pos": players[pid]["pos"], "adp": v[1]} for pid, v in best.items()]
     if not adp_rows:
         return {}
     return room_engine.tendencies(curves, room_engine.market_curve(adp_rows))

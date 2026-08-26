@@ -381,11 +381,20 @@ def _draft(order):
     return [{"pick_no": i + 1, "pos": p} for i, p in enumerate(order)]
 
 
-MARKET = {"QB": [20.0, 30.0, 40.0, 50.0], "RB": [1.0, 2.0, 3.0, 4.0]}
+# Six positions so the centring median has something honest to sit on: five
+# positions drafted exactly to market, one that isn't.
+_FLAT = {"RB": [1.0, 2.0, 3.0, 4.0], "WR": [5.0, 6.0, 7.0, 8.0],
+         "TE": [60.0, 70.0, 80.0, 90.0], "K": [150.0, 155.0, 160.0, 165.0],
+         "DEF": [140.0, 145.0, 150.0, 155.0]}
+MARKET = {"QB": [20.0, 30.0, 40.0, 50.0], **_FLAT}
+
+
+def _room(qb):
+    return {"QB": list(qb), **{k: list(v) for k, v in _FLAT.items()}}
 
 
 def test_a_room_that_drafts_to_the_market_reads_as_silent():
-    room = [{"QB": [20.0, 30.0, 40.0, 50.0], "RB": [1.0, 2.0, 3.0, 4.0]}] * 2
+    room = [_room(MARKET["QB"])] * 2
     t = room_engine.tendencies(room, MARKET)
     assert abs(t["QB"].offset) < 1e-9
     assert room_engine.read_out(t) == []
@@ -393,7 +402,7 @@ def test_a_room_that_drafts_to_the_market_reads_as_silent():
 
 def test_a_room_that_reaches_for_quarterbacks_is_measured_as_reaching():
     """Positive offset = earlier than the market, which must LOWER survival."""
-    early = {"QB": [12.0, 22.0, 32.0, 42.0], "RB": [1.0, 2.0, 3.0, 4.0]}
+    early = _room([12.0, 22.0, 32.0, 42.0])          # eight picks ahead
     t = room_engine.tendencies([early, early], MARKET)
     assert t["QB"].offset == 8.0 and t["QB"].direction == "early"
     assert room_engine.adjust_adp(50.0, "QB", t) == 42.0
@@ -401,16 +410,30 @@ def test_a_room_that_reaches_for_quarterbacks_is_measured_as_reaching():
 
 
 def test_a_position_that_slides_lets_you_wait_longer():
-    late = {"QB": [30.0, 40.0, 50.0, 60.0], "RB": [1.0, 2.0, 3.0, 4.0]}
+    late = _room([30.0, 40.0, 50.0, 60.0])           # ten picks behind
     t = room_engine.tendencies([late, late], MARKET)
     assert t["QB"].offset == -10.0
     assert room_engine.adjust_adp(50.0, "QB", t) == 60.0
     assert "slide here" in room_engine.read_out(t)[0]
 
 
+def test_a_uniform_shift_across_every_position_is_an_artifact_not_a_habit():
+    """Observed on the first live run: all six positions read as sliding, which
+    is impossible — the same 180 picks cannot all go later than the market. The
+    cause was a duplicated ADP row inflating the market curve's density.
+    Centring makes the measure immune to that whole class of error."""
+    shifted = {pos: [v + 25.0 for v in vals] for pos, vals in MARKET.items()}
+    t = room_engine.tendencies([shifted, shifted], MARKET)
+    assert all(abs(x.offset) < 1e-9 for x in t.values())
+    assert room_engine.read_out(t) == []
+    # ...and a genuine difference still survives the same centring.
+    one_off = dict(shifted, QB=[v + 25.0 - 8.0 for v in MARKET["QB"]])
+    t2 = room_engine.tendencies([one_off, one_off], MARKET)
+    assert t2["QB"].offset > 5.0
+
+
 def test_one_past_draft_is_an_anecdote_not_a_tendency():
-    early = {"QB": [12.0, 22.0, 32.0, 42.0], "RB": [1.0, 2.0, 3.0, 4.0]}
-    assert room_engine.tendencies([early], MARKET) == {}
+    assert room_engine.tendencies([_room([12.0, 22.0, 32.0, 42.0])], MARKET) == {}
 
 
 def test_no_history_leaves_every_number_exactly_as_the_market_had_it():
@@ -419,7 +442,7 @@ def test_no_history_leaves_every_number_exactly_as_the_market_had_it():
 
 
 def test_the_correction_is_capped_at_a_round():
-    wild = {"QB": [1.0, 2.0, 3.0, 4.0], "RB": [1.0, 2.0, 3.0, 4.0]}
+    wild = _room([1.0, 2.0, 3.0, 4.0])
     t = room_engine.tendencies([wild, wild], MARKET)
     assert t["QB"].offset == room_engine.MAX_OFFSET
 
@@ -427,8 +450,8 @@ def test_the_correction_is_capped_at_a_round():
 def test_an_inconsistent_room_flattens_the_curve_rather_than_shifting_it():
     """A room that is erratic about a position is less predictable there,
     whichever way it leans — sigma widens, the centre barely moves."""
-    a = {"QB": [10.0, 20.0, 30.0, 40.0], "RB": [1.0, 2.0, 3.0, 4.0]}
-    b = {"QB": [30.0, 40.0, 50.0, 60.0], "RB": [1.0, 2.0, 3.0, 4.0]}
+    a = _room([10.0, 20.0, 30.0, 40.0])
+    b = _room([30.0, 40.0, 50.0, 60.0])
     t = room_engine.tendencies([a, b], MARKET)
     assert t["QB"].spread > 0
     assert room_engine.widen_sigma(4.0, "QB", t) > 4.0

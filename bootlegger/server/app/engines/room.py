@@ -31,6 +31,12 @@ Three guards, because a wrong correction is worse than none:
 3. **The correction is capped.** However emphatic the history, no position is
    shifted more than a round — beyond that the model is fitting noise, and the
    cost of being wrong compounds across every survival number on the board.
+4. **The offsets are centred.** A room cannot draft every position earlier than
+   the market, nor every one later; both curves describe the same 180 picks. A
+   constant shift across all six is therefore an artifact of curve
+   construction, not a habit, and is subtracted. This guard earned its place
+   immediately: the first live run reported all six positions sliding, which
+   turned out to be a duplicated ADP row inflating the market curve's density.
 """
 from __future__ import annotations
 
@@ -112,6 +118,7 @@ def tendencies(room_curves: list[dict[str, list[float]]],
     if len(room_curves) < min_drafts:
         return {}
     out: dict[str, Tendency] = {}
+    raw: dict[str, tuple[float, float, int]] = {}
     for pos in _POSITIONS:
         want = market.get(pos) or []
         if len(want) < MIN_PICKS_PER_POS:
@@ -126,10 +133,24 @@ def tendencies(room_curves: list[dict[str, list[float]]],
             per_draft.append(statistics.mean(want[i] - got[i] for i in range(n)))
         if len(per_draft) < min_drafts:
             continue
-        offset = statistics.median(per_draft)
-        spread = statistics.pstdev(per_draft) if len(per_draft) > 1 else 0.0
-        out[pos] = Tendency(pos, max(-MAX_OFFSET, min(MAX_OFFSET, offset)),
-                            len(per_draft), spread)
+        raw[pos] = (statistics.median(per_draft),
+                    statistics.pstdev(per_draft) if len(per_draft) > 1 else 0.0,
+                    len(per_draft))
+
+    # CENTRE the offsets. Both curves describe the same draft, so a tendency is
+    # necessarily RELATIVE — a room cannot take every position earlier than the
+    # market, and cannot take every one later either. A constant shift across
+    # all six positions is therefore an artifact of how the two curves were
+    # built (a duplicated ADP row, a market list of different depth), never a
+    # habit. Subtracting the common component leaves only what actually
+    # differs between positions, and makes the measure robust to that whole
+    # class of error instead of reporting it as a finding.
+    if not raw:
+        return {}
+    centre = statistics.median(v[0] for v in raw.values())
+    for pos, (offset, spread, n) in raw.items():
+        centred = offset - centre
+        out[pos] = Tendency(pos, max(-MAX_OFFSET, min(MAX_OFFSET, centred)), n, spread)
     return out
 
 
