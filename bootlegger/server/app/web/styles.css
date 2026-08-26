@@ -46,7 +46,12 @@
      widening a room never widens its prose. */
   --w-sheet: 960px;
   --w-hall: 1280px;
-  --w-field: 1560px;
+  /* The board is the widest thing in the house and the only room that
+     wants a big monitor. 1560 could not host six columns at the row's
+     natural width — they overflowed by ~27px and the column clipped
+     them silently, which a real scrollbar then made visible by eating
+     the ADP. */
+  --w-field: 1880px;
   --w-read: 68ch;
   --shadow-raise: 0 1px 3px rgba(2, 6, 20, .5), 0 6px 16px rgba(2, 6, 20, .3);
   /* the one zubaz: an authored tile of irregular hand-cut red/royal jags on
@@ -458,17 +463,20 @@ main { position: relative; z-index: 1; max-width: var(--w-field); margin: 0 auto
    their need multiplier at 0.25 until every skill starter is filled
    (engines/draft.py). It is the same fold the deep shelf already uses on a
    phone, applied to the positions instead of the tail.
-   At 1700+ there is room for all six on one row, so it takes it. */
+   At 1900+ there is room for all six on one row, so it takes it. Every
+   threshold here is measured, not chosen: a row needs its figure block
+   whole plus a reserved scrollbar gutter, and the breakpoint is where
+   that many columns of that width actually fit beside the rail. */
 .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 
-@media (min-width: 1180px) {
+@media (min-width: 1340px) {
   .columns { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   /* K and DST share the row beneath the deciding four, half-height — present
      and readable, never competing for the eye with the pick you are making. */
   .col[data-pos="K"], .col[data-pos="DEF"] { grid-column: span 2; max-height: 330px; }
 }
 
-@media (min-width: 1700px) {
+@media (min-width: 1900px) {
   .columns { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .col[data-pos="K"], .col[data-pos="DEF"] { grid-column: auto; max-height: calc(100vh - 210px); }
 }
@@ -490,6 +498,7 @@ main { position: relative; z-index: 1; max-width: var(--w-field); margin: 0 auto
    the visible track says how much. */
 .col-body {
   overflow-y: auto; overscroll-behavior: contain; padding-bottom: 6px;
+  scrollbar-gutter: stable;
   scrollbar-width: thin; scrollbar-color: var(--brass) transparent;
   mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 26px), transparent 100%);
 }
@@ -538,9 +547,13 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
 .prow .team {
   color: var(--ink-faint); font-size: .74rem; letter-spacing: .06em;
   text-transform: uppercase; white-space: nowrap;
+  /* gives way first — see .nums */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
+/* The figures are the last thing to yield: flex-shrink 0 so the team label
+   truncates before a VBD or an ADP loses a digit. */
 .prow .nums {
-  margin-left: auto; display: flex; gap: 12px; align-items: baseline;
+  margin-left: auto; flex: none; display: flex; gap: 10px; align-items: baseline;
   font-family: var(--font-ledger); font-size: .84rem; color: var(--ink-dim);
   white-space: nowrap;
 }
@@ -1059,7 +1072,7 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
 /* 1179, not 1180: the deciding-four rule opens at min-width 1180, and at
    exactly 1180px both queries matched — the later one won and the board
    silently dropped to two columns on a 1180px window. */
-@media (max-width: 1179px) {
+@media (max-width: 1339px) {
   .col { max-height: 460px; }
 }
 

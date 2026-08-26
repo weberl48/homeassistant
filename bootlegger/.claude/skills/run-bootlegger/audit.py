@@ -22,6 +22,9 @@ ROOMS = ["board", "week", "waivers", "league", "parlor", "ledger"]
 # Widths people actually hold: iPhone, small tablet, small laptop, the modal
 # laptop, a desktop. 1440 is the one that matters most — see _board_columns.
 WIDTHS = [390, 768, 1024, 1440, 1920]
+# Board widths worth checking: below the four-across threshold, either side
+# of it, the modal laptop, either side of six-across, and a big monitor.
+WIDTHS_BOARD = [1024, 1180, 1300, 1340, 1440, 1700, 1900, 1920, 2560]
 MIN_CONTRAST = 4.5       # WCAG 2.1 AA, normal text
 MIN_TARGET = 44          # CSS px, per PRODUCT.md's own commitment
 
@@ -166,7 +169,7 @@ def audit_board_columns(pg, base: str, r: Results) -> None:
     column ladder used to reach six-across only at 1700px, so the modal laptop
     drafted with three columns and half the board below the fold."""
     bad = []
-    for w in (1180, 1440, 1920):
+    for w in (1340, 1440, 1920):
         pg.set_viewport_size({"width": w, "height": 1000})
         pg.goto(f"{base}#board", wait_until="networkidle")
         pg.wait_for_timeout(1200)
@@ -183,8 +186,8 @@ def audit_board_columns(pg, base: str, r: Results) -> None:
         if rows["rows"] > 1 or rows["n"] != 4:
             bad.append(f"{w}px: {rows['n']} deciding cols on {rows['rows']} rows")
     pg.set_viewport_size({"width": 1440, "height": 1000})
-    r.check(not bad, "the four deciding columns hold one row from 1180 up",
-            ", ".join(bad) if bad else "1180, 1440, 1920 all single-row")
+    r.check(not bad, "the four deciding columns hold one row from 1340 up",
+            ", ".join(bad) if bad else "1340, 1440, 1920 all single-row")
 
 
 def audit_rail_contained(pg, base: str, r: Results) -> None:
@@ -196,7 +199,7 @@ def audit_rail_contained(pg, base: str, r: Results) -> None:
     so the containment gets its own assertion.
     """
     bad = []
-    for w in (1180, 1440, 1920):
+    for w in (1340, 1440, 1920):
         pg.set_viewport_size({"width": w, "height": 1000})
         pg.goto(f"{base}#board", wait_until="networkidle")
         pg.wait_for_timeout(1200)
@@ -224,7 +227,58 @@ def audit_rail_contained(pg, base: str, r: Results) -> None:
             bad.append(f"{w}px: {over[:3]}")
     pg.set_viewport_size({"width": 1440, "height": 1000})
     r.check(not bad, "nothing in the rail crosses into the board",
-            "; ".join(bad) if bad else "1180, 1440, 1920 clear")
+            "; ".join(bad) if bad else "1340, 1440, 1920 clear")
+
+
+def audit_rows_never_clip(pg, base: str, r: Results) -> None:
+    """No player row may lose a figure to its own column.
+
+    This one exists because the gate had a blind spot rather than a bug:
+    headless Chromium draws OVERLAY scrollbars, which take no layout width, so
+    the harness measured a board that fit while the owner's browser — with a
+    classic 8px scrollbar reserving real width — was cutting the ADP off every
+    row. Reserving the gutter in CSS fixes the page; measuring the invariant
+    instead of the rendered scrollbar fixes the check.
+
+    The invariant is browser-independent: a row's natural width must fit inside
+    its column's content box, gutter already deducted.
+    """
+    bad = []
+    for w in WIDTHS_BOARD:
+        pg.set_viewport_size({"width": w, "height": 1000})
+        pg.goto(f"{base}#board", wait_until="networkidle")
+        pg.wait_for_timeout(1200)
+        worst = pg.evaluate("""() => {
+          let worst = null;
+          for (const col of document.querySelectorAll('section.col')) {
+            if (!col.offsetParent || col.classList.contains('pos-hidden')) continue;
+            const body = col.querySelector('.col-body');
+            if (!body) continue;
+            // offsetWidth-clientWidth reads 0 under overlay scrollbars, so
+            // assume the classic 8px the owner's browser actually reserves.
+            const gutter = (body.offsetWidth - body.clientWidth) || 8;
+            const edge = body.getBoundingClientRect().right - gutter;
+            for (const row of col.querySelectorAll('.prow')) {
+              // The NAME is meant to ellipsize — that is the design. What must
+              // never be cut is the figure block: vbd, adp, and the survival
+              // percentage. Those are the Typewriter Figures, and half an ADP
+              // is worse than no ADP.
+              for (const nums of row.querySelectorAll('.nums, .surv')) {
+                const b = nums.getBoundingClientRect();
+                const over = Math.round(Math.max(b.right - edge, nums.scrollWidth - nums.clientWidth));
+                if (over > 0 && (!worst || over > worst.over))
+                  worst = {pos: col.dataset.pos, over,
+                           txt: (nums.textContent || '').trim().slice(0, 22)};
+              }
+            }
+          }
+          return worst;
+        }""")
+        if worst:
+            bad.append(f"{w}px {worst['pos']} over by {worst['over']}px ({worst['txt']!r})")
+    pg.set_viewport_size({"width": 1440, "height": 1000})
+    r.check(not bad, "no player row clips its own figures",
+            "; ".join(bad) if bad else f"{len(WIDTHS_BOARD)} widths clear")
 
 
 def audit_no_sideways(pg, base: str, r: Results) -> None:
@@ -426,6 +480,7 @@ def run(pg, base: str) -> Results:
     audit_dialog_focus(pg, base, r)
     audit_board_columns(pg, base, r)
     audit_rail_contained(pg, base, r)
+    audit_rows_never_clip(pg, base, r)
     audit_no_sideways(pg, base, r)
     audit_targets(pg, base, r)
     audit_contrast(pg, base, r)
