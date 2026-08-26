@@ -176,6 +176,46 @@ def audit_board_columns(pg, base: str, r: Results) -> None:
             ", ".join(bad) if bad else "1180, 1440, 1920 all single-row")
 
 
+def audit_rail_contained(pg, base: str, r: Results) -> None:
+    """Nothing in the rail may cross into the board.
+
+    `overflow-x: clip` on the body means an overflowing rail never shows up as
+    page-level sideways scroll — it just quietly paints over the first column.
+    The Call did exactly that on the live board while every other check passed,
+    so the containment gets its own assertion.
+    """
+    bad = []
+    for w in (1180, 1440, 1920):
+        pg.set_viewport_size({"width": w, "height": 1000})
+        pg.goto(f"{base}#board", wait_until="networkidle")
+        pg.wait_for_timeout(1200)
+        over = pg.evaluate("""() => {
+          const rail = document.querySelector('.rail');
+          const board = document.querySelector('.board-main');
+          if (!rail || !board) return [];
+          // The boundary that matters is where the BOARD starts, not where the
+          // rail's border box ends: the 24px gutter between them is fair game,
+          // and the buffalo's dust puffs land in it by design. What must never
+          // happen is a plate painting over a player row.
+          const edge = board.getBoundingClientRect().left;
+          const out = [];
+          for (const el of rail.querySelectorAll('*')) {
+            const cs = getComputedStyle(el);
+            if (cs.visibility === 'hidden' || !el.getClientRects().length) continue;
+            const right = el.getBoundingClientRect().right;
+            if (right > edge + 1)
+              out.push((el.className.baseVal ?? el.className ?? el.tagName)
+                       + ' +' + Math.round(right - edge) + 'px');
+          }
+          return [...new Set(out)];
+        }""")
+        if over:
+            bad.append(f"{w}px: {over[:3]}")
+    pg.set_viewport_size({"width": 1440, "height": 1000})
+    r.check(not bad, "nothing in the rail crosses into the board",
+            "; ".join(bad) if bad else "1180, 1440, 1920 clear")
+
+
 def audit_no_sideways(pg, base: str, r: Results) -> None:
     bad = []
     for w in WIDTHS:
@@ -342,6 +382,7 @@ def run(pg, base: str) -> Results:
     audit_deep_link(pg, base, r)
     audit_dialog_focus(pg, base, r)
     audit_board_columns(pg, base, r)
+    audit_rail_contained(pg, base, r)
     audit_no_sideways(pg, base, r)
     audit_targets(pg, base, r)
     audit_contrast(pg, base, r)

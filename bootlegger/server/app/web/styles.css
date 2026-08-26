@@ -293,7 +293,17 @@ main { position: relative; z-index: 1; max-width: var(--w-field); margin: 0 auto
 
 /* ============================= THE CALL ============================= */
 
-.rail { display: grid; gap: 22px; position: sticky; top: 96px; }
+/* The rail is a 300px track and must never exceed it. Grid items default to
+   min-width:auto, so a plate whose min-content is wider than the track simply
+   grows past it — The Call rendered 351px against a 300px rail on the LIVE
+   board (a suggestion with a long name and a three-figure stat row), laying
+   its dashed border across the QB column's rank numbers. The demo never showed
+   it: with the draft complete The Call carries two lines of text and no stats.
+   minmax(0, 1fr) on the track plus min-width:0 on the plates makes the
+   overflow structurally impossible rather than content-dependent. */
+.rail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px;
+        position: sticky; top: 96px; }
+.rail > * { min-width: 0; }
 
 .call {
   border: 2px dashed var(--brass); border-radius: 12px;
