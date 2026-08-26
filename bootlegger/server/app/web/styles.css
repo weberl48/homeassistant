@@ -1385,3 +1385,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
    actually moved the numbers above it. The royal rule marks that difference. */
 .room-read { border-left: 3px solid var(--brass); padding-left: 10px; }
 .room-src { margin: 6px 0 0; font-size: .74rem; color: var(--ink-faint); }
+
+/* No picks yet, no tape. An empty paper strip across the board's foot reads as
+   a rendering fault rather than as "the draft hasn't started". */
+.ticker-wrap.is-empty .ticker { display: none; }

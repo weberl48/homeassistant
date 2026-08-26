@@ -498,7 +498,12 @@ function renderPriors(lines) {
 }
 
 function renderTicker(picks) {
-  $("#ticker").innerHTML = picks.map((p) => `
+  // Before the first pick there is no tape. An empty paper strip across the
+  // bottom of the board reads as a rendering fault, not as "nothing has
+  // happened yet" — so the tape doesn't exist until it has something on it.
+  const el = $("#ticker");
+  el.closest(".ticker-wrap")?.classList.toggle("is-empty", !picks.length);
+  el.innerHTML = picks.map((p) => `
     <li class="${p.mine ? "t-mine" : ""}">
       <span class="t-no">R${p.round}·P${p.pick_no}</span>
       <span>${esc(p.player)}</span>
