@@ -147,6 +147,12 @@ enabled **APPROVE & EXECUTE** button.
 
 ## Gotchas
 
+- **Run `audit` against the live Pi too, not only the demo.** The demo seeds
+  an EMPTY slip, so the slip's reorder/remove buttons never render locally —
+  they shipped at 20x22px and only the live board exposed it. Any control that
+  appears solely in a populated state is invisible to a demo-only gate.
+  `$env:BOOTLEGGER_BASE = "http://192.168.1.160:8484"` then `audit`; it is
+  read-only and safe against live (unlike `flow`).
 - **A running server is not proof it is running THIS code.** `StaticFiles`
   reads HTML/CSS/JS from disk per request, so the frontend is always current;
   the Python is whatever was imported at process start. A server started before

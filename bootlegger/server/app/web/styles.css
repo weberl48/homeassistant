@@ -817,12 +817,19 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
 }
 .slip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slip-row.is-gone .slip-name { text-decoration: line-through; color: var(--ink-faint); }
+/* Reordering the slip is a one-thumb job done on a phone while the room is
+   picking — and these were 20x22px. The glyph stays small; the box that
+   catches the thumb does not. Found only against the live board: the demo's
+   slip is empty, so these controls never render locally at all. */
 .slip-acts { display: flex; gap: 2px; }
 .slip-acts button {
   appearance: none; cursor: pointer; background: none; color: var(--ink-dim);
   border: 1px solid var(--line-soft); border-radius: 5px;
-  font-size: .72rem; line-height: 1; padding: 4px 6px;
+  font-size: .72rem; line-height: 1;
+  min-width: 44px; min-height: 44px; padding: 4px 6px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.slip-acts button:focus-visible { outline: 2px dashed var(--brass); outline-offset: -2px; }
 .slip-acts button:hover { color: var(--ink); border-color: var(--brass-deep); }
 .slip-empty { padding: 6px 2px; }
 .pilot {
