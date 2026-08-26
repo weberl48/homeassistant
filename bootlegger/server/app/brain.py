@@ -1349,8 +1349,16 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
 
 
 def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None) -> dict:
-    """Free agents ranked by FA score with tier-bucketed bid sizing and a
-    would-he-start lineup signal. `heat` is Sleeper trending-add counts."""
+    """Free agents worth a bid, priced against this league's own book.
+
+    Found by FA score (points over the weakest body at the same position on my
+    shelf), then RE-RANKED on what each man is worth to this roster — the
+    lineup he cracks today plus a share of that score for option value. The
+    bid is that rank's percentile of the league's winning bids; depth pays
+    half. Tier-bucketed sizing was replaced by continuous pricing (see
+    engines/waivers.py) — a three-step staircase priced a 33-point add and a
+    2.5-point add identically. `heat` is Sleeper trending-add counts.
+    """
     heat = heat or {}
     rp = roster_positions(conn)
     rostered: set[str] = set()
@@ -1441,11 +1449,28 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
     shortlist.sort(key=lambda t: -(max(0.0, gains.get(t[0]) or 0.0)
                                    + OPTION_WEIGHT * t[2]))
 
+    # The denominator has to measure the SAME set the rank comes from. It used
+    # to be `n` — every free agent with a pulse — while the rank ran over the
+    # twenty being priced, so the whole visible ladder was squeezed into the
+    # top 20/n of the book. Measured against the shipped price_at() and a real
+    # 90-bid book (median $6, max $50): at a 300-man pool the twentieth target
+    # was quoted $37 and all twenty tripped the 25%-of-budget confirm-twice
+    # warning — the cry-wolf failure this house guards against everywhere else.
+    # It is also the exact failure continuous pricing replaced tiers to fix,
+    # arriving from the other end.
+    #
+    # The demo cannot reach it: 168 of its 182 players end up rostered, leaving
+    # five free agents, where the two denominators nearly agree.
+    #
+    # Ranking the priced list against itself is also the faithful reading of
+    # the rule in engines/waivers.py: the historical book records what this
+    # room paid for men it actually bid on, not for the 300th-best free agent,
+    # and the weeks with nothing worth having are already in that book as its
+    # $1 and $2 entries.
+    priced = len(shortlist)
     out = []
     for rank, (pid, p, score) in enumerate(shortlist):
-        # Percentile within this week's pool, best man = 1.0. Continuous, so
-        # the price tracks the value instead of stepping between three bands.
-        value_pct = 1.0 - (rank / max(1, n - 1)) if n > 1 else 1.0
+        value_pct = 1.0 - (rank / (priced - 1)) if priced > 1 else 1.0
         starts = bool(gains.get(pid)) and (gains.get(pid) or 0) > 0
         if bids_hist:
             bid = waivers_engine.price_at(value_pct, bids_hist,

@@ -292,6 +292,64 @@ def test_league_rosters_shape(world):
         assert pts == sorted(pts, reverse=True)
 
 
+@pytest.fixture()
+def deep_street(world):
+    """The demo world with a REAL free-agent pool bolted on.
+
+    The shipped demo fixture is 182 players and 168 of them end up rostered,
+    so the street holds five men. Every bug that only appears when the pool is
+    large is therefore invisible to it — including the one this fixture exists
+    to catch. Three hundred unrostered receivers, spread across the value
+    range so the ranking has something to rank.
+    """
+    rows = []
+    for i in range(300):
+        pid = f"fa-{i:03d}"
+        rows.append((pid, f"Streeter {i:03d}", "WR", "FA"))
+    world.executemany(
+        "INSERT INTO players(sleeper_id,name,pos,team,status,updated_at) "
+        "VALUES(?,?,?,?, 'Active', '2026-08-26T00:00:00+00:00')", rows)
+    # Descending value, top of the pool comparable to a real waiver add.
+    world.executemany(
+        "INSERT INTO consensus(player_id,week,pts_mean,pts_robust,stdev,tier,vbd) "
+        "VALUES(?,0,?,?,1.0,3,0.0)",
+        [(f"fa-{i:03d}", 190.0 - i * 0.55, 190.0 - i * 0.55) for i in range(300)])
+    world.commit()
+    return world
+
+
+def test_faab_ladder_survives_a_real_pool(deep_street):
+    """The priced ladder must spread whatever the pool size.
+
+    value_pct used to rank the twenty shown targets against the WHOLE scored
+    pool, so the visible ladder occupied only the top 20/n of the book. At a
+    300-man pool that put every target between roughly P94 and P100 — the
+    twentieth man quoted near the most this room has ever paid, and every row
+    tripping the confirm-twice warning. Both assertions below fail against
+    that arithmetic and pass against a denominator that measures the same set
+    the rank came from.
+    """
+    out = brain.waiver_targets(deep_street)
+    targets = out["targets"]
+    assert len(targets) > 5, "the deep fixture must actually widen the street"
+
+    pcts = [t["value_pct"] for t in targets]
+    assert max(pcts) - min(pcts) > 0.5, (
+        f"the ladder collapsed into {min(pcts):.3f}-{max(pcts):.3f} of the "
+        "book — rank and denominator are measuring different sets")
+
+    # A warning that fires on every row has stopped being a warning.
+    flagged = sum(1 for t in targets if t["hard_confirm"])
+    assert flagged < len(targets), (
+        f"all {len(targets)} targets tripped the big-swing confirm — "
+        "the whole ladder is priced at the top of the book")
+
+    bids = [t["bid"] for t in targets]
+    assert bids == sorted(bids, reverse=True), f"bid ladder inverted: {bids}"
+    assert min(bids) * 2 < max(bids), (
+        f"bids barely differentiate across the ladder: {bids}")
+
+
 def test_waiver_targets_shape(world):
     out = brain.waiver_targets(world, heat={"demo-heat": 3})
     assert out["targets"], "demo street must have targets"

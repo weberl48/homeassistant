@@ -1071,7 +1071,7 @@ async function loadWaivers() {
     const rows = data.targets.map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
         <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
-      <td class="num">${t.fa_score}</td>
+      <td class="num" title="${t.fa_score} more season points than the weakest ${esc(posOf(t))} on your shelf. Measured against YOUR ${esc(posOf(t))}s only — it does not compare across positions.">${t.fa_score}<div class="bid-why">over your ${esc(posOf(t))}s</div></td>
       <td class="num"><span class="bid">$${t.bid}</span>${t.value_pct == null ? ""
         : `<div class="bid-why">P${Math.round(t.value_pct * 100)} of this room's book</div>`}</td>
       ${hasStreet ? `<td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>` : ""}
@@ -1090,7 +1090,7 @@ async function loadWaivers() {
     $("#waivers-body").innerHTML = data.targets.length ? `
       <table class="wtable">
         <thead><tr><th>Player</th>
-        <th style="text-align:right" title="Season points he adds over the weakest body at his OWN position on your shelf. A within-position measure — two scores at different positions are not on the same scale, and the price does not come from this number.">Over your worst</th>
+        <th style="text-align:right" title="Season points over the weakest body at his own position on your shelf. Each row names the position it is measured against, because two of these are only comparable when they share one.">Over your worst</th>
         <th style="text-align:right">Bid</th>
         ${hasStreet ? `<th style="text-align:right">The street</th>` : ""}
         <th style="text-align:right">Your lineup</th>
