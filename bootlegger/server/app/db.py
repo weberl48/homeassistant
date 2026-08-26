@@ -171,6 +171,41 @@ CREATE TABLE IF NOT EXISTS nfl_games(
     implied_total REAL,   -- (total_line + spread)/2 — the market's opponent-strength read
     PRIMARY KEY(season, week, team)
 );
+-- The wire. One row per published news item, keyed by the feed's own guid so
+-- a re-poll is idempotent. player_id is NULL when the name could not be joined
+-- confidently — the item still shows under its printed name rather than being
+-- dropped (engines/wire.py explains why a guess is worse than a gap).
+-- pushed_at is the dedupe for notifications: an item notifies at most once.
+CREATE TABLE IF NOT EXISTS news(
+    guid TEXT PRIMARY KEY,
+    seq INTEGER,                    -- monotonic feed id; drives gap detection
+    source TEXT NOT NULL,           -- rotowire | pft
+    player_id TEXT,
+    name_raw TEXT NOT NULL,
+    headline TEXT NOT NULL,
+    body TEXT,
+    link TEXT,
+    severity TEXT NOT NULL,         -- out|doubtful|questionable|practice|role|info
+    ailment TEXT,
+    departure INTEGER NOT NULL DEFAULT 0,
+    published_at TEXT,
+    fetched_at TEXT NOT NULL,
+    pushed_at TEXT
+);
+-- What every player ACTUALLY scored, under this league's own scoring, read
+-- from Sleeper's matchup payload. This is the yardstick the projection sources
+-- are measured against (engines/calibration.py) — without it every source
+-- votes equally forever, however wrong it has been.
+CREATE TABLE IF NOT EXISTS player_week_actuals(
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    pts REAL NOT NULL,
+    updated_at TEXT,
+    PRIMARY KEY(season, week, player_id)
+);
+CREATE INDEX IF NOT EXISTS news_player ON news(player_id, published_at DESC);
+CREATE INDEX IF NOT EXISTS news_pub ON news(published_at DESC);
 """
 
 DEFAULT_RULES: list[tuple[str, float | None]] = [
@@ -202,7 +237,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
                  "ALTER TABLE rosters ADD COLUMN wins INTEGER NOT NULL DEFAULT 0",
                  "ALTER TABLE rosters ADD COLUMN losses INTEGER NOT NULL DEFAULT 0",
                  "ALTER TABLE rosters ADD COLUMN ties INTEGER NOT NULL DEFAULT 0",
-                 "ALTER TABLE rosters ADD COLUMN fpts REAL NOT NULL DEFAULT 0"):
+                 "ALTER TABLE rosters ADD COLUMN fpts REAL NOT NULL DEFAULT 0",
+                 # Realized weekly score, so the win-probability model can
+                 # measure this league's own scoring spread instead of
+                 # assuming one (engines/matchup.sigma_from_history).
+                 "ALTER TABLE matchups ADD COLUMN points_for REAL",
+                 "ALTER TABLE matchups ADD COLUMN matchup_id INTEGER",
+                 # The position AS DRAFTED. Historical picks include men who
+                 # have since retired off the players table entirely, and
+                 # dropping them would bend the room's early-round curve — the
+                 # exact part of it that matters (engines/room.py).
+                 "ALTER TABLE draft_picks ADD COLUMN pos TEXT"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:

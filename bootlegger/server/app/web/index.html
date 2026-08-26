@@ -96,7 +96,15 @@ provenance.
         <div class="shelf">
           <h2 class="shelf-title">My Shelf</h2>
           <div id="shelf-needs" class="needs"></div>
+          <!-- The advisory layer: what the shelf says about itself. Read-only
+               — none of these findings ever bids on a pick. -->
+          <ul id="shelf-findings" class="findings"></ul>
           <ol id="shelf-list" class="shelf-list"></ol>
+          <div id="priors" class="priors" hidden></div>
+          <!-- What THIS room does that the average room doesn't, measured from
+               its own past drafts. Unlike the priors above, this one has
+               evidence behind it — and it moves the survival odds. -->
+          <div id="room-read" class="priors room-read" hidden></div>
           <!-- THE TABLE. It stands beside the shelf until a pick verifies
                through it. It always stands back up. -->
           <svg class="folding-table" viewBox="0 0 44 40" aria-hidden="true">
@@ -157,6 +165,9 @@ provenance.
         <div class="columns" id="columns"></div>
         <div class="ticker-wrap">
           <h2 class="visually-hidden">Recent picks</h2>
+          <!-- Position pressure: the room measured against the market, not a
+               count of positions in a window (see engines/advisories.py). -->
+          <div id="pressure" class="pressure" hidden></div>
           <ul class="ticker" id="ticker" aria-live="off"></ul>
         </div>
       </div>

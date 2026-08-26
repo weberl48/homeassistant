@@ -14,7 +14,7 @@ nonexistent — and the hands worker rejects any job that smuggles one in.
 ```bash
 cd bootlegger/server
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest                       # 25 tests, whole loop covered
+.venv/bin/python -m pytest                       # 170 tests, whole loop covered
 .venv/bin/python -m uvicorn app.api:app --host 0.0.0.0 --port 8484
 ```
 
@@ -33,7 +33,11 @@ full-PPR league and starts a simulated live snake draft:
   proposed → notified → approved → executed → **verified**: the in-process
   hands worker (dry-run) applies the swap and post-verifies it against the
   API mirror, writing the audit trail you can read in **The Ledger**.
-- **Waivers** — FA scores and FAAB bids sized from seeded league history.
+- **Waivers** — FA scores, a drop candidate, and FAAB bids priced against the
+  league's own winning bids, read continuously at each target's value
+  percentile rather than in tiers.
+- **The Beat** — the news wire (RotoWire), matched to Sleeper ids and graded.
+  Your starters ring the phone through DND; everyone else's men just read.
 
 Or with Docker: `cp .env.example .env && docker compose up api`.
 
@@ -66,6 +70,24 @@ post-verify against the public API and a screenshot audit trail. It ships
 The Wednesday canary (`hands.browser.canary`) walks the flow up to — never
 including — the final tap and reports which locators still resolve.
 
+## The beat
+
+A news wire is the one input a projection board cannot substitute for, and the
+one that decides Sunday. RotoWire's public NFL feed is polled on its own clock
+— two minutes through the inactives window, fifteen overnight in August —
+graded (`out` / `doubtful` / `questionable` / `practice` / `role` / `info`),
+matched to Sleeper ids, and filtered hard before anything buzzes:
+
+- **your starter, out or doubtful** → the DND-bypass emergency channel, and a
+  lineup scan fires immediately so the swap is proposed before you pick up
+- **your man, anything else worth knowing** → one digest on the normal channel
+- **a rival's man leaving for the season** → the job behind him just opened;
+  the waiver board flags every free agent at that club and position
+
+The feed serves five items whatever you ask it for and stamps each with a
+monotonic id, so a poll that lands more than five ids past the last one PROVES
+news was published and missed. That number is surfaced, not swallowed.
+
 ## Reliability posture
 
 Every failure degrades to a notification, never to silence: push (Expo/FCM,
@@ -96,8 +118,12 @@ the APK being finished.
 
 ```
 server/app        FastAPI + SQLite (WAL) + Sleeper/FFC/FantasyCalc clients
-server/app/engines  consensus · GMM tiers · VBD · draft (survival, E[best]) ·
-                    lineup (Hungarian) · waivers (bid percentiles) · trades
+server/app/engines  consensus · calibration (sources earn their weight) ·
+                    GMM tiers · VBD · draft (survival, E[best]) · room (this
+                    league's own draft habits) · lineup (Hungarian, three
+                    objectives) · matchup (win probability, floor/ceiling) ·
+                    waivers (continuous FAAB pricing) · trades (shortlisting) ·
+                    wire (news grading + matching) · advisories
 server/app/web    the board (no build step, self-hosted fonts)
 server/hands      the back room: lineup-swap-only worker + browser flow + canary
 server/tests      engines + the full proposed→verified loop

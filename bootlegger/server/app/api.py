@@ -19,10 +19,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import brain, db, demo, recs, schedule
+from . import alerts, brain, db, demo, recs, schedule
 from .config import settings
 from .engines import lineup as lineup_engine
 from .engines import trades as trades_engine
+from .engines import wire as wire_engine
 from .engines import waivers as waivers_engine
 from .sleeper import SleeperClient
 
@@ -97,6 +98,77 @@ async def _season_loop() -> None:
         await asyncio.sleep(settings.scan_seconds)
 
 
+
+def _wire_tick(week: int) -> dict:
+    """One wire poll + notification pass, off the event loop (both are
+    synchronous httpx / SQLite work)."""
+    from . import ingest
+    conn = db.connect()
+    out = ingest.etl_news(conn)
+    out["alerts"] = alerts.scan(conn, week=week)
+    return out
+
+
+def _next_kickoff_hours(conn: sqlite3.Connection, week: int) -> float | None:
+    """Hours to the next kickoff among MY starters' teams — the clock the wire
+    cadence should run on. None when no timed game is in view."""
+    row = brain.my_roster_row(conn)
+    if not row:
+        return None
+    try:
+        starters = json.loads(row["starters_json"] or "[]")
+    except (ValueError, TypeError):
+        return None
+    if not starters:
+        return None
+    marks = ",".join("?" * len(starters))
+    teams = {r["team"] for r in conn.execute(
+        f"SELECT DISTINCT team FROM players WHERE sleeper_id IN ({marks})", starters)
+        if r["team"]}
+    hours = [h for h in (schedule.kickoff_hours_away(conn, t, week,
+                                                     season=settings.season)
+                         for t in teams) if h is not None]
+    if not hours:
+        return None
+    # The nearest game that has not finished; once every game is behind us the
+    # smallest (most negative) is still the honest answer for "how live is now".
+    ahead = [h for h in hours if h > -4]
+    return min(ahead) if ahead else max(hours)
+
+
+async def _wire_loop() -> None:
+    """The wire runs on its own clock, not the lineup scanner's.
+
+    RotoWire serves five items whatever you ask for, so cadence IS coverage:
+    two minutes through the inactives window, fifteen overnight in August. A
+    failed poll never breaks the loop — it backs off and says so, because a
+    silent wire looks exactly like a quiet news day.
+    """
+    conn = db.connect()
+    fails = 0
+    while True:
+        delay = 900.0
+        try:
+            week = int(db.meta_get(conn, "current_week") or 1)
+            drow = conn.execute(
+                "SELECT status FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+            in_season = bool(drow and drow["status"] == "complete")
+            hours = _next_kickoff_hours(conn, week) if in_season else None
+            delay = wire_engine.poll_interval_seconds(hours, in_season)
+            out = await asyncio.to_thread(_wire_tick, week)
+            fails = 0
+            if out.get("new") or out.get("gap"):
+                log.info("wire: %s", out)
+        except Exception:
+            fails += 1
+            log.exception("wire poll failed (%d in a row)", fails)
+            db.meta_set(conn, "wire_fail_streak", str(fails))
+            delay = min(900.0, 60.0 * (2 ** min(fails, 4)))
+        else:
+            db.meta_set(conn, "wire_fail_streak", "0")
+        await asyncio.sleep(delay)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conn = db.connect()
@@ -109,9 +181,12 @@ async def lifespan(app: FastAPI):
         task.cancel()
     else:
         task = asyncio.create_task(_season_loop())
-        log.info("live mode: in-season lineup scanner every %ss", settings.scan_seconds)
+        wire_task = asyncio.create_task(_wire_loop())
+        log.info("live mode: lineup scanner every %ss; wire on its own cadence",
+                 settings.scan_seconds)
         yield
         task.cancel()
+        wire_task.cancel()
 
 
 app = FastAPI(title="Bootlegger", lifespan=lifespan)
@@ -144,7 +219,43 @@ def health():
         "sources_missing": [s for s in EXPECTED_SOURCES if s not in live_sources]
                            if settings.mode == "live" else [],
         "nightly_report": json.loads(nightly) if nightly else None,
+        # The wire has its own health: last successful poll, consecutive
+        # failures, and how many items the feed published while we weren't
+        # looking. A stalled wire must never read as a quiet news day.
+        "wire": {
+            "last_ok": db.meta_get(conn, "wire_last_ok"),
+            "fail_streak": int(db.meta_get(conn, "wire_fail_streak") or 0),
+            "missed_total": int(db.meta_get(conn, "wire_gap_total") or 0),
+            "items": conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"],
+        },
+        # Per source, measured against ITS OWN best delivery. A scrape whose
+        # page changed usually still parses, just into a fraction of the rows —
+        # the absolute floors above wave that through and this catches it.
+        "source_health": _source_health(conn),
+        # How the six votes are currently weighted, and what earned it.
+        "consensus_weights": _consensus_weights(conn),
     }
+
+
+def _source_health(conn: sqlite3.Connection) -> dict:
+    out = {}
+    for src in EXPECTED_SOURCES:
+        raw = db.meta_get(conn, f"source_stat_{src}_w0")
+        if raw:
+            try:
+                out[src] = json.loads(raw)
+            except ValueError:
+                pass
+    return out
+
+
+def _consensus_weights(conn: sqlite3.Connection) -> dict:
+    wk = int(db.meta_get(conn, "current_week") or 0)
+    raw = db.meta_get(conn, f"consensus_weights_w{wk}") or         db.meta_get(conn, "consensus_weights_w0")
+    try:
+        return json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
 
 
 # Board cache: the payload is fully determined by (draft, pick count, status)
@@ -416,6 +527,25 @@ class QueueBody(BaseModel):
 
 class ArmBody(BaseModel):
     armed: bool
+
+
+
+@app.get("/api/wire")
+def get_wire(limit: int = 40):
+    """The wire, newest first, with the poll's own health attached."""
+    return alerts.feed(get_conn(), limit=limit)
+
+
+@app.post("/api/wire/poll", dependencies=MUTATES)
+def poll_wire():
+    """Force a wire poll now — the button behind the feed's timestamp, and how
+    the tests drive a pass without waiting on the loop."""
+    conn = get_conn()
+    from . import ingest
+    week = int(db.meta_get(conn, "current_week") or 1)
+    out = ingest.etl_news(conn)
+    out["alerts"] = alerts.scan(conn, week=week)
+    return out
 
 
 @app.get("/api/queue")

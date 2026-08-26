@@ -295,6 +295,10 @@ function renderBoard(board) {
   renderClock(board.draft);
   renderCall(board);
   renderShelf(board);
+  renderShelfFindings(board.shelf);
+  renderPressure(board.pressure);
+  renderPriors(board.priors);
+  renderRoomRead(board);
   renderTicker(board.recent_picks);
   state.board = board;
 
@@ -419,6 +423,78 @@ function renderShelf(board) {
     <li><span class="rd">${p.round}</span>
       <span class="pos pos-${posOf(p)}">${posOf(p)}</span>
       <span>${esc(p.player)}</span></li>`).join("");
+}
+
+/* ------------------------------ the advisory layer ------------------------
+   Readings, never bids. Nothing rendered here feeds back into the suggestion
+   score or survival — that boundary is enforced server-side and pinned by
+   tests/test_advisories.py. Status hues follow the house: marigold cautions,
+   lamp is a strength, and Bills red stays reserved for actual trouble. */
+
+/* Typewriter Figures Rule: the figures inside a finding's label ("WK 9") are
+   Courier; the letters around them stay the condensed gothic. */
+function figures(label) {
+  return esc(label).replace(/(\d+)/g, "<b>$1</b>");
+}
+
+function renderShelfFindings(shelf) {
+  const el = $("#shelf-findings");
+  if (!el) return;
+  const rows = [];
+  /* Sleeper ships no byes at all — they are backfilled from the schedule
+     mirror. If that has not run, say so. A silent all-clear is the one
+     failure this house does not allow. */
+  if (shelf && shelf.byes_known === false) {
+    rows.push(`<li class="finding is-unknown">
+      <span class="f-tag">BYES</span>
+      <span class="f-detail">Bye weeks haven't landed yet — this read is
+      incomplete, not clean.</span></li>`);
+  }
+  for (const f of (shelf && shelf.findings) || []) {
+    rows.push(`<li class="finding is-${esc(f.level)} k-${esc(f.kind)}">
+      <span class="f-tag">${figures(f.label)}</span>
+      <span class="f-detail">${esc(f.detail)}</span></li>`);
+  }
+  el.innerHTML = rows.join("");
+}
+
+function renderPressure(rows) {
+  const el = $("#pressure");
+  if (!el) return;
+  if (!rows || !rows.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = rows.map((r) => {
+    const n = Math.abs(r.residual);
+    const word = r.direction === "run" ? "run" : "sliding";
+    return `<span class="press press-${esc(r.direction)}">
+      <span class="pos pos-${esc(posOf(r))}">${esc(posOf(r))}</span>
+      <span class="press-word">${word}</span>
+      <b>${r.direction === "run" ? "+" : "−"}${n.toFixed(1)}</b>
+      <span class="press-word">vs the market</span></span>`;
+  }).join("");
+}
+
+function renderRoomRead(board) {
+  const el = $("#room-read");
+  if (!el) return;
+  const lines = board.room?.read || [];
+  el.hidden = !lines.length;
+  if (!lines.length) return;
+  el.innerHTML = `<h3 class="priors-title">What this room actually does</h3>
+    <ul>${lines.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>
+    <p class="room-src">Measured against
+      ${board.room.tendencies.length ? board.room.tendencies[0].drafts : 0}
+      of this league's own past drafts — survival odds on the board are shifted
+      to match.</p>`;
+}
+
+function renderPriors(lines) {
+  const el = $("#priors");
+  if (!el) return;
+  if (!lines || !lines.length) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.innerHTML = `<h3 class="priors-title">What this room's rules do</h3>`
+    + lines.map((l) => `<p>${esc(l)}</p>`).join("");
 }
 
 function renderTicker(picks) {
@@ -572,16 +648,20 @@ function gameChip(r) {
   return `<span class="team">${esc(r.opp)} ${esc(kickoffShort(r.kickoff_utc))}${esc(imp)}</span>${lock}${wx}`;
 }
 
-function lineupTable(title, rows, total, marks) {
+function lineupTable(title, rows, total, marks, news) {
   const tr = rows.map((r) => {
     const mark = marks.get(r.id) || "";
     const hurt = r.injury ? `<span class="hurt">${icon.cross}${esc(r.injury.toUpperCase())}</span>`
       : r.bye ? `<span class="hurt">${icon.cross}BYE</span>`
       : r.practice && r.practice !== "FULL" ? `<span class="hurt">${icon.cross}${esc(r.practice)}</span>` : "";
+    // The beat is FASTER than Sleeper's own tag — a man ruled out at noon
+    // shows here before the API knows. Both are shown; neither is dropped.
+    const beat = beatChip((news || {})[r.id]);
     return `<tr class="${mark}"><td class="slot">${esc(r.slot)}</td>
       <td><span class="pname">${esc(r.name)}</span>
         <span class="team">${esc(r.team ?? "")}</span> ${hurt}
-        <div><span class="pos pos-${posOf(r)}">${posOf(r)}</span> ${gameChip(r)}</div></td>
+        <div class="row-context"><span class="pos pos-${posOf(r)}">${posOf(r)}</span>
+          ${gameChip(r)} ${beat}</div></td>
       <td class="proj">${r.proj.toFixed(1)}</td></tr>`;
   }).join("");
   return `<div class="lineup"><h3>${title}<span class="total">${total.toFixed(1)}</span></h3>
@@ -591,7 +671,15 @@ function lineupTable(title, rows, total, marks) {
 function renderWeek(card) {
   const wrap = $("#week-layout");
   if (!card.ready) {
-    wrap.innerHTML = `<p class="muted">${esc(card.note || "No roster on file yet.")}</p>`;
+    // Pre-draft this room has no lineup to show, but the beat is already
+    // running and is exactly what a manager wants in August.
+    wrap.innerHTML = `
+      <div class="room-empty">
+        <h2 class="room-title">This Week</h2>
+        <p class="room-note">${esc(card.note || "No roster on file yet.")}</p>
+      </div>
+      ${beatPanel()}`;
+    loadBeat();
     return;
   }
   const rec = card.rec;
@@ -609,11 +697,14 @@ function renderWeek(card) {
       state.celebratedRec = rec.rec_id;
     }
     wrap.innerHTML = `
+      ${matchupBlock(card.matchup)}
       <div class="allgood"><span class="lampdot"></span>
         <div><p><strong>Lineup optimal.</strong> ${verifiedLine}Projected
         ${card.actual_total.toFixed(1)} for week ${card.week} — the room is satisfied.${stamp}</p></div>
       </div>
-      ${lineupBlock(card)}`;
+      ${lineupBlock(card)}
+      ${beatPanel()}`;
+    loadBeat();
     return;
   }
 
@@ -662,7 +753,10 @@ function renderWeek(card) {
       ${rec ? stepper(recState) : ""}
       ${actions}
     </div>
-    ${lineupBlock(card)}`;
+    ${matchupBlock(card.matchup)}
+    ${lineupBlock(card)}
+    ${beatPanel()}`;
+  loadBeat();
 
   const approveBtn = $("#btn-approve");
   if (approveBtn && rec) {
@@ -686,14 +780,139 @@ function renderWeek(card) {
   }
 }
 
+/* --------------------------------- the beat ------------------------------
+   News is the one input this board used to lack entirely, and the one that
+   decides Sunday. It is THE BEAT, not "the wire" — the wire is already this
+   product's word for the connection to Sleeper, and a board that says "the
+   wire is down" about two different things has taught its owner nothing. Three treatments, because three different things are true:
+   a grade (how urgent), an audience (whose man), and the feed's own health
+   (a stalled wire must never read as a quiet news day). */
+
+const SEV_LABEL = { out: "OUT", doubtful: "DOUBTFUL", questionable: "QUESTIONABLE",
+                    practice: "PRACTICE", role: "ROLE", info: "NOTE" };
+
+function beatAgo(iso) {
+  if (!iso) return "";
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(mins) || mins < 0) return "";
+  if (mins < 60) return `${mins}m ago`;
+  const h = Math.round(mins / 60);
+  return h < 48 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+}
+
+/* The row chip: only grades that change a decision earn one. A "participated
+   in practice" chip on a row that already shows a projection is clutter. */
+function beatChip(n) {
+  if (!n || !["out", "doubtful", "questionable", "practice"].includes(n.severity)) return "";
+  // out/doubtful borrow .hurt (Bills red — this IS trouble); the softer grades
+  // get their own marigold chip so the API's confirmed word still outranks the
+  // beat's faster one.
+  const cls = ["out", "doubtful"].includes(n.severity) ? "hurt" : "beat-note";
+  const tail = n.ailment ? ` · ${n.ailment}` : "";
+  return `<span class="${cls}" title="${esc(n.headline)}">${icon.cross}${esc(SEV_LABEL[n.severity])}${esc(tail)}</span>`;
+}
+
+function renderBeat(feed) {
+  const el = $("#beat-feed");
+  if (!el) return;
+  const items = feed.items || [];
+  const stale = feed.last_ok ? (Date.now() - new Date(feed.last_ok).getTime()) > 45 * 60000 : true;
+  const health = stale
+    ? `<p class="beat-health is-bad">The wire has not answered since
+       ${esc(beatAgo(feed.last_ok) || "the board came up")} — these items may be old.</p>`
+    : feed.missed_total
+      ? `<p class="beat-health is-bad">${feed.missed_total} item${feed.missed_total === 1 ? "" : "s"}
+         went past while the board was not looking. The feed only ever holds five.</p>`
+      : `<p class="beat-health">${esc(feed.source)} · checked ${esc(beatAgo(feed.last_ok) || "just now")}.</p>`;
+  const rows = items.map((n) => `
+    <li class="beat-item beat-${esc(n.severity)} aud-${esc(n.audience)}">
+      <span class="beat-grade">${esc(SEV_LABEL[n.severity] || "NOTE")}</span>
+      <div class="beat-body">
+        <p class="beat-line"><b>${esc(n.name)}</b>${n.pos ? ` <span class="beat-pos">${esc(posOf(n))}${n.team ? ` · ${esc(n.team)}` : ""}</span>` : ""}
+          — ${esc(n.headline)}${n.ailment ? ` <i>(${esc(n.ailment)})</i>` : ""}</p>
+        ${n.body ? `<p class="beat-detail">${esc(n.body)}</p>` : ""}
+        <p class="beat-meta">${esc(beatAgo(n.published_at))}
+          ${n.audience === "mine" ? '<span class="beat-tag is-mine">yours</span>'
+            : n.audience === "league" ? '<span class="beat-tag">in the league</span>'
+            : '<span class="beat-tag">on the street</span>'}
+          ${n.departure ? '<span class="beat-tag is-open">a job just opened</span>' : ""}</p>
+      </div></li>`).join("");
+  el.innerHTML = `${health}${items.length
+    ? `<ul class="beat-list">${rows}</ul>`
+    : `<p class="muted">Nothing on the wire yet.</p>`}`;
+}
+
+async function loadBeat() {
+  try { renderBeat(await fetchJSON("/api/wire?limit=30")); wireOK(); }
+  catch { wireFail(); }
+}
+
+/* ------------------------------ the matchup ------------------------------
+   The optimizer maximises expected points, which is the right objective only
+   in a close week. This block is what makes that visible: who you're playing,
+   the odds, and — when it actually moves the odds — the floor or ceiling
+   lineup the week calls for instead. */
+
+function probMeter(p) {
+  const pct = Math.round(p * 100);
+  return `<div class="prob" role="img" aria-label="${pct}% to win">
+    <div class="prob-bar"><span style="width:${Math.max(2, Math.min(98, pct))}%"></span></div>
+    <span class="prob-num">${pct}%</span></div>`;
+}
+
+function matchupBlock(m) {
+  if (!m) return "";
+  const lead = m.margin >= 0 ? "up" : "down";
+  const alt = m.alt;
+  const altRows = alt ? alt.rows.filter((r) => r.swap_in).map((r) =>
+    `<li><span class="pos pos-${posOf(r)}">${posOf(r)}</span> <b>${esc(r.name)}</b>
+      <span class="alt-band">floor ${r.floor} · proj ${r.proj} · ceiling ${r.ceiling}</span></li>`).join("") : "";
+  const altBlock = alt ? `
+    <div class="alt-plan">
+      <p class="alt-head">${esc(m.strategy.label)} — swap in:</p>
+      <ul class="alt-list">${altRows}</ul>
+      <p class="alt-foot">Takes the lineup to ${alt.total} expected
+        (floor ${alt.floor}, ceiling ${alt.ceiling}) and your odds to
+        <b>${Math.round(alt.win_prob * 100)}%</b>, from ${Math.round(m.win_prob * 100)}%.</p>
+    </div>` : "";
+  return `
+    <div class="matchup">
+      <div class="matchup-head">
+        <div class="side"><span class="side-label">you</span>
+          <span class="side-num">${m.my_proj.toFixed(1)}</span></div>
+        <div class="side-vs">vs</div>
+        <div class="side"><span class="side-label">${esc(m.opponent)}</span>
+          <span class="side-num">${m.opp_proj.toFixed(1)}</span></div>
+      </div>
+      ${probMeter(m.win_prob)}
+      <p class="matchup-line"><b>${esc(m.strategy.label)}.</b> ${esc(m.strategy.line)}</p>
+      <p class="matchup-meta">${lead === "up" ? "Up" : "Down"}
+        ${Math.abs(m.margin).toFixed(1)} on the projections · your range
+        ${m.bands.floor}–${m.bands.ceiling} · his number is ${esc(m.opp_basis)} ·
+        spread ±${m.sigma}, ${esc(m.sigma_note)}.</p>
+      ${altBlock}
+    </div>`;
+}
+
+/* The beat rides along on This Week in every state, including pre-draft —
+   in August it is the only live thing this room has to say. */
+function beatPanel() {
+  return `<section class="beat">
+    <h3 class="beat-title">The Beat</h3>
+    <p class="room-note">What the reporters filed, matched to this league.
+    Your men ring the phone; everyone else's just reads here.</p>
+    <div class="sheet"><div id="beat-feed"><p class="muted">Working the phones…</p></div></div>
+  </section>`;
+}
+
 function lineupBlock(card) {
   const inIds = new Set(card.swaps.map((s) => s.in_id));
   const outIds = new Set(card.swaps.map((s) => s.out_id));
   const actualMarks = new Map(card.actual.map((r) => [r.id, outIds.has(r.id) ? "is-out" : ""]));
   const optimalMarks = new Map(card.optimal.map((r) => [r.id, inIds.has(r.id) ? "is-in" : ""]));
   return `<div class="lineup-tables">
-    ${lineupTable(`Actual — week ${card.week}`, card.actual, card.actual_total, actualMarks)}
-    ${lineupTable("Optimal", card.optimal, card.optimal_total, optimalMarks)}
+    ${lineupTable(`Actual — week ${card.week}`, card.actual, card.actual_total, actualMarks, card.news)}
+    ${lineupTable("Optimal", card.optimal, card.optimal_total, optimalMarks, card.news)}
   </div>
   <p class="optimal-note">Optimal is the Hungarian assignment over your roster's
   projections; actual is what the API says is started right now.</p>`;
@@ -721,6 +940,14 @@ async function loadWaivers() {
       const wx = (t.wx || []).length ? ` <span class="street">${esc(t.wx.join(", "))}</span>` : "";
       return `${esc(t.opp)}${esc(imp)}${wx}`;
     };
+    // The reason half of these are worth a bid isn't their score — it's that
+    // somebody's starter left. Say so on the row, in the beat's own words.
+    const why = (t) => {
+      if (t.opening) return `<span class="opening">${icon.flag}JOB OPEN — ${esc(t.opening.name)}:
+        ${esc(t.opening.headline.toLowerCase())}</span>`;
+      if (t.news) return `<span class="street" title="${esc(t.news.headline)}">${esc(t.news.headline)}</span>`;
+      return t.hard_confirm ? `<span class="confirm-flag">${icon.flag}BIG SWING — CONFIRM TWICE</span>` : "";
+    };
     const rows = data.targets.map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
         <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
@@ -730,7 +957,15 @@ async function loadWaivers() {
       <td class="num">${t.lineup_gain == null ? "–"
         : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}</td>
       <td class="num">${nextUp(t)}</td>
-      <td>${t.hard_confirm ? `<span class="confirm-flag">${icon.flag}BIG SWING — CONFIRM TWICE</span>` : ""}</td></tr>`).join("");
+      <td>${why(t)}</td></tr>`).join("");
+    // Every add is a drop. A bid the owner can't execute is half an answer.
+    const drop = data.targets[0]?.drop;
+    const dropLine = drop
+      ? `<p class="drop-line">To make room: <b>${esc(drop.name)}</b>
+         <span class="pos pos-${esc(drop.pos)}">${esc(drop.pos)}</span> — cutting him costs the
+         optimal lineup ${drop.cost === 0 ? "nothing" : `${drop.cost} pts`}${
+           drop.injury ? `, and he's carrying a ${esc(drop.injury)} tag` : ""}.</p>`
+      : `<p class="drop-line">No spare body on the shelf — an add here means cutting a starter.</p>`;
     $("#waivers-body").innerHTML = data.targets.length ? `
       <table class="wtable">
         <thead><tr><th>Player</th><th style="text-align:right">FA score</th>
@@ -739,7 +974,10 @@ async function loadWaivers() {
         <th style="text-align:right">Next up</th>
         <th></th></tr></thead>
         <tbody>${rows}</tbody></table>
-      <p class="optimal-note">Sized at the P70 of the league's bids for each value tier (${data.history_n} on the books), +$1 over round numbers.</p>`
+      ${dropLine}
+      <p class="optimal-note">Priced against ${data.history_n} of this league's own winning bids,
+      read continuously at each target's value percentile — not in tiers — then rounded to
+      the +$1 over a round number this room actually bids. Depth pays half a starter's price.</p>`
       : `<p class="muted">${esc(data.note || "Nobody on the street worth a dollar this week.")}</p>`;
     wireOK();
   } catch { wireFail(); }
@@ -882,7 +1120,11 @@ function sideList(ps) {
 async function loadParlor() {
   try {
     const data = await fetchJSON("/api/trades/suggest");
-    $("#parlor-body").innerHTML = data.trades.length ? data.trades.map((t) => `
+    const considered = data.considered
+      ? `<p class="room-note considered">${data.considered} packages found;
+         ${data.trades.length} worth reading. The rest were the same deal with different
+         men attached, or one seat's whole surplus.</p>` : "";
+    $("#parlor-body").innerHTML = data.trades.length ? considered + data.trades.map((t) => `
       <div class="deal">
         <div class="deal-head">
           <span class="deal-partner">with ${esc(t.partner)}</span>
@@ -893,6 +1135,7 @@ async function loadParlor() {
           <div class="deal-side"><span class="lbl">send</span> ${sideList(t.give)}</div>
           <div class="deal-side"><span class="lbl">get</span> ${sideList(t.receive)}</div>
         </div>
+        <p class="deal-verdict v-${esc(t.verdict?.level || "note")}">${esc(t.verdict?.line || "")}</p>
         <p class="deal-summary">${esc(t.summary)}</p>
       </div>`).join("")
       : `<p class="muted">${esc(data.note || "Nothing worth whispering this week.")}</p>`;
@@ -1069,6 +1312,19 @@ async function maybeLoadGrades() {
   } catch { /* the board stands without the card */ }
 }
 
+/* The rank is a weighted composite of five z-scores, so no single printed
+   column falls monotonically down the table. Without the composite itself on
+   screen the ordering looks like a broken sort — this draws it: a bar left of
+   centre for below the room, right for above. */
+function compositeBar(z) {
+  const c = Math.max(-2, Math.min(2, Number(z) || 0));
+  const half = Math.abs(c) / 2 * 50;
+  const side = c >= 0 ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
+  return `<span class="cbar" title="composite z-score ${c.toFixed(2)}">
+    <span class="cbar-fill ${c >= 0 ? "is-up" : "is-down"}" style="${side}"></span></span>
+    <span class="cbar-num">${c >= 0 ? "+" : ""}${c.toFixed(2)}</span>`;
+}
+
 function renderReportCard(g) {
   const rows = g.teams.map((t) => `
     <tr class="${t.mine ? "is-me" : ""}">
@@ -1077,6 +1333,7 @@ function renderReportCard(g) {
       <td>${esc(t.owner)}${t.mine ? ' <span class="me-tag">YOU</span>' : ""}</td>
       <td class="num" title="season-total points of the optimal starting lineup">${t.starters.toFixed(1)}</td>
       <td class="num" title="picks of market value captured vs ADP — positive means discounts">${t.surplus > 0 ? "+" : ""}${Math.round(t.surplus)}</td>
+      <td class="rc-comp-cell">${compositeBar(t.composite)}</td>
       <td class="rc-note">${esc(t.note)}</td>
     </tr>`).join("");
   const me = g.teams.find((t) => t.mine);
@@ -1098,8 +1355,13 @@ function renderReportCard(g) {
       ${Math.round(g.steal.surplus)} picks earlier.</p>` : ""}
     <table class="wtable rc-table"><thead><tr>
       <th></th><th></th><th>Seat</th><th style="text-align:right">proj starters</th>
-      <th style="text-align:right">value</th><th>the read</th></tr></thead>
+      <th style="text-align:right">value</th><th style="text-align:right">composite</th>
+      <th>the read</th></tr></thead>
       <tbody>${rows}</tbody></table>
+    <p class="optimal-note">Seats are ranked by the <b>composite</b> — starting nine (45%),
+    value (20%), discounts (15%), depth (10%) and injury risk (10%), each as a z-score across
+    this room. That is why proj starters does not fall straight down the column: a seat can
+    out-project the field and still grade behind one that paid less for it.</p>
     ${detail}`;
 }
 

@@ -152,7 +152,17 @@ a { color: var(--brass); text-underline-offset: 3px; }
 }
 .clockplate.is-mine .clock-line { color: var(--brass-bright); }
 
-.tabs { grid-area: tabs; display: flex; gap: 2px; align-self: end; }
+/* Six rooms do not fit a phone. The strip scrolls; the right-edge fade is the
+   only thing that says so, and snapping keeps a half-tab from parking. */
+.tabs {
+  grid-area: tabs; display: flex; gap: 2px; align-self: end;
+  overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab { scroll-snap-align: start; flex: 0 0 auto; }
+@media (max-width: 900px) {
+  .tabs { mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 22px), transparent 100%); }
+}
 .tab {
   appearance: none; border: 1px solid var(--line); border-bottom: none;
   border-radius: 6px 6px 0 0;
@@ -313,6 +323,55 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .shelf-list .rd { font-family: var(--font-ledger); color: var(--ink-faint); font-size: .8rem; width: 2.4ch; }
 .shelf-empty { color: var(--ink-faint); font-size: .88rem; padding: 8px 0; }
 
+/* ---- the advisory layer: readings, never bids ----------------------------
+   Status hues only, in the house's own semantics: marigold cautions, lamp
+   marks a strength you chose on purpose. Bills red is NOT used here — a bye
+   collision is a caution, not trouble, and red stays reserved for the wire
+   going down and a swap going wide right. */
+.findings { list-style: none; display: grid; gap: 5px; padding: 6px 0 2px; }
+.finding {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: .82rem; line-height: 1.35; color: var(--ink-dim);
+  border-left: 2px solid var(--line-soft); padding-left: 9px;
+}
+.f-tag {
+  flex: none; font-size: .68rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+/* Typewriter Figures Rule: the numerals inside a tag are Courier, the
+   letters around them stay the condensed gothic. */
+.f-tag b { font-family: var(--font-ledger); font-weight: 700; letter-spacing: 0; }
+.finding.is-warn, .finding.is-unknown { border-left-color: var(--marigold); }
+.finding.is-warn .f-tag, .finding.is-unknown .f-tag { color: var(--marigold); }
+.finding.k-stack { border-left-color: var(--lamp); }
+.finding.k-stack .f-tag { color: var(--lamp); }
+
+/* What this room's rules do to positional priority. The least urgent thing
+   on the board, and sized to say so. */
+.priors {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft);
+}
+.priors-title {
+  font-size: .64rem; font-weight: 700; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--ink-faint); margin-bottom: 5px;
+}
+.priors p { font-size: .78rem; line-height: 1.4; color: var(--ink-faint); margin: 0 0 4px; }
+.priors p:last-child { margin-bottom: 0; }
+
+/* Position pressure sits on the navy ground, above the paper ticker — the
+   two materials keep their own ink sets. */
+.pressure { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
+.press {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  font-size: .74rem; letter-spacing: .04em; color: var(--ink-dim);
+  border: 1px solid var(--line-soft); border-radius: 3px; padding: 4px 9px;
+}
+.press b { font-family: var(--font-ledger); font-weight: 700; }
+.press-word { color: var(--ink-faint); }
+.press-run { border-color: var(--marigold); }
+.press-run b { color: var(--marigold); }
+.press-slide b { color: var(--lamp); }
+
 /* ============================= BOARD ============================= */
 
 .filters { display: none; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -330,7 +389,12 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 }
 .chip.is-active { color: var(--ground); background: var(--brass); border-color: var(--brass); font-weight: 700; }
 
-.columns { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+/* Six positions, four columns: K and D/ST used to wrap onto a second row and
+   leave two dead cells — about a third of a 1440px viewport showing nothing.
+   Three columns fills exactly twice over, and a genuinely wide screen gets all
+   six on one line. */
+.columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (min-width: 1700px) { .columns { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 .col {
   border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel);
   box-shadow: var(--shadow-raise);
@@ -344,7 +408,22 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 }
 .col-head h3 { font-size: .9rem; font-weight: 700; letter-spacing: .18em; }
 .col-head .count { margin-left: auto; font-family: var(--font-ledger); font-size: .78rem; color: var(--ink-faint); }
-.col-body { overflow-y: auto; overscroll-behavior: contain; padding-bottom: 6px; }
+/* The column scrolls, but a row sliced in half at the bottom edge reads as a
+   rendering bug rather than an affordance. The fade says "there is more" and
+   the visible track says how much. */
+.col-body {
+  overflow-y: auto; overscroll-behavior: contain; padding-bottom: 6px;
+  scrollbar-width: thin; scrollbar-color: var(--brass) transparent;
+  mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 26px), transparent 100%);
+}
+.col-body::-webkit-scrollbar { width: 8px; }
+.col-body::-webkit-scrollbar-thumb { background: var(--brass); border-radius: 4px; }
+.col-body::-webkit-scrollbar-track { background: rgba(236,242,255,.06); }
+/* A column that fits entirely needs no fade — the mask would dim its last row
+   for no reason. Scroll-driven so it costs nothing when unsupported. */
+@supports (animation-timeline: scroll()) {
+  .col-body { mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 26px), transparent 100%); }
+}
 
 .tier-rule {
   display: flex; align-items: center; gap: 10px;
@@ -1131,3 +1210,178 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   .league-table .seat-read { display: none; }
   .gridtable .gcol { width: 2.6rem; }
 }
+
+/* ============================ THE MATCHUP ============================
+   Who you're playing, and what he does to the right lineup. The two team
+   numbers are the plate's whole point, so they get the scale and the
+   typewriter face; everything else stays out of their way. Royal is the
+   attention hue here — the odds meter is a reading, not a status, so it never
+   borrows lamp green or Bills red. */
+.matchup {
+  border: 1px solid var(--line-soft); border-radius: 12px; padding: 16px 18px 18px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  display: grid; gap: 12px; margin-bottom: 18px;
+}
+.matchup-head {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px;
+}
+.matchup-head .side { display: grid; gap: 3px; min-width: 0; }
+.matchup-head .side:last-child { text-align: right; }
+.side-label {
+  font-size: .72rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.side-num { font-family: var(--font-ledger); font-size: 1.9rem; font-weight: 700; line-height: 1; }
+.side-vs {
+  font-size: .7rem; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-faint);
+}
+
+.prob { display: flex; align-items: center; gap: 10px; }
+.prob-bar {
+  flex: 1; height: 10px; border-radius: 5px; overflow: hidden;
+  background: rgba(236, 242, 255, .12); border: 1px solid var(--line-soft);
+}
+.prob-bar span {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--brass-deep), var(--brass));
+}
+.prob-num { font-family: var(--font-ledger); font-weight: 700; min-width: 3.4ch; text-align: right; }
+
+.matchup-line { margin: 0; }
+.matchup-line b { color: var(--ink); }
+.matchup-meta { margin: 0; font-size: .84rem; color: var(--ink-faint); }
+
+/* The alternative lineup appears only when it genuinely moves the odds, so it
+   is allowed to look like a recommendation rather than a footnote. */
+.alt-plan { border-top: 1px dashed var(--line); padding-top: 12px; display: grid; gap: 8px; }
+.alt-head {
+  margin: 0; font-size: .74rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--brass-bright);
+}
+.alt-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.alt-list li { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.alt-band { font-family: var(--font-ledger); font-size: .8rem; color: var(--ink-faint); }
+.alt-foot { margin: 0; font-size: .86rem; color: var(--ink-dim); }
+.alt-foot b { font-family: var(--font-ledger); color: var(--ink); }
+
+/* ============================== THE BEAT ==============================
+   The news feed is a reading surface, so it goes on the house's white game
+   program paper with the red margin rule — the same material as the ledger and
+   the Scout's File — and switches to that sheet's ink set entirely. */
+.beat { margin-top: 22px; display: grid; gap: 8px; }
+.beat-title {
+  font-family: var(--font-display); text-transform: uppercase; letter-spacing: .02em;
+  font-size: 1.05rem; margin: 0;
+}
+.beat-health {
+  margin: 0 0 10px; font-size: .82rem; color: var(--paper-faint);
+  font-family: var(--font-ledger);
+}
+.beat-health.is-bad { color: var(--paper-bad); font-weight: 700; }
+.beat-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.beat-item {
+  display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--paper-rule);
+}
+.beat-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.beat-grade {
+  font-size: .64rem; letter-spacing: .14em; font-weight: 700; padding-top: 2px;
+  color: var(--paper-faint);
+}
+/* Grade colour on paper uses the sheet's own ink set — crossing materials
+   means switching inks, and the dark surface's flag red is unreadable here. */
+.beat-out .beat-grade, .beat-doubtful .beat-grade { color: var(--paper-bad); }
+.beat-questionable .beat-grade, .beat-practice .beat-grade { color: #8a5a12; }
+.beat-role .beat-grade { color: var(--paper-ok); }
+.beat-line { margin: 0; color: var(--paper-ink); }
+.beat-pos { font-size: .78rem; color: var(--paper-faint); letter-spacing: .06em; }
+.beat-detail { margin: 3px 0 0; font-size: .88rem; color: var(--paper-faint); }
+.beat-meta {
+  margin: 4px 0 0; font-size: .74rem; color: var(--paper-faint);
+  font-family: var(--font-ledger); display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.beat-tag {
+  font-family: var(--font-ui); letter-spacing: .12em; text-transform: uppercase;
+  font-size: .62rem; border: 1px solid var(--paper-rule); border-radius: 3px; padding: 1px 6px;
+}
+.beat-tag.is-mine { border-color: rgba(46, 95, 217, .5); color: #24409c; font-weight: 700; }
+.beat-tag.is-open { border-color: rgba(176, 18, 48, .45); color: var(--paper-bad); font-weight: 700; }
+/* Your own men lead the eye without a second colour: a heavier margin rule. */
+.beat-item.aud-mine { box-shadow: inset 3px 0 0 -1px rgba(46, 95, 217, .55); padding-left: 9px; }
+
+/* The row chip. The beat is FASTER than Sleeper's own tag, so a man can be out
+   here while the API still lists him active — this stays softer than .hurt,
+   which is reserved for the API's confirmed word. */
+.beat-note {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-ui); font-size: .66rem; font-weight: 700; letter-spacing: .1em;
+  color: var(--marigold);
+}
+/* Without this the icon has no intrinsic size and fills the cell — the same
+   sizing .hurt has always carried. */
+.beat-note svg { width: 10px; height: 10px; flex: 0 0 auto; }
+/* The context line holds position, game and the beat's word; it wraps rather
+   than clipping at the cell edge. */
+.row-context { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+
+/* ======================== WAIVERS: the other half ======================== */
+.drop-line {
+  margin: 10px 0 0; padding: 9px 12px; border-radius: 8px;
+  border: 1px dashed var(--line); background: rgba(236, 242, 255, .04);
+  font-size: .9rem; color: var(--ink-dim);
+}
+.drop-line b { color: var(--ink); }
+.opening {
+  font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--oxblood); font-weight: 700;
+}
+
+/* ======================== THE PARLOR: the verdict ======================== */
+/* The headline is a lineup delta and the summary is a value delta; they can
+   honestly disagree. This line says which trade-off the reader is looking at. */
+.deal-verdict {
+  margin: 8px 0 0; font-size: .88rem; padding-left: 10px;
+  border-left: 3px solid var(--line);
+}
+.deal-verdict.v-good { border-left-color: var(--lamp); color: var(--ink-dim); }
+.deal-verdict.v-note { border-left-color: var(--brass); color: var(--ink-dim); }
+.deal-verdict.v-warn { border-left-color: var(--marigold); color: var(--ink); }
+.considered { font-size: .84rem; }
+
+/* ==================== THE REPORT CARD: why that order ==================== */
+.rc-comp-cell { text-align: right; white-space: nowrap; }
+.cbar {
+  display: inline-block; position: relative; width: 54px; height: 8px; vertical-align: middle;
+  background: rgba(236, 242, 255, .09); border-radius: 2px;
+}
+.cbar::before {   /* the room's average, so a bar has something to be off from */
+  content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px;
+  width: 1px; background: var(--line);
+}
+.cbar-fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.cbar-fill.is-up { background: var(--brass); }
+.cbar-fill.is-down { background: var(--ink-faint); }
+.cbar-num {
+  font-family: var(--font-ledger); font-size: .74rem; color: var(--ink-faint);
+  margin-left: 6px; min-width: 4.2ch; display: inline-block; text-align: right;
+}
+
+/* A pre-draft room gets a plate instead of one bare sentence on a void. */
+.room-empty {
+  border: 1px dashed var(--line); border-radius: 12px; padding: 18px 20px;
+  background: rgba(236, 242, 255, .03);
+}
+.room-empty .room-title { margin-top: 0; }
+.room-empty .room-note { margin-bottom: 0; }
+
+@media (max-width: 560px) {
+  .side-num { font-size: 1.5rem; }
+  .beat-item { grid-template-columns: 1fr; gap: 3px; }
+  .rc-table .rc-comp-cell { display: none; }
+}
+
+/* The room read sits with the priors but is a different kind of claim: the
+   priors restate the rulebook, this one reports measured behaviour and has
+   actually moved the numbers above it. The royal rule marks that difference. */
+.room-read { border-left: 3px solid var(--brass); padding-left: 10px; }
+.room-src { margin: 6px 0 0; font-size: .74rem; color: var(--ink-faint); }

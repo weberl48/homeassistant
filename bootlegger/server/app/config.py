@@ -23,6 +23,24 @@ SOURCE_DISAGREEMENT_MAX = 0.25 # don't-act: relative stdev across sources
 ADP_SIGMA_FALLBACK = 0.15      # sigma = 0.15 * ADP when no source stdev
 ADP_SIGMA_FLOOR = 3.0          # real Sleeper mock (n=180): early picks deviate σ≈2.9
 
+# Position pressure: how far the room's picks at one position must diverge from
+# what ADP said that pick range would take before the board says anything.
+# Calibrated 2026-08-26 by sweeping every window of a full demo draft — twelve
+# independent ADP-followers, so no runs exist in it and every fire is a false
+# alarm. Share of windows where at least one position fired:
+#     threshold 3.0 -> 13.5%   (too chatty to mean anything)
+#     threshold 4.0 ->  2.9%
+#     threshold 5.0 ->  0.0%   (silent on noise, likely deaf to real runs)
+# 4.0 is the knee. NOTE the denominator: an earlier read of "2.8% at 3.0"
+# counted position-windows (each position judged separately), not windows —
+# per window the same data reads 13.5%. A real room's residual will be wider
+# than the simulator's: recalibrate on live drafts before this number is
+# trusted, and before it is ever allowed near survival_prob (see
+# engines/advisories.py).
+RUN_RESIDUAL_THRESHOLD = 4.0
+# Picks of history the pressure window looks back over.
+RUN_WINDOW_PICKS = 10
+
 
 def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)

@@ -67,9 +67,9 @@ downstream rule keeps working; this file's role slugs map onto them.
   quieter.
 - **No Sideways Page**: `overflow-x: clip` on body; the ticker, stepper, and
   report card scroll inside their own containers. Unchanged.
-- **Paper surfaces**: the ledger, rules, ticker tape, and Scout's File are now
-  white game-program paper — a cool white sheet with the red ledger margin
-  rule at 42px — carrying its own ink set (`paper-ink`/`paper-faint`/
+- **Paper surfaces**: the ledger, rules, ticker tape, the Scout's File and
+  THE BEAT are white game-program paper — a cool white sheet with the red
+  ledger margin rule at 42px — carrying its own ink set (`paper-ink`/`paper-faint`/
   `paper-ok`/`paper-bad`, each ≥4.5:1 on the sheet's darkest stop). Crossing
   materials still means switching ink sets.
 
@@ -91,6 +91,22 @@ downstream rule keeps working; this file's role slugs map onto them.
   white 700 text on the royal gradient (5.2:1 at the mid-stop), a hard 3px
   press edge, ≥46px tall. The lace-seam under titles runs its cross-laces
   royal.
+
+## Two Names For Two Wires
+
+"The wire" in this house means the connection to Sleeper — it is what goes
+down under CIRCLE THE WAGONS. The news feed added 2026-08-26 is therefore
+**THE BEAT**, after the reporters who file it. The two are never used
+interchangeably in copy, class names, or headings; a board that says "the wire
+is down" about two different things has taught its owner nothing.
+
+## The Odds Meter
+
+The matchup plate reads both projected scores in Courier Prime at display
+scale, over a royal win-probability bar. Royal is correct here under **Royal Is
+Touchable, Red Is Trouble** read one step further: an odds bar is a *reading*,
+and readings never borrow lamp green or Bills red, whichever way they lean. A
+40% chance is not a failure state.
 
 ## The Fun Layer (this world's voice)
 

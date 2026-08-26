@@ -95,3 +95,48 @@ recon.
 **Issue:** The skill's bounded path is "explore project context → ask clarifying questions". I read the schema and ingest layer first and found that `etl_rosters` silently drops Sleeper's `settings` block, so no win/loss data existed anywhere in the DB. That single fact turned a vague question ("what should be on it?") into a real one with priced options — "scouting view, free" vs "standings, needs a schema + ingest change and reads 0-0 until Week 1". The user could choose knowingly. Had I asked first, "standings" would have looked free and the cost would have surfaced mid-implementation, where the skill's own ratchet rule would have forced a re-classification.
 **Suggested improvement:** In the bounded and architectural checklists, sharpen step 1 from "explore project context — check files, docs, recent commits" to explicitly include: verify the data/APIs the feature would need actually exist, and price any that don't. Then state those costs inside the options you present. A clarifying question whose options carry no cost estimate invites the user to pick the expensive one by accident.
 **Principle:** A choice offered without its price isn't a real choice. Explore far enough to cost each option before asking which one the user wants.
+
+### Observation 9: A sampled regression test can pass against corrupted state
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Implementing an ADP-residual "position run" detector in
+Bootlegger, with a CI test asserting it stays quiet on a draft that contains no
+runs by construction.
+**Skill:** `superpowers:test-driven-development` (its `writing-good-tests.md`
+rules), with a secondary tie to `stress-test-findings`.
+**Issue:** The test advanced a simulated draft with `_run_draft(conn, n)` for n
+in (12, 24, 36, ...), and that helper replayed picks from 1 every call. Because
+the simulator skips already-taken players, the second pass handed pick 1 a
+different player and scrambled the draft — so the test was asserting the
+property against garbage and passed. Sweeping every window instead revealed the
+detector firing in 13.5% of windows, which forced a threshold recalibration
+(3.0 -> 4.0). Two independent defects hid behind one green check: a
+state-corrupting fixture helper, and a sampled assertion too sparse to notice.
+**Suggested improvement:** Add to `writing-good-tests.md`: after writing a test
+that asserts an absence ("stays quiet", "never fires", "no errors"), prove it
+can fail — flip the threshold/config it depends on and watch it go red before
+trusting the green. And for tests that drive a stateful simulator, assert the
+state advanced as intended (here: `COUNT(*) FROM draft_picks == n`) rather than
+assuming the helper is idempotent.
+**Principle:** A green absence-assertion is the easiest test to fake and the
+hardest to notice faking. The Iron Law's "watch it fail" applies not just when
+writing the test but whenever it guards a tunable constant — the constant is
+the mutation that proves the test works.
+
+### Observation 10: Archived run artifacts beat commit messages — and successive runs separate "cherry-pick" from "real fix"
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Grading Bootlegger against FantasyPros/Draft Sharks/etc. The load-bearing draft-algorithm claim ("beat FP ECR 7/8 sims, +2.8–4.1%") existed only in a commit message.
+**Skill:** stress-test-findings
+**Issue:** Move 4a says the persisted output is the assumption-independent proof for "the code does X". Here the deploy target held FOUR archived runs of the same harness (`/data/h2h.out … h2h4.out`). Reading only the latest would have confirmed the claim; reading all four did something stronger — the *opponent's* total was near-constant across runs (2157.9–2159.3) while ours jumped 2178→2232 at one run boundary. That pattern distinguishes "a real engine fix landed" from "they ran it four times and reported the best", which is the sharp reviewer's competing hypothesis and the one Move 3 asks for.
+**Suggested improvement:** In Move 4's "(a) persisted output" bullet, add: when several archived runs of the same harness exist, read them ALL, not the latest — a control series that stays flat while the treated series steps is assumption-independent evidence the delta is a change, not variance; a treated series that wanders with no flat control is evidence of cherry-picking. Add to Move 3 as the standard distinguishing test for "best-of-N reporting."
+**Principle:** One artifact proves what happened; a series of artifacts proves whether it was caused.
+
+### Observation 11: A 200 response is not evidence a new URL parameter took effect
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Adding weekly CBS projections to Bootlegger by parameterising an existing season scraper with a `week` segment.
+**Skill:** stress-test-findings
+**Issue:** The week-3 URL returned HTTP 200 and 410 well-formed rows, so every check a normal integration does passed. The rows were SEASON totals (Josh Allen 419 pts) — the site ignored the new segment. Had the consensus not carried an independent weekly-median sanity band, every lineup call for the week would have been an order of magnitude high, silently. The request succeeded; the parameter did nothing.
+**Suggested improvement:** In Move 4 ("assumption-independent evidence"), add a line for parameterised fetches: when a new dimension is added to an existing request (week, region, scoring, date), the proof that it took effect is a change in the OUTPUT's own distribution — scale, row count, or a value that must differ — never the status code or a successful parse. State the expected shift before fetching and check it.
+**Principle:** A source that ignores your parameter answers 200 and hands you the wrong question's answer.

@@ -10,6 +10,10 @@ import time
 from typing import Any
 
 import httpx
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from html import unescape
+from zoneinfo import ZoneInfo
 
 FFC_URL = "https://fantasyfootballcalculator.com/api/v1/adp/ppr"
 FANTASYCALC_URL = "https://api.fantasycalc.com/values/current"
@@ -34,6 +38,9 @@ ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE", 5: "K", 16: "DEF"}
 # server-rendered tables (Yahoo needs OAuth, NFL.com's API is dead,
 # NumberFire went JS-only under FanDuel).
 CBS_URL = "https://www.cbssports.com/fantasy/football/stats/{pos}/{year}/season/projections/ppr/"
+# The same table, one week at a time — same markup, so one parser serves both.
+# In-season this is what takes the weekly consensus off three sources.
+CBS_WEEK_URL = "https://www.cbssports.com/fantasy/football/stats/{pos}/{year}/{week}/projections/ppr/"
 FFT_URL = ("https://www.fftoday.com/rankings/playerproj.php"
            "?Season={year}&PosID={posid}&LeagueID=1&cur_page={page}")
 # FFToday stat columns per position (after Team, Bye; FPts trails and is
@@ -196,15 +203,19 @@ def _num(s: str) -> float:
         return 0.0
 
 
-def fetch_cbs_projections(year: int, timeout: float = 25.0) -> list[dict[str, Any]]:
-    """CBS season projections from their server-rendered PPR pages. The fpts
-    column is CBS's PPR scoring — use only for full-PPR leagues (the caller
-    guards). Rows: {name, position, pts}."""
+def fetch_cbs_projections(year: int, week: int = 0,
+                          timeout: float = 25.0) -> list[dict[str, Any]]:
+    """CBS projections from their server-rendered PPR pages — season totals at
+    week 0, a single week otherwise (same table, same markup). The fpts column
+    is CBS's PPR scoring, so full-PPR leagues only (the caller guards).
+    Rows: {name, position, pts}."""
     out = []
     for i, pos in enumerate(("QB", "RB", "WR", "TE", "K")):
         if i:
             time.sleep(1.0)
-        r = httpx.get(CBS_URL.format(pos=pos, year=year), timeout=timeout,
+        url = (CBS_URL.format(pos=pos, year=year) if not week
+               else CBS_WEEK_URL.format(pos=pos, year=year, week=week))
+        r = httpx.get(url, timeout=timeout,
                       headers={"User-Agent": FP_UA}, follow_redirects=True)
         r.raise_for_status()
         for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.S):
@@ -462,5 +473,110 @@ def fetch_draftsharks(cookie: str, timeout: float = 40.0) -> list[dict[str, Any]
             "pts": ds, "floor": floor or None, "ceiling": ceil or None,
             "injury_pct": _num(txt[6]) or None,
             "proj_games": _num(txt[2]) or None,
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The wire: player news
+# ---------------------------------------------------------------------------
+# RotoWire's public NFL RSS is the fantasy wire itself — the same desk Sleeper
+# and Yahoo surface in-app. Each item is "Player Name: headline" with a
+# per-player link and a MONOTONIC guid (nfl634875), which is what makes gap
+# detection possible: the feed only ever serves five items, so a poll that
+# jumps more than five guids proves we missed news rather than that nothing
+# happened. Never a silent failure applies to the wire too.
+ROTOWIRE_RSS = "https://www.rotowire.com/rss/news.php?sport=NFL"
+# Secondary, team-level and breaking: 30 items, no player tagging. Used to
+# corroborate and to keep something on the wire when RotoWire is down.
+PFT_RSS = "https://profootballtalk.nbcsports.com/feed/"
+# RotoWire stamps pubDate in US Pacific with a 12-hour clock — not RFC 822, so
+# email.utils can't read it.
+ROTOWIRE_TZ = ZoneInfo("America/Los_Angeles")
+_RW_PLAYER_PATH = "/football/player/"
+
+
+def _rss_items(xml: str) -> list[dict[str, str]]:
+    """Every <item> as a flat dict of its direct child tags. Tolerant by
+    design: a feed that adds a tag must not break the parse."""
+    out = []
+    for block in re.findall(r"<item>(.*?)</item>", xml, re.S | re.I):
+        row: dict[str, str] = {}
+        for tag, val in re.findall(r"<(\w+)>(.*?)</\1>", block, re.S):
+            text = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", val, flags=re.S)
+            text = re.sub(r"<[^>]+>", "", text)
+            row[tag.lower()] = unescape(text).strip()
+        if row:
+            out.append(row)
+    return out
+
+
+def _rotowire_time(pub: str) -> str | None:
+    """'Wed, 26 Aug 2026 9:08:00 AM PDT' -> ISO UTC."""
+    m = re.match(r"^[A-Za-z]{3},\s*(.+?)\s+([A-Z]{2,4})$", pub.strip())
+    if not m:
+        return None
+    for fmt in ("%d %b %Y %I:%M:%S %p", "%d %b %Y %H:%M:%S"):
+        try:
+            naive = datetime.strptime(m.group(1), fmt)
+        except ValueError:
+            continue
+        return (naive.replace(tzinfo=ROTOWIRE_TZ)
+                .astimezone(timezone.utc).isoformat(timespec="seconds"))
+    return None
+
+
+def fetch_rotowire_news(timeout: float = 20.0) -> list[dict[str, Any]]:
+    """The five most recent wire items. Rows: {guid, seq, name, headline,
+    body, link, published_at}. `seq` is the guid's integer tail — the caller
+    uses it to prove whether the poll skipped anything."""
+    r = httpx.get(ROTOWIRE_RSS, timeout=timeout, follow_redirects=True,
+                  headers={"User-Agent": FP_UA})
+    r.raise_for_status()
+    out = []
+    for item in _rss_items(r.text):
+        link = item.get("link", "")
+        title = item.get("title", "")
+        # Only player items carry a /football/player/ link; team and league
+        # notes ride the same feed and must not be matched to a player.
+        if _RW_PLAYER_PATH not in link or ":" not in title:
+            continue
+        name, _, headline = title.partition(":")
+        guid = item.get("guid", "")
+        seq = re.search(r"(\d+)$", guid)
+        body = re.sub(r"\s*Visit RotoWire\.com.*$", "", item.get("description", ""),
+                      flags=re.S).strip()
+        out.append({
+            "guid": guid or link,
+            "seq": int(seq.group(1)) if seq else None,
+            "name": name.strip(),
+            "headline": headline.strip(),
+            "body": re.sub(r"\s+", " ", body),
+            "link": link.replace("com//", "com/"),
+            "published_at": _rotowire_time(item.get("pubdate", "")),
+        })
+    return out
+
+
+def fetch_pft_news(timeout: float = 25.0) -> list[dict[str, Any]]:
+    """Pro Football Talk's feed — team-level and breaking, no player tagging.
+    Rows: {guid, title, body, link, published_at}."""
+    r = httpx.get(PFT_RSS, timeout=timeout, follow_redirects=True,
+                  headers={"User-Agent": FP_UA})
+    r.raise_for_status()
+    out = []
+    for item in _rss_items(r.text):
+        pub = item.get("pubdate", "")
+        try:
+            when = parsedate_to_datetime(pub).astimezone(timezone.utc).isoformat(
+                timespec="seconds") if pub else None
+        except (TypeError, ValueError):
+            when = None
+        out.append({
+            "guid": item.get("guid") or item.get("link", ""),
+            "title": item.get("title", ""),
+            "body": re.sub(r"\s+", " ", item.get("description", ""))[:400],
+            "link": item.get("link", ""),
+            "published_at": when,
         })
     return out

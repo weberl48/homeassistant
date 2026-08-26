@@ -10,6 +10,7 @@ import json
 import random
 import sqlite3
 import time
+from datetime import datetime, timedelta, timezone
 
 from . import db
 from .config import DEMO_ROSTER_POSITIONS, DEMO_SCORING, settings
@@ -234,6 +235,7 @@ def seed(conn: sqlite3.Connection, force: bool = False) -> bool:
     _seed_rosters(conn, ordered)
     _boost_street(conn)
     _seed_faab_history(conn)
+    _seed_wire(conn)
     _reset_draft(conn)
     db.meta_set(conn, "demo_seeded", "1")
     return True
@@ -451,6 +453,72 @@ def _seed_faab_history(conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 # Simulated live draft
 # ---------------------------------------------------------------------------
+
+
+def _seed_wire(conn: sqlite3.Connection) -> None:
+    """A synthetic wire so the news surfaces rehearse offline.
+
+    Demo mode's contract is that nothing needs the network, and the wire is no
+    exception. The items are written against the seeded rosters so all three
+    audiences appear: one of your starters in trouble, one of your bench men,
+    somebody else's man leaving for the season (the waiver window), and a
+    street name nobody holds. Severity is left to engines/wire.py — the seed
+    writes headlines in RotoWire's house style and lets the real classifier
+    grade them, so the demo exercises the shipping code path.
+    """
+    from .engines import wire as wire_engine
+    conn.execute("DELETE FROM news WHERE source='demo'")
+    rosters = {r["roster_id"]: json.loads(r["players_json"] or "[]")
+               for r in conn.execute("SELECT roster_id, players_json FROM rosters")}
+    mine = rosters.get(settings.my_roster_id, [])
+    my_row = conn.execute("SELECT starters_json FROM rosters WHERE roster_id=?",
+                          (settings.my_roster_id,)).fetchone()
+    starters = json.loads(my_row["starters_json"] or "[]") if my_row else []
+    theirs = [p for rid, ids in rosters.items() if rid != settings.my_roster_id
+              for p in ids]
+    names = {r["sleeper_id"]: r["name"] for r in
+             conn.execute("SELECT sleeper_id, name FROM players")}
+    street = [r["sleeper_id"] for r in conn.execute(
+        "SELECT sleeper_id FROM players LIMIT 400")
+        if r["sleeper_id"] not in set(mine) | set(theirs)]
+
+    def pick(pool: list[str], n: int) -> list[str]:
+        return [p for p in pool if p in names][:n]
+
+    script: list[tuple[str, str, str]] = []
+    for pid in pick(starters, 1):
+        script.append((pid, "Questionable for Sunday",
+                       f"{names[pid].split()[-1]} (hamstring) is listed as questionable "
+                       "and is a game-time decision, the team's beat reporter says."))
+    for pid in pick([p for p in mine if p not in starters], 1):
+        script.append((pid, "Limited in Wednesday's practice",
+                       f"{names[pid].split()[-1]} (ankle) was limited at practice."))
+    for pid in pick(theirs, 1):
+        script.append((pid, "Placed on injured reserve",
+                       f"{names[pid].split()[-1]} was placed on injured reserve "
+                       "Tuesday and will miss at least four games."))
+    for pid in pick(street, 1):
+        script.append((pid, "Expected to start Sunday",
+                       f"{names[pid].split()[-1]} will start with the job open."))
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for i, (pid, headline, body) in enumerate(script):
+        published = (now - timedelta(hours=i + 1)).isoformat(timespec="seconds")
+        rows.append((
+            f"demo-wire-{i}", 900000 + i, "demo", pid, names[pid], headline, body,
+            "https://www.rotowire.com/football/", wire_engine.severity(headline, body),
+            wire_engine.ailment(body),
+            1 if wire_engine.is_departure(headline, body) else 0,
+            published, db.utcnow(),
+        ))
+    conn.executemany(
+        "INSERT OR REPLACE INTO news(guid,seq,source,player_id,name_raw,headline,body,"
+        "link,severity,ailment,departure,published_at,fetched_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    db.meta_set(conn, "wire_last_ok", db.utcnow())
+    conn.commit()
+
 
 def _reset_draft(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM draft_picks WHERE draft_id=?", (DEMO_DRAFT_ID,))

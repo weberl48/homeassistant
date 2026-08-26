@@ -61,6 +61,18 @@ FAAB bid history, and it can act (lineup swaps only), not just advise.
 - Blast-radius containment is structural: the only automated write in the
   codebase is a reversible lineup swap. Waivers/FAAB/trades have no actuation
   code path.
+- News is an input, not a feature: RotoWire's public wire is polled on a
+  kickoff-aware cadence, graded, matched to Sleeper ids, and filtered so only a
+  starter in trouble reaches the DND-bypass channel. A missed item is provable
+  (the feed's ids are monotonic and it only ever holds five) and is reported
+  rather than swallowed.
+- The lineup is optimized for the OPPONENT, not in the abstract: a heavy
+  favourite is offered the highest-floor lineup and a heavy underdog the
+  highest-ceiling one, with the win probability that justifies the switch.
+- The board is calibrated to this room twice over: FAAB against its own winning
+  bids, and draft survival against its own past drafts' positional habits.
+  Both stay dormant, and say so, until there is enough history to mean
+  anything.
 - Reliability during the Sunday window is the top non-functional requirement:
   every failure degrades to a notification, never to silence. The web surface
   must stay legible and functional with no JS framework, no CDN, and no
@@ -94,9 +106,12 @@ where money or kickoffs are involved.
 1. Never silently fail — every degraded state is visible and pushes outward.
 2. Advise everywhere, act in exactly one place, verify through the public API.
 3. The board must be readable at a glance under time pressure; density with
-   hierarchy beats completeness.
+   hierarchy beats completeness. A list of eight suggestions must be eight
+   different suggestions.
 4. Own the whole stack locally: no external service in the critical path except
-   Sleeper itself.
+   Sleeper itself. The news wire is the one added dependency and is deliberately
+   NOT in that path — a dead feed degrades to a visible, dated notice on the
+   board while every other surface keeps working.
 5. Earn trust in stages: notify → approve → (later) auto, with an audit trail.
 
 ## Accessibility & Inclusion

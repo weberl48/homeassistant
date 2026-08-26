@@ -13,15 +13,17 @@ import httpx
 
 from . import db
 from .config import settings
+from .engines import calibration as cal
 from .engines import consensus as cx
 from .engines import tiers as tiers_engine
 from .engines import vbd as vbd_engine
 from .schedule import backfill_byes, etl_schedule, refresh_weather
 from .sleeper import SleeperClient
+from .engines import wire as wire_engine
 from .sources import (fetch_cbs_projections, fetch_draftsharks, fetch_espn_projections,
                       fetch_fantasycalc_values, fetch_fantasypros_projections,
                       fetch_ffc_adp, fetch_fftoday_projections, fetch_fp_ecr,
-                      fetch_nflverse_injuries, normalize_name)
+                      fetch_nflverse_injuries, fetch_rotowire_news, normalize_name)
 
 # Tiering pools per position: deep enough to cover draftable players, shallow
 # enough that the GMM sees structure instead of a waiver-wire tail.
@@ -48,20 +50,43 @@ def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
     """Robust-average the per-source projections for `week`, then attach GMM
     tiers and VOLS VBD. Returns the number of players written."""
     rows = conn.execute(
-        "SELECT p.player_id, p.pts, pl.pos FROM projections p "
+        "SELECT p.player_id, p.source, p.pts, pl.pos FROM projections p "
         "JOIN players pl ON pl.sleeper_id = p.player_id WHERE p.week=?",
         (week,),
     ).fetchall()
     by_player: dict[str, list[float]] = defaultdict(list)
+    by_source: dict[str, dict[str, float]] = defaultdict(dict)
     pos_of: dict[str, str] = {}
     for r in rows:
         by_player[r["player_id"]].append(r["pts"])
+        by_source[r["player_id"]][r["source"]] = r["pts"]
         pos_of[r["player_id"]] = r["pos"]
+
+    # In-season, sources vote by how right they have been. Week 0 keeps the
+    # equal-weight robust mean: a season-long projection has nothing realized
+    # to be scored against until the season is over, which is exactly when it
+    # has stopped mattering. See engines/calibration.py.
+    wmap: dict[str, float] = {}
+    weight_note = "equal weight (draft-season projections)"
+    if week > 0:
+        sources = sorted({r["source"] for r in rows})
+        wmap, weight_note = cal.weights(
+            cal.score_sources(conn, settings.season), sources)
+    calibrated = bool(wmap) and any(
+        abs(w - 1.0 / len(wmap)) > 1e-6 for w in wmap.values())
+    db.meta_set(conn, f"consensus_weights_w{week}",
+                json.dumps({"note": weight_note,
+                            "weights": {k: round(v, 3) for k, v in wmap.items()}}))
 
     robust: dict[str, float] = {}
     stats: dict[str, tuple[float, float | None]] = {}
     for pid, vals in by_player.items():
-        rb = cx.robust_mean(vals)
+        # The robust mean stays the fallback for thin coverage: with two or
+        # three sources, weighting is noise dressed as precision.
+        if calibrated and len(vals) >= 4:
+            rb = cal.weighted_mean(by_source[pid], wmap)
+        else:
+            rb = cx.robust_mean(vals)
         robust[pid] = rb
         stats[pid] = (sum(vals) / len(vals), cx.source_spread(vals))
 
@@ -282,6 +307,202 @@ def etl_injuries(conn: sqlite3.Connection) -> dict:
     return {"week": rows[0]["week"], "matched": matched}
 
 
+
+# ---------------------------------------------------------------------------
+# The wire
+# ---------------------------------------------------------------------------
+
+def _rostered_ids(conn: sqlite3.Connection) -> set[str]:
+    """Every player any seat in this league holds — the disambiguation prior
+    for name collisions, and the reason a wire item is 'league' not 'street'."""
+    out: set[str] = set()
+    for r in conn.execute("SELECT players_json FROM rosters"):
+        try:
+            out |= set(json.loads(r["players_json"] or "[]"))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def etl_news(conn: sqlite3.Connection) -> dict:
+    """Poll the wire, classify, join to Sleeper ids, persist, and report what
+    the poll could not see.
+
+    The gap number is the point of the exercise: RotoWire hands out five items
+    per request and stamps them with a monotonic id, so a poll that lands more
+    than five ids past the last one PROVES news was published and missed. That
+    goes to meta where /health and the board can show it — a wire that quietly
+    skips a Sunday scratch is exactly the silent failure this house forbids.
+    """
+    items = fetch_rotowire_news()
+    now = db.utcnow()
+    if not items:
+        db.meta_set(conn, "wire_last_ok", now)
+        return {"fetched": 0, "new": 0, "gap": 0}
+
+    last_seq = db.meta_get(conn, "wire_last_seq")
+    seqs = [i["seq"] for i in items if i["seq"] is not None]
+    gap = wire_engine.gap_since(int(last_seq) if last_seq else None, seqs)
+
+    players = [dict(r) for r in conn.execute(
+        "SELECT sleeper_id, name, pos, team FROM players")]
+    index = wire_engine.build_index(players)
+    prefer = _rostered_ids(conn)
+
+    rows = []
+    for it in items:
+        sev = wire_engine.severity(it["headline"], it["body"])
+        rows.append((
+            it["guid"], it["seq"], "rotowire",
+            wire_engine.match(it["name"], index, prefer),
+            it["name"], it["headline"], it["body"], it["link"],
+            sev, wire_engine.ailment(it["body"]),
+            1 if wire_engine.is_departure(it["headline"], it["body"]) else 0,
+            it["published_at"], now,
+        ))
+    before = conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"]
+    # INSERT OR IGNORE, never REPLACE: re-polling must not reset pushed_at and
+    # re-alarm on an item the owner has already been told about.
+    conn.executemany(
+        "INSERT OR IGNORE INTO news(guid,seq,source,player_id,name_raw,headline,body,"
+        "link,severity,ailment,departure,published_at,fetched_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    conn.commit()
+    added = conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"] - before
+
+    if seqs:
+        db.meta_set(conn, "wire_last_seq", str(max(seqs)))
+    db.meta_set(conn, "wire_last_ok", now)
+    if gap:
+        total = int(db.meta_get(conn, "wire_gap_total") or 0) + gap
+        db.meta_set(conn, "wire_gap_total", str(total))
+        db.meta_set(conn, "wire_last_gap", json.dumps({"n": gap, "at": now}))
+    unmatched = sum(1 for r in rows if r[3] is None)
+    return {"fetched": len(items), "new": added, "gap": gap, "unmatched": unmatched}
+
+
+
+def etl_matchups(conn: sqlite3.Connection, client: "SleeperClient",
+                 week: int) -> dict:
+    """This week's pairings and last week's realized scores.
+
+    Sleeper's matchups endpoint hands back one row per roster carrying a shared
+    `matchup_id`; the opponent is simply the other roster wearing the same id.
+    `points` is the realized score, which is the whole reason to persist this:
+    (actual - projected) over enough roster-weeks is what lets the win
+    probability quote THIS league's spread instead of a magazine's.
+    """
+    if not settings.league_id:
+        return {"week": week, "rows": 0}
+    rows = client.matchups(settings.league_id, week) or []
+    by_matchup: dict[int, list[dict]] = defaultdict(list)
+    for r in rows:
+        if r.get("matchup_id") is not None:
+            by_matchup[r["matchup_id"]].append(r)
+    projected = {r["player_id"]: (r["pts_robust"] or 0.0) for r in conn.execute(
+        "SELECT player_id, pts_robust FROM consensus WHERE week=?", (week,))}
+    # Sleeper's matchup payload carries players_points: every rostered player's
+    # realized score under THIS league's scoring. It is the only place that
+    # number exists without re-deriving it, and it is what makes source
+    # calibration possible at all.
+    actuals = []
+    for r in rows:
+        for pid, pts in (r.get("players_points") or {}).items():
+            if pts is not None:
+                actuals.append((settings.season, week, pid, float(pts), db.utcnow()))
+    if actuals:
+        conn.executemany(
+            "INSERT INTO player_week_actuals(season,week,player_id,pts,updated_at) "
+            "VALUES(?,?,?,?,?) ON CONFLICT(season,week,player_id) DO UPDATE SET "
+            "pts=excluded.pts, updated_at=excluded.updated_at", actuals)
+
+    written = 0
+    for mid, pair in by_matchup.items():
+        for r in pair:
+            opp = next((o for o in pair if o is not r), None)
+            starters = r.get("starters") or []
+            proj_for = round(sum(projected.get(p, 0.0) for p in starters), 1)
+            opp_starters = (opp or {}).get("starters") or []
+            proj_against = round(sum(projected.get(p, 0.0) for p in opp_starters), 1)
+            conn.execute(
+                "INSERT INTO matchups(week,roster_id,opp_roster_id,proj_for,proj_against,"
+                "points_for,matchup_id) VALUES(?,?,?,?,?,?,?) "
+                "ON CONFLICT(week,roster_id) DO UPDATE SET "
+                "opp_roster_id=excluded.opp_roster_id,proj_for=excluded.proj_for,"
+                "proj_against=excluded.proj_against,points_for=excluded.points_for,"
+                "matchup_id=excluded.matchup_id",
+                (week, r.get("roster_id"), (opp or {}).get("roster_id"),
+                 proj_for, proj_against, r.get("points"), mid))
+            written += 1
+    conn.commit()
+    return {"week": week, "rows": written, "actuals": len(actuals)}
+
+
+
+# How many seasons back the room's habits are read from. Beyond three the
+# managers, and often the league, are not the same room any more.
+HISTORY_SEASONS = 3
+
+
+def etl_draft_history(conn: sqlite3.Connection, client: "SleeperClient",
+                      seasons: int = HISTORY_SEASONS) -> dict:
+    """Walk previous_league_id back and store past drafts' completed picks.
+
+    This is the only evidence that exists for how THIS room drafts — Sleeper
+    keeps no historical ADP, so the past is readable only through its own pick
+    order (engines/room.py explains what is done with it). Stored into the same
+    drafts / draft_picks tables the live draft uses, so nothing downstream needs
+    a second code path.
+    """
+    if not settings.league_id:
+        return {"leagues": 0, "drafts": 0, "picks": 0}
+    league_id = settings.league_id
+    leagues = drafts = picks = 0
+    seen: set[str] = set()
+    for _ in range(seasons + 1):
+        if not league_id or league_id in seen:
+            break
+        seen.add(league_id)
+        try:
+            info = client.league(league_id) or {}
+        except Exception:
+            break
+        prev = info.get("previous_league_id")
+        if league_id != settings.league_id:     # the current draft has its own poller
+            leagues += 1
+            try:
+                for d in client.league_drafts(league_id) or []:
+                    if d.get("status") != "complete":
+                        continue
+                    did = str(d.get("draft_id"))
+                    st = d.get("settings") or {}
+                    conn.execute(
+                        "INSERT OR REPLACE INTO drafts(draft_id,status,settings_json,updated_at) "
+                        "VALUES(?,?,?,?)",
+                        (did, "complete", json.dumps({
+                            "teams": st.get("teams"), "rounds": st.get("rounds"),
+                            "season": d.get("season"), "historical": True}), db.utcnow()))
+                    drafts += 1
+                    rows = client.draft_picks(did) or []
+                    for pk in rows:
+                        meta = pk.get("metadata") or {}
+                        pos = (meta.get("position") or "").upper().replace("DST", "DEF")
+                        conn.execute(
+                            "INSERT OR REPLACE INTO draft_picks"
+                            "(draft_id,pick_no,round,draft_slot,roster_id,player_id,ts,pos) "
+                            "VALUES(?,?,?,?,?,?,?,?)",
+                            (did, pk.get("pick_no"), pk.get("round"),
+                             pk.get("draft_slot"), pk.get("roster_id"),
+                             str(pk.get("player_id")), db.utcnow(), pos or None))
+                    picks += len(rows)
+            except Exception as e:
+                return {"leagues": leagues, "drafts": drafts, "picks": picks,
+                        "stopped": str(e)}
+        league_id = prev
+    conn.commit()
+    return {"leagues": leagues, "drafts": drafts, "picks": picks}
+
+
 def etl_fp_ecr(conn: sqlite3.Connection) -> dict:
     """FantasyPros expert-consensus ranks -> adp table (source fp_ecr), and bye
     weeks backfilled onto players (the Sleeper feed leaves byes null)."""
@@ -375,6 +596,40 @@ def _batch_ok(joined: list[tuple], week: int) -> bool:
     return lo <= med <= hi
 
 
+# How far a source may shrink against its own recent best before the board
+# calls it drifting. A scrape whose page changed usually still parses — it just
+# parses FEWER rows, which the absolute floor above happily lets through. This
+# is the canary that catches that: the source is measured against itself.
+DRIFT_FRACTION = 0.6
+
+
+def _source_health_note(conn: sqlite3.Connection, source: str, week: int,
+                        rows: int) -> dict:
+    """Record what a source delivered, and judge it against its own best.
+
+    Absolute floors catch a source that dies. They do not catch one that half
+    dies: a CBS or FFToday page that changes its markup typically still parses,
+    just into a fraction of the rows. Watching each source against its own high
+    watermark is what makes that visible on the day it happens rather than in
+    December when the consensus has quietly been running on four sources.
+    """
+    key = f"source_stat_{source}_w{week}"
+    try:
+        prev = json.loads(db.meta_get(conn, key) or "{}")
+    except ValueError:
+        prev = {}
+    best = max(int(prev.get("best") or 0), rows)
+    status = "ok"
+    if rows == 0:
+        status = "skipped"           # the batch guard kept yesterday's rows
+    elif best and rows < DRIFT_FRACTION * best:
+        status = "drifting"
+    note = {"rows": rows, "best": best, "status": status,
+            "at": db.utcnow() if rows else prev.get("at")}
+    db.meta_set(conn, key, json.dumps(note))
+    return note
+
+
 def _write_source_projections(conn: sqlite3.Connection, source: str,
                               rows: list[dict], week: int = 0) -> int:
     """Name+pos join, batch sanity, then delete-then-write. A batch that is
@@ -387,6 +642,7 @@ def _write_source_projections(conn: sqlite3.Connection, source: str,
         if pid:
             joined.append((pid, p["pts"], p.get("floor"), p.get("ceiling")))
     if not _batch_ok([(a, b) for a, b, *_ in joined], week):
+        _source_health_note(conn, source, week, 0)
         return 0
     conn.execute("DELETE FROM projections WHERE week=? AND source=?", (week, source))
     for pid, pts, floor, ceiling in joined:
@@ -394,14 +650,30 @@ def _write_source_projections(conn: sqlite3.Connection, source: str,
             "INSERT OR REPLACE INTO projections(player_id,week,source,pts,floor,ceiling) "
             "VALUES(?,?,?,?,?,?)", (pid, week, source, pts, floor, ceiling))
     conn.commit()
+    _source_health_note(conn, source, week, len(joined))
     return len(joined)
 
 
-def etl_cbs_projections(conn: sqlite3.Connection) -> int:
-    """CBS season projections (their PPR pages — full-PPR leagues only)."""
+def etl_cbs_projections(conn: sqlite3.Connection, week: int = 0) -> int:
+    """CBS projections (their PPR pages — full-PPR leagues only).
+
+    Week 0 is the draft-season table; a week number pulls that week's, which is
+    what stops the in-season consensus running on three sources when the
+    preseason one runs on six.
+
+    UNVERIFIED for weeks until the season starts: probed 2026-08-26, CBS served
+    SEASON totals from the week-3 URL (Josh Allen at 419), presumably because
+    no 2026 week has been played. That is exactly the silent wrong-scale bug
+    the weekly median guard exists for — _batch_ok rejects the batch (median
+    124.9 against a 4-40 weekly band) and the source is recorded as skipped
+    rather than poisoning the consensus. If CBS still serves season numbers in
+    week 1, this source will simply never fill in-season, visibly, in the
+    nightly report. Do not "fix" that by loosening the guard.
+    """
     if _league_scoring(conn) != "ppr":
         return 0
-    return _write_source_projections(conn, "cbs", fetch_cbs_projections(settings.season))
+    return _write_source_projections(
+        conn, "cbs", fetch_cbs_projections(settings.season, week=week), week=week)
 
 
 def etl_fftoday_projections(conn: sqlite3.Connection) -> int:
@@ -557,6 +829,16 @@ def nightly(conn: sqlite3.Connection) -> dict:
         out["injuries"] = etl_injuries(conn)
     except Exception as e:
         out["injuries"] = f"failed: {e}"
+    try:
+        out["news"] = etl_news(conn)
+    except Exception as e:  # the wire is polled every few minutes anyway
+        out["news"] = f"failed: {e}"
+    try:
+        # Past drafts change slowly; re-reading them nightly is cheap and means
+        # a newly-linked previous season is picked up without a special run.
+        out["history"] = etl_draft_history(conn, client)
+    except Exception as e:
+        out["history"] = f"failed: {e}"
     out["adp"] = etl_adp(conn)
     out["values"] = etl_values(conn)
     out["projections"] = etl_projections(client, conn, week=0)
@@ -598,7 +880,18 @@ def nightly(conn: sqlite3.Connection) -> dict:
             out[f"fp_w{wk}"] = etl_fp_projections(conn, week=wk)
         except Exception as e:
             out[f"fp_w{wk}"] = f"failed: {e}"
+        try:
+            out[f"cbs_w{wk}"] = etl_cbs_projections(conn, week=wk)
+        except Exception as e:
+            out[f"cbs_w{wk}"] = f"failed: {e}"
         out[f"consensus_w{wk}"] = compute_consensus(conn, week=wk)
+        # Pairings for the week ahead, plus the realized scores of the weeks
+        # behind — the win-probability model reads both.
+        for target in {wk, max(1, wk - 1)}:
+            try:
+                out[f"matchups_w{target}"] = etl_matchups(conn, client, target)
+            except Exception as e:
+                out[f"matchups_w{target}"] = f"failed: {e}"
     # Persist the report — /health serves it so a quietly dying scrape source
     # becomes visible on the board and alertable from HA, not buried in
     # docker logs nobody reads.

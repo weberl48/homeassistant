@@ -5,17 +5,25 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import db, schedule
-from .config import DEMO_ROSTER_POSITIONS, MATERIALITY_PTS, settings
+# `alerts` imports brain right back; both bind the MODULE (not its members)
+# and only touch each other at call time, so the cycle resolves whichever
+# module Python reaches first.
+from . import alerts, db, schedule
+from .config import (DEMO_ROSTER_POSITIONS, MATERIALITY_PTS,
+                     RUN_WINDOW_PICKS, settings)
 from .demo import DEMO_DRAFT_ID, slot_for_pick
+from .engines import advisories
 from .engines import draft as draft_engine
 from .engines import grades as grades_engine
+from .engines import matchup as matchup_engine
+from .engines import room as room_engine
 from .engines import trades as trades_engine
 from .engines import waivers as waivers_engine
 from .engines.draft import Candidate
@@ -142,6 +150,60 @@ def _players_index(conn) -> dict[str, sqlite3.Row]:
     return {r["sleeper_id"]: r for r in conn.execute("SELECT * FROM players")}
 
 
+
+def room_tendencies(conn: sqlite3.Connection) -> dict[str, room_engine.Tendency]:
+    """How this room drafts against the market, from its own past drafts.
+
+    Empty until the league has enough completed history of the same shape —
+    and empty is the correct answer then, not a guess. See engines/room.py.
+    """
+    live = conn.execute(
+        "SELECT draft_id, settings_json FROM drafts ORDER BY updated_at DESC").fetchall()
+    if not live:
+        return {}
+    try:
+        current = json.loads(live[0]["settings_json"] or "{}")
+    except (ValueError, TypeError):
+        current = {}
+    teams_now = int(current.get("teams") or settings.teams)
+
+    players = _players_index(conn)
+    curves = []
+    for row in live:
+        try:
+            st = json.loads(row["settings_json"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        if not st.get("historical"):
+            continue
+        # A room of a different size is a different room; its curve says
+        # nothing about how twelve seats behave.
+        if st.get("teams") and int(st["teams"]) != teams_now:
+            continue
+        # Prefer the position recorded AT THE PICK: a 2023 draft is full of
+        # men the current players table no longer carries, and losing them
+        # would bend the early-round curve that actually matters.
+        picks = [{"pick_no": r["pick_no"],
+                  "pos": r["pos"] or (players[r["player_id"]]["pos"]
+                                      if r["player_id"] in players else None)}
+                 for r in conn.execute(
+                     "SELECT pick_no, player_id, pos FROM draft_picks WHERE draft_id=?",
+                     (row["draft_id"],))]
+        picks = [x for x in picks if x["pos"]]
+        if picks:
+            curves.append(room_engine.room_curve(picks))
+    if len(curves) < room_engine.MIN_DRAFTS:
+        return {}
+
+    adp_rows = [{"pos": players[r["player_id"]]["pos"], "adp": r["adp"]}
+                for r in conn.execute(
+                    "SELECT player_id, adp FROM adp WHERE source IN ('sleeper','ffc','demo')")
+                if r["player_id"] in players]
+    if not adp_rows:
+        return {}
+    return room_engine.tendencies(curves, room_engine.market_curve(adp_rows))
+
+
 def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     """Everything the Draft Board surface needs, in one payload."""
     # Newest draft wins: a league reset creates a second draft row, and an
@@ -226,6 +288,10 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     rp = roster_positions(conn)
 
     # Candidate pools per position (available players with consensus).
+    # This room's own habits, read from its past drafts. Empty (and therefore
+    # a no-op) until the league has enough completed history of the same shape.
+    tend = room_tendencies(conn)
+
     pools: dict[str, list[Candidate]] = {}
     board_rows: list[dict] = []
     for pid, c in cons.items():
@@ -245,9 +311,16 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             row.update(picked_by=pk["draft_slot"], pick_no=pk["pick_no"],
                        mine=pk["draft_slot"] == my_slot)
         elif my_next and a:
-            surv = draft_engine.survival_prob(a["adp"], a["stdev"], my_next)
+            # National ADP is the average of drafts full of strangers. This
+            # room has habits, and they are measurable from its own past
+            # drafts — see engines/room.py. Empty tendencies leave both values
+            # exactly as the market had them.
+            eff_adp = room_engine.adjust_adp(a["adp"], p["pos"], tend)
+            eff_sigma = room_engine.widen_sigma(
+                draft_engine.adp_sigma(a["adp"], a["stdev"]), p["pos"], tend)
+            surv = draft_engine.survival_prob(eff_adp, eff_sigma, my_next)
             row["survival"] = round(surv, 3)
-            wait_surv = (draft_engine.survival_prob(a["adp"], a["stdev"], my_after)
+            wait_surv = (draft_engine.survival_prob(eff_adp, eff_sigma, my_after)
                          if my_after else 0.0)
             pools.setdefault(p["pos"], []).append(
                 Candidate(pid, p["pos"], blended_value(pid, c["vbd"] or 0.0), wait_surv))
@@ -337,9 +410,46 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         {"pick_no": p["pick_no"], "round": p["round"],
          "player": players[p["player_id"]]["name"],
          "pos": players[p["player_id"]]["pos"],
-         "team": players[p["player_id"]]["team"]}
+         "team": players[p["player_id"]]["team"],
+         # the shelf panel cannot flag a bye it was never handed
+         "bye": players[p["player_id"]]["bye"]}
         for p in my_picks
     ]
+
+    # ------------------------------------------------------ the advisory layer
+    # Everything below is READ-ONLY: it is computed after the scores are final
+    # and never feeds back into them. A bye penalty inside the pick score would
+    # trade real season points for cosmetic tidiness (one bad week is
+    # streamable), and position pressure is not calibrated enough to touch
+    # survival. See engines/advisories.py.
+    slots = advisories.starting_slots(rp)
+    shelf = advisories.shelf_findings(
+        [{"pos": r["pos"], "name": r["player"], "team": r["team"], "bye": r["bye"]}
+         for r in my_roster], slots)
+
+    # What the room took at each position over the last window, against what
+    # ADP said that pick range would take. The residual — NOT a raw count of
+    # positions, which mostly measures the shape of the ADP curve and would
+    # double-count the very thing survival is already built from.
+    pressure: list[dict] = []
+    if len(picks) >= RUN_WINDOW_PICKS and status != "complete":
+        win = picks[-RUN_WINDOW_PICKS:]
+        lo, hi = win[0]["pick_no"], win[-1]["pick_no"]
+        observed: dict[str, int] = {}
+        for p in win:
+            if p["player_id"] in players:
+                pos = players[p["player_id"]]["pos"]
+                observed[pos] = observed.get(pos, 0) + 1
+        expected: dict[str, float] = {}
+        for pid, a in adp.items():
+            if pid in players and lo <= a["adp"] <= hi:
+                pos = players[pid]["pos"]
+                expected[pos] = expected.get(pos, 0.0) + 1.0
+        pressure = advisories.position_pressure(observed, expected)
+
+    srow = conn.execute("SELECT scoring_json FROM league LIMIT 1").fetchone()
+    scoring = json.loads(srow["scoring_json"]) if srow and srow["scoring_json"] else {}
+    priors = advisories.league_priors(scoring, rp, teams)
 
     return {
         "draft": {
@@ -361,6 +471,17 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         "my_roster": my_roster,
         "roster_positions": rp,
         "experts_call": experts_call,
+        "shelf": {"findings": [f.as_dict() for f in shelf["findings"]],
+                  "byes_known": shelf["byes_known"]},
+        "pressure": pressure,
+        "priors": priors,
+        # What this room does that the market doesn't. Empty when the league
+        # has no comparable history — the survival numbers are then plain
+        # market ADP, and the board says so rather than implying calibration
+        # it doesn't have.
+        "room": {"tendencies": [t.as_dict() for t in
+                                sorted(tend.values(), key=lambda t: -abs(t.offset))],
+                 "read": room_engine.read_out(tend)},
     }
 
 
@@ -403,6 +524,32 @@ def my_roster_row(conn: sqlite3.Connection) -> sqlite3.Row | None:
                         (settings.my_roster_id,)).fetchone()
 
 
+def week_bands(conn: sqlite3.Connection,
+               player_ids: list[str]) -> dict[str, tuple[float | None, float | None]]:
+    """Per-game floor/ceiling for a set of players, from Draft Sharks' season
+    band divided by their own projected games. One query for the roster rather
+    than one per player — the floor/ceiling lineups need every man banded, not
+    just the ones in a proposed swap.
+
+    Missing here is fine: engines/lineup falls back to a positional spread.
+    """
+    if not player_ids:
+        return {}
+    marks = ",".join("?" * len(player_ids))
+    out: dict[str, tuple[float | None, float | None]] = {}
+    for r in conn.execute(
+            f"SELECT pr.player_id, pr.floor, pr.ceiling, pl.proj_games "
+            f"FROM projections pr JOIN players pl ON pl.sleeper_id=pr.player_id "
+            f"WHERE pr.week=0 AND pr.source='draftsharks' "
+            f"AND pr.player_id IN ({marks})", player_ids):
+        games = r["proj_games"] or 17.0
+        lo = round(r["floor"] / games, 1) if r["floor"] else None
+        hi = round(r["ceiling"] / games, 1) if r["ceiling"] else None
+        if lo is not None or hi is not None:
+            out[r["player_id"]] = (lo, hi)
+    return out
+
+
 def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
     roster = my_roster_row(conn)
     if not roster:
@@ -419,11 +566,14 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
                         "The Board is where the season starts."}
     starters = json.loads(roster["starters_json"])
     rp = roster_positions(conn)
+    bands = week_bands(conn, ids)
     pool = [
         PlayerProj(pid, players[pid]["pos"], projs.get(pid, 0.0),
                    name=players[pid]["name"],
                    injury_status=players[pid]["injury_status"],
-                   on_bye=players[pid]["bye"] == week)
+                   on_bye=players[pid]["bye"] == week,
+                   floor=bands.get(pid, (None, None))[0],
+                   ceiling=bands.get(pid, (None, None))[1])
         for pid in ids if pid in players
     ]
     d = diff_lineup(pool, starters, rp)
@@ -530,6 +680,134 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
                                for w in (r["wx"] or [])}),
         "lineup_hash": lineup_hash(starters),
         "rec": dict(open_rec) if open_rec else None,
+        # Who you're playing, and what that does to the right lineup.
+        "matchup": week_matchup(conn, week, pool, rp, d),
+        # The wire's freshest word on anyone in this room.
+        "news": alerts.for_players(
+            conn, [r["id"] for r in actual_rows + bench_rows]),
+    }
+
+
+# The alternative lineup has to buy enough win probability to be worth the
+# words. Below this it is noise dressed as strategy.
+MIN_STRATEGY_SWING = 0.02
+
+
+def _matchup_sigma(conn: sqlite3.Connection) -> tuple[float, str]:
+    """This league's own scoring spread, measured from every roster-week where
+    both a projection and a realized score exist."""
+    residuals = [r["points_for"] - r["proj_for"] for r in conn.execute(
+        "SELECT points_for, proj_for FROM matchups "
+        "WHERE points_for IS NOT NULL AND proj_for IS NOT NULL AND proj_for > 0")]
+    return matchup_engine.sigma_from_history(residuals)
+
+
+def week_matchup(conn: sqlite3.Connection, week: int, pool: list[PlayerProj],
+                 rp: list[str], d) -> dict | None:
+    """The head-to-head: his projected score, the odds, and which of the three
+    lineups this week actually wants.
+
+    The optimizer maximises expected points, which is the right objective only
+    when the game is close. A heavy favourite should be buying floor and a
+    heavy underdog should be buying ceiling — see engines/matchup.py. Returns
+    None when the league hasn't published a pairing for the week (pre-season,
+    or a bye in the schedule), because inventing an opponent would be worse
+    than saying nothing.
+    """
+    me = my_roster_row(conn)
+    if not me:
+        return None
+    row = conn.execute(
+        "SELECT * FROM matchups WHERE week=? AND roster_id=?",
+        (week, me["roster_id"])).fetchone()
+    if not row or row["opp_roster_id"] is None:
+        return None
+    opp = conn.execute("SELECT * FROM rosters WHERE roster_id=?",
+                       (row["opp_roster_id"],)).fetchone()
+
+    # His projected score: what he has actually set, which is what he will
+    # score — not what he could optimally set. Falls back to his best lineup
+    # when the league hasn't published starters yet.
+    projs = week_projections(conn, week)
+    players = _players_index(conn)
+    opp_ids = json.loads(opp["players_json"] or "[]") if opp else []
+    opp_starters = json.loads(opp["starters_json"] or "[]") if opp else []
+
+    def to_proj(ids: list[str]) -> list[PlayerProj]:
+        return [PlayerProj(pid, players[pid]["pos"], projs.get(pid, 0.0),
+                           name=players[pid]["name"],
+                           injury_status=players[pid]["injury_status"],
+                           on_bye=players[pid]["bye"] == week)
+                for pid in ids if pid in players]
+
+    if opp_starters:
+        opp_proj = round(sum(p.startable_proj for p in to_proj(opp_starters)), 1)
+        opp_basis = "his lineup as set"
+    else:
+        opp_proj = round(optimize(to_proj(opp_ids), rp).total, 1)
+        opp_basis = "his best lineup (none set yet)"
+    if not opp_proj and row["proj_against"]:
+        opp_proj, opp_basis = round(row["proj_against"], 1), "the league's own projection"
+
+    sigma, sigma_note = _matchup_sigma(conn)
+    expected = d.optimal if d.optimal else optimize(pool, rp)
+    floor_lu = optimize(pool, rp, objective="floor")
+    ceil_lu = optimize(pool, rp, objective="ceiling")
+
+    def wp(total: float) -> float:
+        return matchup_engine.win_probability(total, opp_proj, sigma)
+
+    # A floor lineup wins by removing downside, not by scoring more, so its
+    # win probability has to be judged on the distribution it produces — a
+    # tighter spread around a slightly lower mean. Approximate that by
+    # crediting half the reduction in the lineup's own spread.
+    def wp_shaped(lu) -> float:
+        spread = max(1.0, (lu.ceiling_total - lu.floor_total) / 2.0)
+        base_spread = max(1.0, (expected.ceiling_total - expected.floor_total) / 2.0)
+        adj = sigma * math.sqrt(max(0.05, spread / base_spread))
+        return matchup_engine.win_probability(lu.total, opp_proj, adj)
+
+    wp_expected = wp(expected.total)
+    plan = matchup_engine.strategy(wp_expected)
+    wp_floor, wp_ceiling = wp_shaped(floor_lu), wp_shaped(ceil_lu)
+    gain = matchup_engine.swing(wp_floor, wp_expected, wp_ceiling, plan.key)
+    alt = {"floor": floor_lu, "ceiling": ceil_lu}.get(plan.key)
+    # Only speak when the alternative both differs from the expected-points
+    # lineup and moves the odds enough to matter.
+    changes = (sorted(alt.starter_ids) != sorted(expected.starter_ids)) if alt else False
+    actionable = bool(alt and changes and gain >= MIN_STRATEGY_SWING)
+
+    return {
+        "opponent": (opp["owner"] if opp else None) or f"roster {row['opp_roster_id']}",
+        "opp_roster_id": row["opp_roster_id"],
+        "opp_proj": opp_proj,
+        "opp_basis": opp_basis,
+        "my_proj": round(expected.total, 1),
+        "margin": round(expected.total - opp_proj, 1),
+        "win_prob": round(wp_expected, 3),
+        "sigma": round(sigma, 1),
+        "sigma_note": sigma_note,
+        "strategy": plan.as_dict(),
+        "actionable": actionable,
+        "swing": round(gain, 3),
+        "bands": {
+            "floor": round(expected.floor_total, 1),
+            "expected": round(expected.total, 1),
+            "ceiling": round(expected.ceiling_total, 1),
+        },
+        "alt": ({
+            "objective": plan.key,
+            "total": round(alt.total, 1),
+            "floor": round(alt.floor_total, 1),
+            "ceiling": round(alt.ceiling_total, 1),
+            "win_prob": round(wp_floor if plan.key == "floor" else wp_ceiling, 3),
+            "rows": [{"slot": slot, "id": p.player_id, "name": p.name, "pos": p.pos,
+                      "proj": round(p.startable_proj, 1),
+                      "floor": round(p.startable_floor, 1),
+                      "ceiling": round(p.startable_ceiling, 1),
+                      "swap_in": p.player_id not in expected.starter_ids}
+                     for slot, p in alt.assignment],
+        } if actionable else None),
     }
 
 
@@ -889,6 +1167,10 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
                 "partner_roster_id": r["roster_id"],
                 "give": [{"id": p, "name": players[p]["name"], "pos": players[p]["pos"]} for p in give],
                 "receive": [{"id": p, "name": players[p]["name"], "pos": players[p]["pos"]} for p in get],
+                # Flat id lists so the shortlist can reason about packages
+                # without re-deriving them from the display rows.
+                "give_ids": list(give),
+                "receive_ids": list(get),
                 "my_gain": round(my_gain, 1),
                 "their_gain": round(their_gain, 1),
                 "vbd_edge": detail["vbd_edge"],
@@ -896,8 +1178,19 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
                 "summary": detail["summary"],
             }
 
-    top = sorted(proposals.values(), key=lambda t: -t["score"])[:limit]
+    # Enumerating packages produces the same deal many times over (a throw-in
+    # that cracks neither lineup moves neither number). Shortlisting is what
+    # turns that enumeration into a list a human can read — see
+    # engines/trades.shortlist for the three filters and why each exists.
+    top = trades_engine.shortlist(list(proposals.values()), limit=limit)
+    for t in top:
+        volume = sum(abs((vals[p]["redraft_value"] or 0.0)) if p in vals else 0.0
+                     for p in t["give_ids"] + t["receive_ids"])
+        t["verdict"] = trades_engine.value_verdict(
+            t["my_gain"], t["vbd_edge"], t["market_edge"],
+            len(t["give_ids"]), len(t["receive_ids"]), market_volume=volume)
     return {"trades": top,
+            "considered": len(proposals),
             "note": "Both lineups improve or the other side isn't hurt — deals that can actually close. Advisory only."}
 
 
@@ -1087,10 +1380,10 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         v = cons[pid]["pts_robust"] or 0
         worst_by_pos[pos] = min(worst_by_pos.get(pos, 1e9), v)
 
-    # Score everyone first, then band by RANK within this week's pool. Fixed
-    # point thresholds silently break when the value scale changes: fa_score
-    # runs on season-scale consensus in-season, so a 30/10 cut put every
-    # target in "hot" and every bid flat-lined at the same dollar.
+    # Score everyone first, then rank within this week's pool. Fixed point
+    # thresholds silently break when the value scale changes: fa_score runs on
+    # season-scale consensus in-season, so a 30/10 cut put every target in
+    # "hot" and every bid flat-lined at the same dollar.
     scored = []
     for pid, c in cons.items():
         if pid in rostered or pid not in players:
@@ -1103,42 +1396,64 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         scored.append((pid, p, score))
     scored.sort(key=lambda t: -t[2])
     n = len(scored)
-    hot_cut, solid_cut = max(1, round(n * 0.10)), max(2, round(n * 0.35))
 
-    # Band prices come from the league's own history, so a THIN band (the hot
-    # bucket every September) falls back to the whole book — which can price
-    # a hot target below a solid one. The ladder must never invert.
-    band_bid: dict[str, int] = {}
-    for b in ("hot", "solid", "dart"):
-        h = hist_by_tier[b]
-        band_bid[b] = waivers_engine.size_bid(
-            1.0, h if len(h) >= 3 else bids_hist, settings.faab_budget).bid
-    band_bid["solid"] = min(band_bid["solid"], band_bid["hot"])
-    band_bid["dart"] = min(band_bid["dart"], band_bid["solid"])
+    # Would he crack the lineup? Computed for the whole shortlist up front,
+    # because price depends on it: a man who does not start is depth, and
+    # depth pays the depth price.
+    my_pool = [PlayerProj(pid, players[pid]["pos"],
+                          (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
+                          players[pid]["name"],
+                          ros_status(players[pid]["injury_status"]))
+               for pid in my_ids if pid in players]
+    base_lineup = optimize(my_pool, rp)
+    base_total = base_lineup.total
+    shortlist = scored[:20]
+
+    def gain_for(pid: str, pos: str, name: str) -> float:
+        cand = PlayerProj(pid, pos,
+                          (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
+                          name, ros_status(players[pid]["injury_status"]))
+        return round(optimize(my_pool + [cand], rp).total - base_total, 1)
+
+    gains = {pid: (gain_for(pid, p["pos"], p["name"]) if my_ids else None)
+             for pid, p, _ in shortlist}
+
+    # Re-rank on what he is worth TO THIS ROSTER, not to a generic one.
+    # fa_score measures a man against the worst body at his position, which is
+    # the right way to find him and the wrong way to price him: a receiver who
+    # out-scores your WR5 but never cracks the lineup is worth less than a back
+    # who starts on Sunday. So the ordering blends the immediate lineup gain
+    # with a fraction of fa_score standing in for option value — depth, byes,
+    # and the injury you haven't had yet.
+    OPTION_WEIGHT = 0.35
+    shortlist.sort(key=lambda t: -(max(0.0, gains.get(t[0]) or 0.0)
+                                   + OPTION_WEIGHT * t[2]))
 
     out = []
-    for rank, (pid, p, score) in enumerate(scored):
-        band = "hot" if rank < hot_cut else "solid" if rank < solid_cut else "dart"
-        tier_hist = hist_by_tier[band]
-        # thin tier history (< 3 bids) falls back to the whole book
-        advice = waivers_engine.size_bid(
-            score, tier_hist if len(tier_hist) >= 3 else bids_hist,
-            settings.faab_budget)
-        if bids_hist:                      # ladder-clamped price for the band
-            advice = waivers_engine.BidAdvice(
-                fa_score=advice.fa_score, bid=band_bid[band],
-                hard_confirm=band_bid[band] > 0.5 * settings.faab_budget,
-                history_n=advice.history_n)
+    for rank, (pid, p, score) in enumerate(shortlist):
+        # Percentile within this week's pool, best man = 1.0. Continuous, so
+        # the price tracks the value instead of stepping between three bands.
+        value_pct = 1.0 - (rank / max(1, n - 1)) if n > 1 else 1.0
+        starts = bool(gains.get(pid)) and (gains.get(pid) or 0) > 0
+        if bids_hist:
+            bid = waivers_engine.price_at(value_pct, bids_hist,
+                                          settings.faab_budget, starts=starts)
+        else:  # no book to read: fall back to the score-proportional rule
+            bid = waivers_engine.size_bid(score, [], settings.faab_budget).bid
         out.append({
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
-            "fa_score": round(score, 1), "bid": advice.bid,
-            "hard_confirm": advice.hard_confirm,
+            "fa_score": round(score, 1), "bid": bid,
+            "value_pct": round(value_pct, 3),
+            "hard_confirm": bid > waivers_engine.HARD_CONFIRM_FRACTION * settings.faab_budget,
             # the row's OWN tier — `c` here would be a stale loop leftover
             "tier": cons[pid]["tier"] if pid in cons else None,
             "heat": heat.get(pid, 0),
+            "lineup_gain": gains.get(pid),
         })
-    out.sort(key=lambda r: -r["fa_score"])
-    top = out[:20]
+    for row, bid in zip(out, waivers_engine.enforce_ladder([r["bid"] for r in out])):
+        row["bid"] = bid
+        row["hard_confirm"] = bid > waivers_engine.HARD_CONFIRM_FRACTION * settings.faab_budget
+    top = out
 
     # Schedule context: who the target plays this week, and the bid traps —
     # on bye now (he can't help the week you bought him) or next week.
@@ -1156,24 +1471,80 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
             t["imp"] = g["implied_total"] if g else None
             t["wx"] = schedule.weather_flags(g)
 
-    # "Would he start?" — adding the candidate to my roster and re-optimizing
-    # tells whether he cracks the lineup (gain > 0) or is depth.
-    if my_ids:
-        base = [PlayerProj(pid, players[pid]["pos"],
-                           (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
-                           players[pid]["name"],
-                           ros_status(players[pid]["injury_status"]))
-                for pid in my_ids if pid in players]
-        base_total = optimize(base, rp).total
-        for t in top:
-            cand = PlayerProj(t["id"], t["pos"],
-                              (cons[t["id"]]["pts_robust"] or 0.0) if t["id"] in cons else 0.0,
-                              t["name"],
-                              ros_status(players[t["id"]]["injury_status"]))
-            t["lineup_gain"] = round(optimize(base + [cand], rp).total - base_total, 1)
-    else:
-        for t in top:
-            t["lineup_gain"] = None
+    # Who leaves. A bid the owner cannot execute is half an answer, and in a
+    # full-roster league every add IS a drop. The man to cut is the one whose
+    # absence costs the optimal lineup least — computed by removing him and
+    # re-optimising, never by raw points (a bench quarterback with a big
+    # number is worth less than a startable flex with a small one).
+    drop = drop_candidate(conn, my_ids, my_pool, rp, base_total)
+    for t in top:
+        t["drop"] = drop
+
+    # The wire's word on each target, and the reason half of them are here:
+    # a free agent whose starter just went on IR is not a value pick, he is a
+    # job opening. That is how waiver weeks are actually won, and until the
+    # wire existed this board could not see it.
+    news = alerts.for_players(conn, [t["id"] for t in top])
+    openings = job_openings(conn, rostered)
+    for t in top:
+        t["news"] = news.get(t["id"])
+        t["opening"] = openings.get((t["team"], t["pos"]))
 
     return {"targets": top, "history_n": len(bids_hist),
+            "pool": n, "budget": settings.faab_budget,
+            "pricing": ("this league's own bids, indexed continuously by the "
+                        "target's value percentile" if bids_hist
+                        else "no bid history on the books — score-proportional"),
             "note": "Advisory only — waivers have no actuation path."}
+
+
+def drop_candidate(conn: sqlite3.Connection, my_ids: list[str],
+                   my_pool: list[PlayerProj], rp: list[str],
+                   base_total: float) -> dict | None:
+    """The cheapest man to cut: whose removal costs the optimal lineup least.
+
+    Ties break toward the man already carrying a season-ending tag, then toward
+    the lowest projection. Returns None on a roster with nothing spare — with
+    every man starting, the honest answer is that there is no free add.
+    """
+    if len(my_pool) <= len([s for s in rp if s not in ("BN", "IR", "TAXI")]):
+        return None
+    best = None
+    for p in my_pool:
+        rest = [q for q in my_pool if q.player_id != p.player_id]
+        cost = round(base_total - optimize(rest, rp).total, 1)
+        key = (cost, 0 if (p.injury_status or "") else 1, p.proj)
+        if best is None or key < best[0]:
+            best = (key, {"id": p.player_id, "name": p.name, "pos": p.pos,
+                          "cost": cost, "injury": p.injury_status})
+    return best[1] if best else None
+
+
+# How long a departure keeps the job behind it interesting.
+JOB_OPENING_DAYS = 14
+
+
+def job_openings(conn: sqlite3.Connection,
+                 rostered: set[str]) -> dict[tuple[str, str], dict]:
+    """{(team, pos): the departure that opened the job}.
+
+    A wire item that puts a ROSTERED man on injured reserve, or releases him,
+    leaves work behind at his club and his position. Every free agent sharing
+    that (team, position) is a candidate for it. Only departures count — a
+    questionable tag is not a job opening, and treating it as one would flag
+    half the league every Friday.
+    """
+    out: dict[tuple[str, str], dict] = {}
+    for r in conn.execute(
+            "SELECT n.*, p.team, p.pos FROM news n "
+            "JOIN players p ON p.sleeper_id = n.player_id "
+            "WHERE n.departure=1 AND p.team IS NOT NULL "
+            f"AND COALESCE(n.published_at, n.fetched_at) >= datetime('now', '-{JOB_OPENING_DAYS} days') "
+            "ORDER BY COALESCE(n.published_at, n.fetched_at) DESC"):
+        if r["player_id"] not in rostered:
+            continue
+        out.setdefault((r["team"], r["pos"]), {
+            "name": r["name_raw"], "headline": r["headline"],
+            "published_at": r["published_at"],
+        })
+    return out
