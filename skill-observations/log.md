@@ -200,3 +200,70 @@ if it carries no date, verify it before it carries an argument.
 **Issue:** The surplus rule counts only dedicated roster slots (RB=2, WR=2), deliberately excluding FLEX because FLEX belongs to no single position. That is correct for the demo fixture, which has one FLEX. The user's real league has **two**, so a seat legitimately starting three or four RB/WR reads as "deep at RB" when it is not. The fact was not obscure: `bootlegger_deployment.md` in auto-memory already recorded the exact league shape — "QB/2RB/2WR/TE/**2 FLEX**/K/DEF+5BN" — before the rule was written. I explored the repo thoroughly (schema, ingest, API, frontend) and never opened the memory that described the production environment the feature targets. The demo fixture structurally cannot surface the gap, so tests passed and live verification (pre-draft, empty rosters) exercised none of it.
 **Suggested improvement:** In the context-exploration step, add: when the feature's behavior depends on the user's real-world configuration (league settings, device inventory, account tiers, schema variants), read the relevant auto-memory *and* the live config before choosing thresholds — not only the repo. The repo shows what the code does; memory and live config show what it will meet. Pairs with [[Observation 8]]: that one says price each option before asking, this one says check what is already known about the target environment before designing against it.
 **Principle:** A demo fixture encodes one shape of the world. Anything calibrated against it inherits that shape as a hidden assumption, and the fixture can never falsify it — so the check has to come from outside the fixture.
+
+### Observation 17: An assertion that only holds when the system is idle fails when it matters
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Building `driver.py audit` for Bootlegger. Wrote a check
+for a real defect — a live region announcing on every 1 Hz poll — as "zero
+mutations across a 10s window".
+**Skill:** New skill candidate: `writing-regression-gates` (or an addition to
+`stress-test-findings`, which already attacks findings but not the ASSERTIONS
+written to defend them).
+**Issue:** "Zero mutations" is only true on an idle board. During a live draft
+the clock legitimately changes every couple of seconds, so the check would
+have failed for the system doing its job — on draft night, the one occasion
+the check exists to protect. It passed in testing purely because the 10s
+window happened to land inside the demo's on-the-clock pause. The invariant I
+actually wanted was one announcement per MEANING change, which holds in both
+states.
+**Suggested improvement:** When writing a gate, name the busy state as well as
+the quiet one and check the assertion holds in both. A gate verified only
+against a resting system encodes "nothing is happening" as if it were
+"nothing is wrong". Verify in both directions: break the fix and confirm the
+gate fails; exercise the busy path and confirm it does not.
+**Principle:** An assertion is a claim about an invariant, not about a moment.
+If it only holds while nothing is happening, it is measuring stillness.
+
+### Observation 18: Fixture shape decides which bugs are reachable
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Same session. A 15-check gate passed 15/15 against the
+local demo and failed the moment it was pointed at the live box — twice, on
+two different defects.
+**Skill:** `bootlegger/.claude/skills/run-bootlegger` has the app-specific note
+already; the generalizable half belongs with test/gate guidance.
+**Issue:** Bootlegger's demo seeds an EMPTY slip and a COMPLETED draft, and
+rosters 168 of its 182 players. Three consequences, all invisible locally:
+the slip's reorder buttons never render (they shipped at 20x22px); The Call
+never carries a long name over a stat row (it painted 51px over the first
+board column); and the free-agent pool is five men, where a percentile bug
+that collapses the FAAB ladder at realistic pool sizes cannot appear. Each
+was a real defect the fixture was structurally incapable of producing.
+**Suggested improvement:** Before trusting a gate, enumerate what the fixture
+CANNOT produce — empty vs populated collections, short vs long strings, small
+vs large N, each lifecycle state — and either extend the fixture or run the
+gate against a real instance. For the FAAB case the test ships its own
+300-player fixture rather than relying on the demo's five.
+**Principle:** A fixture is not a smaller version of production; it is a
+different shape. Bugs live in the shapes it does not have.
+
+### Observation 19: Observation 12 recurred — a generated regex needs a positive match, not a parse
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Same session, writing a token-drift check through a
+Python generator script.
+**Skill:** Existing entry — Observation 12 ("A rule written through a code
+generator needs its escaping checked, not just its logic").
+**Issue:** `\b` in the generator's string collapsed into a literal backspace
+byte (0x08) in the written file, so the regex demanded a backspace before
+every token name and matched nothing. The file parsed, imported, and ran
+clean; the check simply reported "no shared tokens found" and I first went
+hunting for a path bug. Three further repair attempts failed for the same
+reason before switching to `bytes([8])` to avoid writing an escape at all.
+**Suggested improvement:** Strengthen Observation 12's enforcement from
+"check the escaping" to a concrete gate: after generating any regex, run it
+once against a known-positive sample and assert a non-empty match, in the same
+step that writes it. Parsing is not evidence; matching is.
+**Principle:** A rule that cannot fire is indistinguishable from a rule that
+found nothing. Only a known-positive sample tells them apart.
