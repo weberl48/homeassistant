@@ -127,6 +127,64 @@ and readings never borrow lamp green or Bills red, whichever way they lean. A
 - **The Bedsheet Marker Rule.** Permanent Marker appears ONLY in these stamps
   (`.mafia-stamp` and THE TABLE's smash tag). Anywhere else it is a defect.
 
+## The Measures
+
+Rooms do not carry their own widths. Four ad-hoc caps (860/980/1240/1560) used
+to sit inline across the rooms, one of them — This Week — without an auto
+margin, so it hung left while its neighbours centred. They are now four named
+measures in `:root`, and a room states which it wants:
+
+| token | width | who wears it |
+|---|---|---|
+| `--w-sheet` | 960px | one table, few columns — Waivers, The Ledger |
+| `--w-hall` | 1280px | two-up — This Week, The Parlor, The League |
+| `--w-field` | 1560px | full bleed — The Board, the masthead, the colophon |
+| `--w-read` | 68ch | **prose only**, never a room |
+
+`--w-read` being separate is the load-bearing part: the real objection to a
+wide room is line length, and line length is no longer coupled to room width.
+`.room-body` owns `margin-inline: auto`, so the centring cannot be forgotten
+per-room the way it was. `driver.py audit` fails on any `max-width` literal
+≥800px reappearing in the stylesheet.
+
+## The Four That Decide
+
+The board shows QB/RB/WR/TE across one row from 1180px up, with K and D/ST
+folded into a paired half-height strip beneath. Six across is not reachable at
+1440 — the modal laptop, and the width most drafts are actually run at: 1400px
+less a 300px rail less the gaps leaves 1076px, and a player row needs ~190px
+before its own second line starts compressing (measured: `.l2` scrollWidth 189
+against a 188px column at 1920). Six of 1076 is 167px each. The old ladder
+handled that by dropping to THREE columns and pushing half the board below the
+fold on draft night.
+
+Four at 258px each is wider and more legible than six ever was at 1920, and it
+is the honest cut: the engine itself holds K/DEF's need multiplier at 0.25
+until every skill starter is filled (`engines/draft.py`). It is the same fold
+the deep shelf already uses on a phone, applied to positions instead of the
+tail. At 1700+ there is room for all six on one row and the board takes it.
+
+## The Live-Region Rule
+
+A live region may only announce when its **meaning** changes. Every write goes
+through `setLive(el, text)`, which no-ops on an identical string. This is not
+pedantry: `renderClock` used to assign `textContent` unconditionally on a 1 Hz
+poll, and assigning the same string is still a mutation of the accessibility
+tree — so a screen reader read "PICK 23 OF 180 · ROUND 2" aloud once a second
+for the entire draft. The wire banner's age ticker is `aria-hidden` for the
+same reason: the alert fires once when the wire drops, not sixty times a
+minute. `driver.py audit` watches every live region for ten seconds of idle
+polling and fails on a single mutation.
+
+## Rooms Are Linkable
+
+The selected room lives in `location.hash`, so Back leaves the room you came
+from instead of the app, and a room can be bookmarked or sent to your own
+phone. A room named in the URL outranks the phase router — following a
+`#waivers` link on a cold browser must not land you on This Week a beat later
+because the first board poll saw a phase it had never recorded. A draft going
+live still overrules a link; nothing else does.
+
 ## Motion: The Broadcast Cut
 
 One grammar: rooms cut in like broadcast graphics — rise and settle. Rooms:

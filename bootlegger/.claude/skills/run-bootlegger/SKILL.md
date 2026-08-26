@@ -71,8 +71,18 @@ C:\Python314\python.exe .claude\skills\run-bootlegger\driver.py flow   <outdir>
 | `check` | page paints, no JS errors | `title 'BOOTLEGGER' · 6 tabs · 6 cols · 182 rows · js errors none` |
 | `shots` | all six tabs render; PNG each | `OK: all tabs rendered` |
 | `flow` | approve → executed → verified, via real button click | `OK: rec reached verified` |
+| `audit` | the A++ gate — 13 checks a screenshot cannot make | `OK: all 13 audit checks passed` |
 
-`all` runs the four in sequence. Every command exits nonzero on failure, so they
+`audit` (in `audit.py`, next to the driver) is the one that catches what
+review by eye does not: live regions announcing on an idle poll, a tablist
+that is only styled like one, focus that never returns from the scout's file,
+a control under 44px, rendered contrast under AA, sideways scroll at any of
+five widths, the deciding columns wrapping, and the extension's inline palette
+drifting from the board's. Every check corresponds to a defect that shipped at
+least once — that is the entry requirement, so the file stays a record rather
+than a wishlist.
+
+`all` runs the five in sequence. Every command exits nonzero on failure, so they
 are usable as a gate.
 
 To smoke-test the **live** Pi after a deploy, point the driver at it — but run
@@ -136,6 +146,20 @@ have trouble in the lineup" with Drake London struck through as OUT and an
 enabled **APPROVE & EXECUTE** button.
 
 ## Gotchas
+
+- **A running server is not proof it is running THIS code.** `StaticFiles`
+  reads HTML/CSS/JS from disk per request, so the frontend is always current;
+  the Python is whatever was imported at process start. A server started before
+  a commit that added routes serves a NEW frontend calling OLD endpoints, and
+  it presents as a broken feature rather than a stale process — a `/api/wire`
+  404 on every tab once read as "the wire endpoint is broken". Hashing
+  `/assets/app.js` against the worktree proves nothing. Probe a route from a
+  recent commit, or just restart, before reviewing anything.
+- **The committed review PNGs under `.impeccable/review/` are provenance for
+  the commit that wrote them, not the current build.** Before grading or
+  critiquing the UI, `git log -1 -- .impeccable/review/` and recapture if
+  anything under `server/app/` has landed since. One of them showed a Parlor
+  bug that had been fixed four commits earlier.
 
 - **`drafts.updated_at` is a liveness heartbeat, not a pick log.** The board
   banners `PICK FEED STALE` whenever it ages past 10s during a drafting draft

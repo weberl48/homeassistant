@@ -12,6 +12,21 @@ const POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/* THE LIVE-REGION RULE: a live region may only announce when its MEANING
+   changes. The board repaints at 1 Hz during a draft, and renderClock used to
+   assign textContent unconditionally — which, inside an aria-live="polite"
+   plate, made a screen reader read "PICK 23 OF 180 · ROUND 2" aloud once a
+   second for the entire draft. Assigning the identical string is still a
+   mutation to the accessibility tree, so "the text didn't change" is not the
+   same as "nothing was announced". Every write into a live region goes
+   through here; `driver.py audit` fails the build if an idle poll mutates one. */
+function setLive(el, text) {
+  if (!el) return;
+  const next = String(text ?? "");
+  if (el.textContent === next) return;
+  el.textContent = next;
+}
+
 /* Optional shared secret for mutating routes (set BOOTLEGGER_API_TOKEN on the
    server, then localStorage.setItem('bootlegger.token', ...) on each device). */
 let TOKEN = "";
@@ -48,6 +63,13 @@ const state = {
    meets you at the door — otherwise your remembered tab is respected. */
 const PHASE_ROOM = { pre_draft: "board", drafting: "board", complete: "week" };
 let _practicePhase = null;
+/* A room asked for BY NAME outranks the phase router. Rooms became linkable
+   the same day this guard was written: without it, following a #waivers link
+   on a cold browser lands you on This Week a beat later, because the first
+   board poll sees a phase it has never recorded and shows you the door it
+   thinks you want. A draft going live still moves you — that one is urgent
+   enough to overrule a link — but nothing else does. */
+let roomPinned = false;
 function applyPhase(status, practice) {
   if (!status) return;
   if (practice) {
@@ -61,7 +83,8 @@ function applyPhase(status, practice) {
   if (status === localStorage.getItem("bootlegger.phase")) return;
   localStorage.setItem("bootlegger.phase", status);
   // Mid-session, only a draft going live is urgent enough to move you.
-  if (!state.booted || status === "drafting") setTab(PHASE_ROOM[status] || "board");
+  if (status === "drafting") { roomPinned = false; setTab("board"); return; }
+  if (!state.booted && !roomPinned) setTab(PHASE_ROOM[status] || "board");
 }
 
 /* ---------------------------------- icons -------------------------------- */
@@ -147,19 +170,61 @@ setInterval(() => {
 }, 1000);
 
 /* ---------------------------------- tabs ---------------------------------- */
-document.querySelectorAll(".tab").forEach((b) =>
-  b.addEventListener("click", () => setTab(b.dataset.tab)));
+const ROOMS = ["board", "week", "waivers", "league", "parlor", "ledger"];
 
-function setTab(tab) {
+document.querySelectorAll(".tab").forEach((b) =>
+  b.addEventListener("click", () => { roomPinned = true; setTab(b.dataset.tab); }));
+
+/* Arrow keys are not a nicety here — a tablist without them is an incomplete
+   pattern, and a screen-reader user who lands on the strip expects Left/Right
+   to move between rooms rather than Tab. Roving tabindex keeps the whole strip
+   a single tab stop. */
+$("#tabs").addEventListener("keydown", (e) => {
+  const keys = { ArrowLeft: -1, ArrowRight: 1, Home: "first", End: "last" };
+  if (!(e.key in keys)) return;
+  e.preventDefault();
+  const i = ROOMS.indexOf(state.tab);
+  const move = keys[e.key];
+  const next = move === "first" ? 0
+    : move === "last" ? ROOMS.length - 1
+    : (i + move + ROOMS.length) % ROOMS.length;
+  roomPinned = true;
+  setTab(ROOMS[next]);
+  $(`#tab-${ROOMS[next]}`).focus();
+});
+
+/* Six rooms do not fit a phone, so the strip scrolls. The caret at its right
+   edge is the only thing that says so in a still frame — and it leaves once
+   there is nothing further to scroll to. */
+(() => {
+  const strip = $("#tabs"), wrap = $("#tabs-wrap");
+  const sync = () => wrap.classList.toggle(
+    "at-end", strip.scrollLeft >= strip.scrollWidth - strip.clientWidth - 2);
+  strip.addEventListener("scroll", sync, { passive: true });
+  addEventListener("resize", sync);
+  sync();
+})();
+
+/* The room is in the URL. Back leaves the room you came from instead of the
+   app, and a room can be bookmarked or sent to your own phone. localStorage
+   stays as the fallback for a bare URL. */
+addEventListener("hashchange", () => {
+  const want = location.hash.replace(/^#/, "");
+  if (ROOMS.includes(want) && want !== state.tab) { roomPinned = true; setTab(want, { push: false }); }
+});
+
+function setTab(tab, { push = true } = {}) {
+  if (!ROOMS.includes(tab)) tab = "board";
   state.tab = tab;
-  localStorage.setItem("bootlegger.tab", tab);
+  try { localStorage.setItem("bootlegger.tab", tab); } catch { /* private mode */ }
+  if (push && location.hash.replace(/^#/, "") !== tab) location.hash = tab;
   document.querySelectorAll(".tab").forEach((b) => {
     const active = b.dataset.tab === tab;
     b.classList.toggle("is-active", active);
-    if (active) b.setAttribute("aria-current", "page");
-    else b.removeAttribute("aria-current");
+    b.setAttribute("aria-selected", String(active));
+    b.tabIndex = active ? 0 : -1;
   });
-  for (const room of ["board", "week", "waivers", "league", "parlor", "ledger"])
+  for (const room of ROOMS)
     $(`#room-${room}`).hidden = room !== tab;
   if (tab === "waivers") loadWaivers();
   if (tab === "league") loadLeague();
@@ -273,8 +338,19 @@ function buildColumns(board) {
     if (rule === rule.parentElement.firstElementChild) { col.classList.add("shelf-open"); return; }
     const n = [...rule.parentElement.querySelectorAll(".prow")].filter(
       (el) => rule.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).length;
-    rule.innerHTML = `The deep shelf <span class="shelf-n">${n} more</span>`;
-    rule.addEventListener("click", () => col.classList.toggle("shelf-open"));
+    // It folds a dozen players away, so it is a control, not a caption — and a
+    // control the keyboard cannot reach is a control half the room does not
+    // have. Swapped from <div> + click handler to a real button with state.
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = rule.className;
+    btn.setAttribute("aria-expanded", "false");
+    btn.innerHTML = `The deep shelf <span class="shelf-n">${n} more</span>`;
+    btn.addEventListener("click", () => {
+      const open = col.classList.toggle("shelf-open");
+      btn.setAttribute("aria-expanded", String(open));
+    });
+    rule.replaceWith(btn);
   });
   applyPosFilter();
 }
@@ -313,23 +389,23 @@ function renderClock(d) {
   const plate = $("#clockplate");
   plate.classList.toggle("is-mine", !!d.on_the_clock_me);
   if (d.status === "pre_draft") {
-    $("#clock-line").textContent = "AWAITING KICKOFF";
-    $("#clock-sub").textContent = "the draft hasn't started — the board warms up";
+    setLive($("#clock-line"), "AWAITING KICKOFF");
+    setLive($("#clock-sub"), "the draft hasn't started — the board warms up");
     return;
   }
   if (d.status === "complete") {
-    $("#clock-line").textContent = "DRAFT COMPLETE";
-    $("#clock-sub").textContent = `${d.rounds} rounds in the books`;
+    setLive($("#clock-line"), "DRAFT COMPLETE");
+    setLive($("#clock-sub"), `${d.rounds} rounds in the books`);
   } else if (d.on_the_clock_me) {
-    $("#clock-line").textContent = `YOU'RE ON THE CLOCK — PICK ${d.current_pick}`;
+    setLive($("#clock-line"), `YOU'RE ON THE CLOCK — PICK ${d.current_pick}`);
     const pick = state.board?.suggestions?.[0];
-    $("#clock-sub").textContent = pick
-      ? `the room likes ${pick.name}` : "the room is thinking";
+    setLive($("#clock-sub"), pick
+      ? `the room likes ${pick.name}` : "the room is thinking");
   } else {
-    $("#clock-line").textContent = `PICK ${d.current_pick} OF ${d.total_picks} · ROUND ${d.round}`;
-    $("#clock-sub").textContent = d.my_next_pick
+    setLive($("#clock-line"), `PICK ${d.current_pick} OF ${d.total_picks} · ROUND ${d.round}`);
+    setLive($("#clock-sub"), d.my_next_pick
       ? `slot ${d.on_clock_slot} on the clock · you pick at #${d.my_next_pick}`
-      : "no picks left for you";
+      : "no picks left for you");
   }
 }
 
@@ -550,15 +626,26 @@ async function openDossier(pid) {
     </div>
     ${surv ? `<div class="d-title">The odds</div>${surv}` : ""}
     ${bal ? `<div class="d-title">Your shelf, with him</div><div class="d-bal">${bal}</div>` : ""}`;
-  $("#dossier").hidden = false;
+  // Remember who opened it. A file you close should hand focus back to the row
+  // you were reading, not dump you at the top of the board.
+  dossierOpener = document.activeElement?.closest?.(".prow") || null;
+  $("#dossier").showModal();
 }
 
-$("#dossier-close").addEventListener("click", () => { $("#dossier").hidden = true; });
+/* A real <dialog> + showModal(): the focus trap, Escape, and the inertness of
+   everything behind it come from the platform. This DELETED the hand-rolled
+   Escape and backdrop handlers rather than adding to them — the old ones
+   closed the file but never moved focus in, never trapped it, and left the
+   whole board tabbable underneath. */
+let dossierOpener = null;
+$("#dossier-close").addEventListener("click", () => $("#dossier").close());
 $("#dossier").addEventListener("click", (e) => {
-  if (e.target === $("#dossier")) $("#dossier").hidden = true;
+  // ::backdrop clicks land on the dialog itself; a click on the sheet does not.
+  if (e.target === $("#dossier")) $("#dossier").close();
 });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") $("#dossier").hidden = true;
+$("#dossier").addEventListener("close", () => {
+  dossierOpener?.focus();
+  dossierOpener = null;
 });
 
 /* position filter (mobile chips) */
@@ -707,8 +794,9 @@ function renderWeek(card) {
         <div><p><strong>Lineup optimal.</strong> ${verifiedLine}Projected
         ${card.actual_total.toFixed(1)} for week ${card.week} — the room is satisfied.${stamp}</p></div>
       </div>
-      ${lineupBlock(card)}
-      ${beatPanel()}`;
+      ${sameStarters(card)
+        ? `<div class="week-pair">${lineupBlock(card)}${beatPanel()}</div>`
+        : `${lineupBlock(card)}${beatPanel()}`}`;
     loadBeat();
     return;
   }
@@ -910,11 +998,31 @@ function beatPanel() {
   </section>`;
 }
 
+/* The same eleven men, shuffled between slots, is not a recommendation — a WR
+   in your FLEX and a WR in your WR2 score exactly the same. A second table
+   with different-looking rows and an identical total invites the reader to go
+   fix something that isn't broken. Shared so the layout and the copy can never
+   disagree about whether there are two lineups. */
+function sameStarters(card) {
+  return card.actual.length === card.optimal.length
+    && card.actual.every((r) => card.optimal.some((o) => o.id === r.id));
+}
+
 function lineupBlock(card) {
   const inIds = new Set(card.swaps.map((s) => s.in_id));
   const outIds = new Set(card.swaps.map((s) => s.out_id));
   const actualMarks = new Map(card.actual.map((r) => [r.id, outIds.has(r.id) ? "is-out" : ""]));
   const optimalMarks = new Map(card.optimal.map((r) => [r.id, inIds.has(r.id) ? "is-in" : ""]));
+
+  if (sameStarters(card)) {
+    return `<div class="lineup-tables lineup-solo">
+      ${lineupTable(`Your week ${card.week}`, card.actual, card.actual_total, actualMarks, card.news)}
+    </div>
+    <p class="optimal-note">This is already the optimal set — the Hungarian assignment
+    starts the same eleven men. It would file two of them under different slot names,
+    which scores identically, so there is no second table to compare against.</p>`;
+  }
+
   return `<div class="lineup-tables">
     ${lineupTable(`Actual — week ${card.week}`, card.actual, card.actual_total, actualMarks, card.news)}
     ${lineupTable("Optimal", card.optimal, card.optimal_total, optimalMarks, card.news)}
@@ -953,15 +1061,23 @@ async function loadWaivers() {
       if (t.news) return `<span class="street" title="${esc(t.news.headline)}">${esc(t.news.headline)}</span>`;
       return t.hard_confirm ? `<span class="confirm-flag">${icon.flag}BIG SWING — CONFIRM TWICE</span>` : "";
     };
+    // A column of nothing but dashes is furniture. The street (Sleeper's
+    // trending adds) is empty before the season and Next up is empty until the
+    // schedule is loaded — in both cases the honest thing is to not draw the
+    // column at all rather than rule six rows of "–" across the board.
+    const hasStreet = data.targets.some((t) => t.heat);
+    const hasNextUp = data.targets.some((t) => t.bye_now || t.bye_next || t.opp);
+
     const rows = data.targets.map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
         <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
       <td class="num">${t.fa_score}</td>
-      <td class="num"><span class="bid">$${t.bid}</span></td>
-      <td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>
+      <td class="num"><span class="bid">$${t.bid}</span>${t.value_pct == null ? ""
+        : `<div class="bid-why">P${Math.round(t.value_pct * 100)} of this room's book</div>`}</td>
+      ${hasStreet ? `<td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>` : ""}
       <td class="num">${t.lineup_gain == null ? "–"
         : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}</td>
-      <td class="num">${nextUp(t)}</td>
+      ${hasNextUp ? `<td class="num">${nextUp(t)}</td>` : ""}
       <td>${why(t)}</td></tr>`).join("");
     // Every add is a drop. A bid the owner can't execute is half an answer.
     const drop = data.targets[0]?.drop;
@@ -973,16 +1089,21 @@ async function loadWaivers() {
       : `<p class="drop-line">No spare body on the shelf — an add here means cutting a starter.</p>`;
     $("#waivers-body").innerHTML = data.targets.length ? `
       <table class="wtable">
-        <thead><tr><th>Player</th><th style="text-align:right">FA score</th>
-        <th style="text-align:right">Bid</th><th style="text-align:right">The street</th>
+        <thead><tr><th>Player</th>
+        <th style="text-align:right" title="Season points he adds over the weakest body at his OWN position on your shelf. A within-position measure — two scores at different positions are not on the same scale, and the price does not come from this number.">Over your worst</th>
+        <th style="text-align:right">Bid</th>
+        ${hasStreet ? `<th style="text-align:right">The street</th>` : ""}
         <th style="text-align:right">Your lineup</th>
-        <th style="text-align:right">Next up</th>
+        ${hasNextUp ? `<th style="text-align:right">Next up</th>` : ""}
         <th></th></tr></thead>
         <tbody>${rows}</tbody></table>
       ${dropLine}
-      <p class="optimal-note">Priced against ${data.history_n} of this league's own winning bids,
-      read continuously at each target's value percentile — not in tiers — then rounded to
-      the +$1 over a round number this room actually bids. Depth pays half a starter's price.</p>`
+      <p class="optimal-note">Ranked by what each man is worth <b>to this shelf</b> — the lineup
+      he'd crack today, plus a share of the column on the left for the bye and the injury you
+      haven't had yet. That ranking is the percentile under each bid, and the bid is that
+      percentile of ${data.history_n} winning bids this room has actually paid, rounded to the
+      +$1 over a round number. Depth pays half a starter's price — which is why the biggest
+      number on the left is not always the biggest number in the middle.</p>`
       : `<p class="muted">${esc(data.note || "Nobody on the street worth a dollar this week.")}</p>`;
     wireOK();
   } catch { wireFail(); }
@@ -1514,7 +1635,11 @@ $("#reset-mock").addEventListener("click", async () => {
 });
 
 async function boot() {
-  setTab(state.tab);
+  // A hash in the URL beats the remembered room — a link you followed should
+  // land where it points, not where you last were.
+  const hashed = location.hash.replace(/^#/, "");
+  roomPinned = ROOMS.includes(hashed);
+  setTab(roomPinned ? hashed : state.tab);
   try {
     state.health = await fetchJSON("/health");
     if (state.health.mode === "demo") $("#reset-mock").hidden = false;

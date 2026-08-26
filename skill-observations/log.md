@@ -149,3 +149,54 @@ the mutation that proves the test works.
 **Issue:** Two word-boundary escapes were written through a NON-raw Python string in the generator, so each became a literal backspace (chr 8). The patterns compiled, the module imported, the source looked correct in every render — the control character is invisible — and both new guards silently matched nothing. Three debugging rounds; found only by printing the pattern with repr. It then recurred immediately, in this same session, writing a one-line pointer into MEMORY.md the same way.
 **Suggested improvement:** Any generated edit whose inserted text contains a backslash must use a raw string, or be verified afterwards. The check is one line and worth making standard: assert the written file contains no control characters outside newline/carriage-return/tab. Better: prefer the Edit tool over a generator script for any content containing backslashes — it does not re-interpret them.
 **Principle:** A generator can produce a file that is wrong in a way no reader can see. Check the bytes, not the rendering.
+
+### Observation 14: A long-lived dev server serves NEW static assets over OLD Python
+**Status:** ACTIONED — bootlegger/.claude/skills/run-bootlegger/SKILL.md, Gotchas (2026-08-26)
+**Date:** 2026-08-26
+**Session context:** Grading the Bootlegger web UI. A uvicorn on :8484 was already
+listening from an earlier session. `/assets/app.js` hashed identical to the
+worktree file, so the server looked current — but `/api/wire?limit=30` returned
+404 on every tab, six console errors, and THE BEAT rendered as an outage.
+**Skill:** `bootlegger/.claude/skills/run-bootlegger` (Gotchas / Troubleshooting)
+**Issue:** `StaticFiles` reads from disk per request, so HTML/CSS/JS are always
+current; the Python modules are whatever was imported at process start. A server
+started before a commit that added routes serves a NEW frontend calling OLD
+routes. The failure presents as a broken feature in the code under review, not
+as a stale process — I nearly logged "the wire endpoint 404s" as a defect.
+**Suggested improvement:** Add a Gotcha: "A running server is not proof it is
+running THIS code. Hashing `/assets/app.js` against the worktree proves nothing
+— static files are read per request. Verify a route added by a recent commit
+(`curl -o NUL -w '%{http_code}' .../api/<newest-route>`) or restart before any
+review. `driver.py check` surfaces this as generic 404 console errors."
+**Principle:** When a process and its assets have different reload semantics,
+asset freshness is not evidence of process freshness — probe the half that is
+pinned at startup.
+
+### Observation 15: Committed review screenshots age into wrong findings
+**Status:** ACTIONED — bootlegger/.claude/skills/run-bootlegger/SKILL.md, Gotchas (2026-08-26)
+**Date:** 2026-08-26
+**Session context:** Same review. `bootlegger/.impeccable/review/*.png` were last
+written at commit db7c753, four commits back. `parlor-desktop.png` showed the
+duplicate-deal problem (one deal repeated under every throw-in) that commit
+050e467's `trades.shortlist()` had since fixed — the live app shows 8 distinct
+deals and "70 packages found; 8 worth reading". Grading from the committed PNGs
+would have reported a fixed bug as live.
+**Skill:** `bootlegger/.claude/skills/run-bootlegger` — relates to the existing
+`read_live_state_before_designing` memory, which covers config drift, not
+committed rasters.
+**Suggested improvement:** In the run-bootlegger skill, next to the `shots`
+command: "Committed review PNGs under `.impeccable/review/` are provenance for
+the commit that wrote them, not the current build. Before grading or critiquing
+UI, `git log -1 -- .impeccable/review/` and recapture if any commit touched
+`server/app/` since."
+**Principle:** A screenshot is a dated artifact. Treat it like any status claim —
+if it carries no date, verify it before it carries an argument.
+
+### Observation 16: Check auto-memory for the user's environment facts before designing logic that depends on them
+**Status:** OPEN
+**Date:** 2026-08-26
+**Session context:** Building Bootlegger's League room — a per-position "surplus" read for a fantasy league.
+**Skill:** superpowers:brainstorming (context-exploration step)
+**Issue:** The surplus rule counts only dedicated roster slots (RB=2, WR=2), deliberately excluding FLEX because FLEX belongs to no single position. That is correct for the demo fixture, which has one FLEX. The user's real league has **two**, so a seat legitimately starting three or four RB/WR reads as "deep at RB" when it is not. The fact was not obscure: `bootlegger_deployment.md` in auto-memory already recorded the exact league shape — "QB/2RB/2WR/TE/**2 FLEX**/K/DEF+5BN" — before the rule was written. I explored the repo thoroughly (schema, ingest, API, frontend) and never opened the memory that described the production environment the feature targets. The demo fixture structurally cannot surface the gap, so tests passed and live verification (pre-draft, empty rosters) exercised none of it.
+**Suggested improvement:** In the context-exploration step, add: when the feature's behavior depends on the user's real-world configuration (league settings, device inventory, account tiers, schema variants), read the relevant auto-memory *and* the live config before choosing thresholds — not only the repo. The repo shows what the code does; memory and live config show what it will meet. Pairs with [[Observation 8]]: that one says price each option before asking, this one says check what is already known about the target environment before designing against it.
+**Principle:** A demo fixture encodes one shape of the world. Anything calibrated against it inherits that shape as a hidden assumption, and the fixture can never falsify it — so the check has to come from outside the fixture.

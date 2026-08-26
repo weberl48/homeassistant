@@ -51,14 +51,26 @@ provenance.
       <div class="clock-line" id="clock-line">TAPPING THE WIRE…</div>
       <div class="clock-sub" id="clock-sub"></div>
     </div>
-    <nav class="tabs" aria-label="Rooms">
-      <button class="tab is-active" data-tab="board">The Board<small>the draft</small></button>
-      <button class="tab" data-tab="week">This Week<small>lineup</small></button>
-      <button class="tab" data-tab="waivers">Waivers<small>the street</small></button>
-      <button class="tab" data-tab="league">The League<small>the field</small></button>
-      <button class="tab" data-tab="parlor">The Parlor<small>trades</small></button>
-      <button class="tab" data-tab="ledger">The Ledger<small>rules · audit</small></button>
-    </nav>
+    <!-- A real tablist: these buttons swap panels in place, they do not
+         navigate, so aria-current="page" was the wrong idiom. Roving tabindex
+         and arrow keys live in app.js — the pattern is only correct with
+         both halves. -->
+    <div class="tabs-wrap" id="tabs-wrap">
+    <div class="tabs" id="tabs" role="tablist" aria-label="Rooms">
+      <button class="tab is-active" role="tab" id="tab-board" data-tab="board"
+        aria-selected="true" aria-controls="room-board" tabindex="0">The Board<small>the draft</small></button>
+      <button class="tab" role="tab" id="tab-week" data-tab="week"
+        aria-selected="false" aria-controls="room-week" tabindex="-1">This Week<small>lineup</small></button>
+      <button class="tab" role="tab" id="tab-waivers" data-tab="waivers"
+        aria-selected="false" aria-controls="room-waivers" tabindex="-1">Waivers<small>the street</small></button>
+      <button class="tab" role="tab" id="tab-league" data-tab="league"
+        aria-selected="false" aria-controls="room-league" tabindex="-1">The League<small>the field</small></button>
+      <button class="tab" role="tab" id="tab-parlor" data-tab="parlor"
+        aria-selected="false" aria-controls="room-parlor" tabindex="-1">The Parlor<small>trades</small></button>
+      <button class="tab" role="tab" id="tab-ledger" data-tab="ledger"
+        aria-selected="false" aria-controls="room-ledger" tabindex="-1">The Ledger<small>rules · audit</small></button>
+    </div>
+    </div>
     <div class="wire" id="wire">
       <span class="lampdot" id="wire-dot" aria-hidden="true"></span>
       <span id="wire-text">connecting</span>
@@ -68,7 +80,7 @@ provenance.
 
 <div class="wire-banner" id="wire-banner" role="alert" hidden>
   CIRCLE THE WAGONS — the wire is down. Showing the last board from
-  <span id="wire-age">—</span> ago. Retrying.
+  <span id="wire-age" aria-hidden="true">—</span> ago. Retrying.
 </div>
 
 <div class="practice-banner" id="practice-banner" hidden>
@@ -84,7 +96,7 @@ provenance.
 <main id="main">
 
   <!-- ============================ THE BOARD ============================ -->
-  <section class="room" id="room-board">
+  <section class="room" id="room-board" role="tabpanel" tabindex="0" aria-labelledby="tab-board">
     <div class="board-layout">
       <aside class="rail">
         <div class="call" id="call">
@@ -175,15 +187,15 @@ provenance.
   </section>
 
   <!-- ============================ THIS WEEK ============================ -->
-  <section class="room" id="room-week" hidden>
-    <div class="week-layout" id="week-layout">
+  <section class="room" id="room-week" role="tabpanel" tabindex="0" aria-labelledby="tab-week" hidden>
+    <div class="week-layout room-body w-hall" id="week-layout">
       <p class="muted">Fetching the lineup…</p>
     </div>
   </section>
 
   <!-- ============================ WAIVERS ============================ -->
-  <section class="room" id="room-waivers" hidden>
-    <div class="narrow">
+  <section class="room" id="room-waivers" role="tabpanel" tabindex="0" aria-labelledby="tab-waivers" hidden>
+    <div class="room-body w-sheet">
       <h2 class="room-title">Waiver Targets</h2>
       <p class="room-note">Bids sized from this league's own history. Advisory only —
       waivers have no actuation path in this house.</p>
@@ -192,8 +204,8 @@ provenance.
   </section>
 
   <!-- ============================ THE LEAGUE ============================ -->
-  <section class="room" id="room-league" hidden>
-    <div class="wide">
+  <section class="room" id="room-league" role="tabpanel" tabindex="0" aria-labelledby="tab-league" hidden>
+    <div class="room-body w-hall">
       <h2 class="room-title">The League</h2>
       <p class="room-note">Twelve seats, ranked by what each can actually start —
       bench hoarding doesn't buy a seat a better table. The grid reads every
@@ -203,8 +215,8 @@ provenance.
   </section>
 
   <!-- ============================ THE PARLOR ============================ -->
-  <section class="room" id="room-parlor" hidden>
-    <div class="narrow">
+  <section class="room" id="room-parlor" role="tabpanel" tabindex="0" aria-labelledby="tab-parlor" hidden>
+    <div class="room-body w-hall">
       <h2 class="room-title">The Parlor</h2>
       <p class="room-note">Deals worth whispering across the room — both lineups
       improve, or the other side isn't hurt enough to decline. Advisory only;
@@ -235,8 +247,8 @@ provenance.
   </section>
 
   <!-- ============================ LEDGER ============================ -->
-  <section class="room" id="room-ledger" hidden>
-    <div class="narrow">
+  <section class="room" id="room-ledger" role="tabpanel" tabindex="0" aria-labelledby="tab-ledger" hidden>
+    <div class="room-body w-sheet">
       <h2 class="room-title">House Rules</h2>
       <p class="room-note">The don't-act policy. The hands can never move while an
       enabled rule trips.</p>
@@ -253,12 +265,14 @@ provenance.
 
 </main>
 
-<div class="dossier-backdrop" id="dossier" hidden>
-  <div class="sheet dossier" role="dialog" aria-modal="true" aria-label="Scout's file">
+<!-- role/aria-modal are the platform's job on a real <dialog>; only the label
+     is ours. -->
+<dialog class="dossier-backdrop" id="dossier" aria-label="Scout's file">
+  <div class="sheet dossier">
     <button class="dossier-close" id="dossier-close" aria-label="Close the file">×</button>
     <div id="dossier-body"></div>
   </div>
-</div>
+</dialog>
 
 <footer class="colophon">
   <p>Bootlegger runs on your Pi, over your Tailscale, against your league.

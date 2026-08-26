@@ -48,8 +48,13 @@
     color: var(--ink); font: 400 13px/1.4 "Segoe UI", system-ui, sans-serif;
   }
   .head {
-    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 10px; min-height: 44px; border: none; text-align: left;
+    background: none; color: inherit; font: inherit;
     border-bottom: 1px solid var(--line-soft); cursor: pointer; user-select: none;
+  }
+  .head:focus-visible, .call:focus-visible, .runners li:focus-visible {
+    outline: 2px dashed var(--brass); outline-offset: -2px;
   }
   .mark { font: 400 13px Georgia, serif; letter-spacing: .18em; color: var(--brass); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lamp);
@@ -61,7 +66,7 @@
            letter-spacing: .04em; margin-bottom: 7px; }
   .clock.mine { color: var(--brass-bright); font-weight: 700; }
   .warn { color: var(--oxblood); font-size: 11px; margin-bottom: 6px; }
-  .call { border: 1px solid var(--brass-deep); border-radius: 5px; padding: 8px 9px;
+  .call { border: 1px solid var(--brass-deep); border-radius: 5px; padding: 9px;
           background: linear-gradient(180deg, rgba(91,140,255,.10), rgba(91,140,255,.02));
           cursor: pointer; }
   .call:hover { background: linear-gradient(180deg, rgba(91,140,255,.16), rgba(91,140,255,.05)); }
@@ -73,8 +78,8 @@
            border-top: 1px dashed var(--line-soft); }
   .sheet b { color: var(--ink-dim); }
   .runners { list-style: none; margin-top: 7px; }
-  .runners li { display: flex; align-items: baseline; gap: 7px; padding: 4px 2px;
-                border-top: 1px solid var(--line-soft); cursor: pointer; }
+  .runners li { display: flex; align-items: center; gap: 7px; padding: 8px 2px;
+                min-height: 44px; border-top: 1px solid var(--line-soft); cursor: pointer; }
   .runners li:hover { background: var(--panel-2); }
   .swatch { width: 7px; height: 7px; border-radius: 2px; flex: none; }
   .rpos { font-size: 10px; font-weight: 700; color: var(--ink-faint); width: 24px; }
@@ -94,11 +99,11 @@
 </style>
 <div class="panel" id="panel">
   <div class="toast" id="toast"></div>
-  <div class="head" id="head">
+  <button class="head" id="head" type="button" aria-expanded="true" aria-controls="body">
     <span class="dot" id="dot"></span>
     <span class="mark">BOOTLEGGER</span>
     <span class="fold" id="fold">–</span>
-  </div>
+  </button>
   <div class="body" id="body"><p class="muted">Tapping the wire…</p></div>
 </div>`;
   document.documentElement.appendChild(host);
@@ -108,10 +113,12 @@
   let folded = false;
   try { folded = localStorage.getItem("bootlegger.overlay.folded") === "1"; } catch { /* fine */ }
   panel.classList.toggle("folded", folded);
+  $("head").setAttribute("aria-expanded", String(!folded));
   $("head").addEventListener("click", () => {
     folded = !folded;
     panel.classList.toggle("folded", folded);
     $("fold").textContent = folded ? "+" : "–";
+    $("head").setAttribute("aria-expanded", String(!folded));
     try { localStorage.setItem("bootlegger.overlay.folded", folded ? "1" : "0"); } catch { /* fine */ }
   });
 
@@ -177,7 +184,8 @@
       ${stale ? `<p class="warn">PICK FEED STALE — poller heartbeat is old.</p>` : ""}
       <p class="clock ${d.on_the_clock_me ? "mine" : ""}">${esc(clock)}</p>
       ${d.status === "complete" ? `<p class="muted">The shelf is stocked — the room pours one out.</p>` : top ? `
-        <div class="call" id="call" title="click: search him in Sleeper">
+        <div class="call" id="call" role="button" tabindex="0"
+             aria-label="Search Sleeper for ${esc(top.name)}" title="click: search him in Sleeper">
           <div class="cname">${esc(top.name)}</div>
           <div class="cmeta"><span>${esc(posOf(top))} · ${esc(top.team ?? "")}</span>
             <span>score ${top.score}</span><span>vbd ${top.vbd}</span>
@@ -187,7 +195,8 @@
             ? `<div class="sheet">sheet says <b>${esc(sheet.name)}</b> · ECR ${sheet.ecr}</div>` : ""}
         </div>
         <ul class="runners">${s.slice(1, 4).map((r, i) => `
-          <li data-i="${i + 1}" title="click: search him in Sleeper">
+          <li data-i="${i + 1}" role="button" tabindex="0"
+              aria-label="Search Sleeper for ${esc(r.name)}" title="click: search him in Sleeper">
             <span class="swatch" style="background:${POS_HUES[posOf(r)] || "#8499c4"}"></span>
             <span class="rpos">${esc(posOf(r))}</span>
             <span class="rname">${esc(r.name)}</span>
@@ -195,10 +204,18 @@
         </ul>` : `<p class="muted">Reading the room…</p>`}
       <div class="needs">${needs}</div>`;
 
+    // Enter and Space, not just click — these are role=button, and a role
+    // without its keyboard is a lie told to a screen reader.
+    const activate = (el, fn) => {
+      el.addEventListener("click", fn);
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); }
+      });
+    };
     const call = $("call");
-    if (call && top) call.addEventListener("click", () => assist(top.name));
+    if (call && top) activate(call, () => assist(top.name));
     shadow.querySelectorAll(".runners li").forEach((li) =>
-      li.addEventListener("click", () => assist(s[Number(li.dataset.i)].name)));
+      activate(li, () => assist(s[Number(li.dataset.i)].name)));
   }
 
   function buildNeeds(b) {

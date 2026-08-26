@@ -28,6 +28,8 @@ import urllib.request
 
 # Defaults to the local demo. Point it at the Pi to smoke-test a live deploy:
 #   $env:BOOTLEGGER_BASE = "http://192.168.1.160:8484"
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
 BASE = os.environ.get("BOOTLEGGER_BASE", "http://localhost:8484").rstrip("/")
 
 # The Board / This Week / Waivers / The League / The Parlor / The Ledger.
@@ -225,6 +227,21 @@ def cmd_flow(out: pathlib.Path) -> int:
     return 0 if ok else 1
 
 
+def cmd_audit() -> int:
+    """The A++ gate. Lives in audit.py — the checks are long, and each one is a
+    record of a defect that shipped, so they deserve their own file."""
+    import audit as audit_mod
+    from playwright.sync_api import sync_playwright
+
+    errors: list[str] = []
+    with sync_playwright() as pw:
+        b, pg = _page(pw, errors)
+        results = audit_mod.run(pg, BASE)
+        b.close()
+    results.check(not errors, "no console errors", str(errors[:3]) if errors else "")
+    return audit_mod.report(results)
+
+
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
     out = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "shots")
@@ -237,9 +254,12 @@ def main() -> int:
         return cmd_shots(out)
     if cmd == "flow":
         return cmd_flow(out)
+    if cmd == "audit":
+        return cmd_audit()
     if cmd == "all":
         rc = 0
         for name, fn in (("api", cmd_api), ("check", cmd_check),
+                         ("audit", cmd_audit),
                          ("shots", lambda: cmd_shots(out)),
                          ("flow", lambda: cmd_flow(out))):
             print(f"\n=== {name} ===")
