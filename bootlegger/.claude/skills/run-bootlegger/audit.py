@@ -85,25 +85,36 @@ def audit_live_regions(pg, r: Results) -> None:
     renderClock used to assign textContent unconditionally on a 1 Hz poll, so a
     screen reader read the pick number aloud once a second for the whole draft.
     Assigning an identical string is still a mutation of the accessibility
-    tree, so the only honest test is to watch for mutations across an idle
-    window rather than to diff the strings.
+    tree, so the strings alone cannot prove anything — the mutations have to be
+    watched.
+
+    The assertion is NOT "zero mutations". That only holds on an idle board,
+    and it would therefore fail on draft night, when picks land every couple of
+    seconds and the clock legitimately has something new to say — a gate that
+    cries wolf exactly when it matters is worse than no gate. The invariant is
+    one announcement per MEANING change: every mutation must carry text that
+    differs from the text before it. Measured live mid-draft: five distinct
+    clock states, four mutations, zero repeats.
     """
     pg.evaluate("""() => {
-      window.__live = [];
+      window.__live = {repeats: [], changes: 0};
       for (const el of document.querySelectorAll('[aria-live], [role=alert], [role=status]')) {
         if (el.getAttribute('aria-live') === 'off') continue;
-        new MutationObserver((recs) => {
-          for (const rec of recs) {
-            const t = (rec.target.textContent || '').trim().slice(0, 50);
-            window.__live.push((el.id || el.className || el.tagName) + ' -> ' + t);
-          }
+        let last = (el.textContent || '').trim();
+        new MutationObserver(() => {
+          const now = (el.textContent || '').trim();
+          const who = el.id || el.className || el.tagName;
+          if (now === last) window.__live.repeats.push(who + ' -> ' + now.slice(0, 44));
+          else { window.__live.changes++; last = now; }
         }).observe(el, {childList: true, characterData: true, subtree: true});
       }
     }""")
     pg.wait_for_timeout(10000)          # ten board polls at the draft cadence
-    muts = pg.evaluate("() => window.__live")
-    r.check(not muts, "live regions quiet through a 10s idle poll",
-            f"{len(muts)} mutation(s), e.g. {muts[0]!r}" if muts else "0 mutations")
+    live = pg.evaluate("() => window.__live")
+    repeats = live["repeats"]
+    r.check(not repeats, "live regions announce only on a real change",
+            f"{len(repeats)} redundant announcement(s), e.g. {repeats[0]!r}" if repeats
+            else f"{live['changes']} real change(s), 0 repeats")
 
 
 def audit_deep_link(pg, base: str, r: Results) -> None:
@@ -334,25 +345,57 @@ def audit_token_drift(r: Results) -> None:
     appeared twice, and nothing enforced it. This is that enforcement."""
     root = pathlib.Path(__file__).resolve().parents[3]
     css = (root / "server/app/web/styles.css").read_text(encoding="utf-8")
-    ext = (root / "extension/content.js").read_text(encoding="utf-8")
     pattern = re.compile(r"(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))")
+
+    def norm(v: str) -> str:
+        """Same colour, same string. CSS writes rgba(...,.28) and TypeScript
+        writes 0.28; comparing spellings would report a drift that isn't one,
+        and a gate that cries wolf gets switched off."""
+        v = v.replace(" ", "").lower()
+        return re.sub(r"(?<![0-9])\.(?=[0-9])", "0.", v)
 
     def tokens(text: str) -> dict[str, str]:
         out: dict[str, str] = {}
         for m in pattern.finditer(text):
-            out.setdefault(m.group(1), m.group(2).replace(" ", "").lower())
+            out.setdefault(m.group(1), norm(m.group(2)))
         return out
 
-    web, overlay = tokens(css), tokens(ext)
-    shared = sorted(set(web) & set(overlay))
-    drift = [k for k in shared if web[k] != overlay[k]]
-    if not shared:
-        r.bad("extension palette matches the board", "no shared tokens found")
-    elif drift:
-        r.bad("extension palette matches the board",
-              "; ".join(f"{k}: board {web[k]} vs overlay {overlay[k]}" for k in drift[:4]))
-    else:
-        r.ok("extension palette matches the board", f"{len(shared)} tokens agree")
+    # The Expo app cannot use CSS variables, so theme.ts names the same colours
+    # in camelCase. Mapped by hand because the mapping IS the fact worth
+    # checking — a token added to one and not the other is exactly the drift.
+    ts_alias = {"ground": "--ground", "panel": "--panel", "panel2": "--panel-2",
+                "panel3": "--panel-3", "line": "--line", "ink": "--ink",
+                "inkDim": "--ink-dim", "inkFaint": "--ink-faint",
+                "brass": "--brass", "brassBright": "--brass-bright",
+                "brassDeep": "--brass-deep", "lamp": "--lamp",
+                "lampBright": "--lamp-bright", "marigold": "--marigold",
+                "oxblood": "--oxblood"}
+    ts_pattern = re.compile(r"\b([A-Za-z0-9]+):\s*\"(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))\"")
+
+    def ts_tokens(text: str) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for m in ts_pattern.finditer(text):
+            css_name = ts_alias.get(m.group(1))
+            if css_name:
+                out.setdefault(css_name, norm(m.group(2)))
+        return out
+
+    web = tokens(css)
+    mirrors = {
+        "extension": tokens((root / "extension/content.js").read_text(encoding="utf-8")),
+        "mobile": ts_tokens((root / "mobile/src/theme.ts").read_text(encoding="utf-8")),
+    }
+    for name, mirror in mirrors.items():
+        shared = sorted(set(web) & set(mirror))
+        drift = [k for k in shared if web[k] != mirror[k]]
+        label = f"{name} palette matches the board"
+        if not shared:
+            r.bad(label, "no shared tokens found")
+        elif drift:
+            r.bad(label, "; ".join(f"{k}: board {web[k]} vs {name} {mirror[k]}"
+                                   for k in drift[:4]))
+        else:
+            r.ok(label, f"{len(shared)} tokens agree")
 
 
 def audit_width_system(r: Results) -> None:

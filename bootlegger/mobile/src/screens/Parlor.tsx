@@ -118,7 +118,11 @@ const s = StyleSheet.create({
   gains: { flexDirection: "row", gap: 18, marginTop: 12 },
   gainLabel: { color: T.inkDim, fontSize: 12 },
   gainNum: { color: T.lampBright, fontFamily: "monospace", fontWeight: "700" },
-  gainNeg: { color: T.oxblood },
+  /* A deal that reads against you is a READING, not a failure state — the
+     same argument DESIGN.md makes for the odds meter, and the web board
+     already renders both signs in plain ink. Bills red stays reserved for
+     trouble: the wire down, a failed step, a hurt man. */
+  gainNeg: { color: T.inkDim },
   summary: { color: T.inkDim, marginTop: 8, lineHeight: 19 },
   footer: { color: T.inkFaint, paddingTop: 4, lineHeight: 18, fontSize: 12 },
 });

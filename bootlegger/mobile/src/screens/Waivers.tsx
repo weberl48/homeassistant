@@ -7,7 +7,7 @@ import { T } from "../theme";
 type Target = {
   id: string; name: string; pos: string; team?: string;
   fa_score: number; bid: number; hard_confirm: boolean;
-  heat: number; lineup_gain: number | null;
+  heat: number; lineup_gain: number | null; value_pct?: number | null;
 };
 
 export default function Waivers() {
@@ -63,10 +63,20 @@ export default function Waivers() {
             </Text>
           </View>
           <View style={s.nums}>
-            <Text style={s.score}>fa {t.fa_score}</Text>
+            {/* The score measures a man against the weakest body at HIS OWN
+                position, so it names that position — two of these are only
+                comparable when they share one. Mirrors the web board. */}
+            <Text style={s.score}>{t.fa_score}</Text>
+            <Text style={s.scoreWhat}>over your {t.pos}s</Text>
             <Text style={[s.bid, t.hard_confirm && s.bidHard]}>
               ${t.bid}{t.hard_confirm ? " ‼" : ""}
             </Text>
+            {/* Where the price came from: the bid is this percentile of the
+                league's own winning bids, which is why the biggest score is
+                not always the biggest bid. */}
+            {t.value_pct != null && (
+              <Text style={s.bidWhy}>P{Math.round(t.value_pct * 100)} of the book</Text>
+            )}
             {t.heat > 0 && <Text style={s.heat}>heat {t.heat}</Text>}
           </View>
         </View>
@@ -101,8 +111,12 @@ const s = StyleSheet.create({
   depth: { color: T.inkFaint, fontSize: 11, marginTop: 1 },
   nums: { alignItems: "flex-end" },
   score: { color: T.ink, fontFamily: "monospace", fontSize: 12 },
+  scoreWhat: { color: T.inkFaint, fontSize: 9, letterSpacing: 0.4 },
   bid: { color: T.brassBright, fontFamily: "monospace", fontSize: 14, fontWeight: "700", marginTop: 2 },
   bidHard: { color: T.marigold },
-  heat: { color: T.oxblood, fontFamily: "monospace", fontSize: 10, marginTop: 2 },
+  bidWhy: { color: T.inkFaint, fontFamily: "monospace", fontSize: 9, marginTop: 1 },
+  /* Not oxblood: a busy wire is information, not trouble, and this house does
+     not let a status colour moonlight as a data colour (DESIGN.md). */
+  heat: { color: T.inkFaint, fontFamily: "monospace", fontSize: 10, marginTop: 2 },
   footer: { color: T.inkFaint, padding: 16, lineHeight: 18, fontSize: 12 },
 });

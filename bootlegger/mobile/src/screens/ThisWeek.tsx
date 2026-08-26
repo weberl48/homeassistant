@@ -4,6 +4,15 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api } from "../api";
 import { T } from "../theme";
 
+/** Do actual and optimal start the same men? Slot labels alone are not a
+ *  difference worth a second table. */
+function sameStarters(card: any): boolean {
+  const a = card?.actual ?? [];
+  const o = card?.optimal ?? [];
+  return a.length === o.length
+    && a.every((r: any) => o.some((x: any) => x.id === r.id));
+}
+
 export default function ThisWeek() {
   const [card, setCard] = useState<any>(null);
   const [busy, setBusy] = useState(false);
@@ -48,27 +57,33 @@ export default function ThisWeek() {
           <Text style={s.delta}>{card.delta > 0 ? `+${card.delta}` : card.delta}</Text>
           <Text style={s.rationale}>{rec?.rationale ?? ""}</Text>
           {rec && (
-            <Text style={s.state}>
+            <Text style={s.state} accessibilityLiveRegion="polite">
               STATE · {rec.state === "dry_run" ? "DRY RUN" : String(rec.state).toUpperCase()}
             </Text>
           )}
           {canAct && (
             <View style={s.actions}>
-              <Pressable style={[s.btn, s.btnPrimary]} disabled={busy} onPress={act(api.approve)}>
+              <Pressable style={[s.btn, s.btnPrimary]} disabled={busy} onPress={act(api.approve)}
+                accessibilityRole="button" accessibilityState={{ disabled: busy }}
+                accessibilityLabel="Approve and execute the lineup swap">
                 <Text style={s.btnPrimaryText}>{busy ? "WORKING…" : "APPROVE & EXECUTE"}</Text>
               </Pressable>
               <View style={s.row}>
-                <Pressable style={[s.btn, s.btnGhost]} disabled={busy} onPress={act(api.snooze)}>
+                <Pressable style={[s.btn, s.btnGhost]} disabled={busy} onPress={act(api.snooze)}
+                  accessibilityRole="button" accessibilityState={{ disabled: busy }}
+                  accessibilityLabel="Snooze this recommendation for thirty minutes">
                   <Text style={s.btnGhostText}>SNOOZE 30M</Text>
                 </Pressable>
-                <Pressable style={[s.btn, s.btnGhost]} disabled={busy} onPress={act(api.ignore)}>
+                <Pressable style={[s.btn, s.btnGhost]} disabled={busy} onPress={act(api.ignore)}
+                  accessibilityRole="button" accessibilityState={{ disabled: busy }}
+                  accessibilityLabel="Ignore this recommendation">
                   <Text style={s.btnGhostText}>IGNORE</Text>
                 </Pressable>
               </View>
             </View>
           )}
           {rec && ["approved", "executed"].includes(rec.state) && (
-            <Text style={s.moving}>The hands are moving…</Text>
+            <Text style={s.moving} accessibilityLiveRegion="polite">The hands are moving…</Text>
           )}
           {rec && rec.state === "dry_run" && (
             <Text style={s.dryRun}>
@@ -85,10 +100,17 @@ export default function ThisWeek() {
         </View>
       )}
 
-      {(["actual", "optimal"] as const).map((key) => (
+      {/* The same eleven men shuffled between slots is not a recommendation: a
+          WR in your FLEX and a WR in your WR2 score identically. A second
+          table with different-looking rows and an identical total invites the
+          reader to go fix something that isn't broken. Mirrors sameStarters()
+          on the web board. */}
+      {(sameStarters(card) ? (["actual"] as const) : (["actual", "optimal"] as const)).map((key) => (
         <View key={key} style={s.lineup}>
           <Text style={s.lineupTitle}>
-            {key === "actual" ? `ACTUAL — WEEK ${card.week}` : "OPTIMAL"}
+            {key === "actual"
+              ? (sameStarters(card) ? `YOUR WEEK ${card.week}` : `ACTUAL — WEEK ${card.week}`)
+              : "OPTIMAL"}
             {"   "}
             {key === "actual" ? card.actual_total : card.optimal_total}
           </Text>
