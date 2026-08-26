@@ -367,6 +367,16 @@ def etl_news(conn: sqlite3.Connection) -> dict:
         "INSERT OR IGNORE INTO news(guid,seq,source,player_id,name_raw,headline,body,"
         "link,severity,ailment,departure,published_at,fetched_at) "
         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    # ...but the grade IS re-derived for the items still in the window. The
+    # classifier gets better (it has already been corrected twice against live
+    # copy), and without this a mis-grade written on first sight would stand
+    # forever behind the OR IGNORE. Only severity/ailment/departure and the
+    # player join move; pushed_at is never touched here, so nothing re-alarms
+    # for an item already notified.
+    conn.executemany(
+        "UPDATE news SET severity=?, ailment=?, departure=?, player_id=COALESCE(?, player_id) "
+        "WHERE guid=? AND pushed_at IS NULL",
+        [(r[8], r[9], r[10], r[3], r[0]) for r in rows])
     conn.commit()
     added = conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"] - before
 

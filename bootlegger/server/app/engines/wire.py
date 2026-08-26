@@ -70,6 +70,39 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
 _AILMENT = re.compile(r"^[A-Z][\w'.-]+(?:\s+[A-Z][\w'.-]+)?\s*\(([a-z/ ]{3,24})\)")
 
 
+# Clauses the body may NOT escalate on. Two kinds, both seen live:
+#
+#   preseason — "won't play in Friday's preseason game" is not a fantasy status.
+#     Caught 2026-08-26: a RotoWire item headlined "Intends to be ready Week 1"
+#     graded OUT because the body mentioned sitting a preseason game. Good news
+#     read as an injury.
+#   readiness — "he believes he'll be available for Week 1". The desk puts the
+#     decision in the headline; a hopeful clause underneath it is context, not a
+#     ruling.
+#
+# Clauses are split on the connectives RotoWire actually writes with, so a
+# discounted half of a sentence cannot poison the other half.
+_CLAUSE_SPLIT = re.compile(r",\s+(?:but|though|although)\s+|;\s+|(?<=[.!?])\s+", re.I)
+_DISCOUNTED = re.compile(
+    r"\b(pre-?season|exhibition|joint practice"
+    r"|intends? to (be ready|play)|expects? to (be ready|play)|believes? he'?ll"
+    r"|should be (ready|available)|on track (for|to)|hopes? to (be ready|play))\b",
+    re.I)
+# A headline that leads with readiness is the desk saying the news is good. The
+# body cannot outvote it.
+_READY_HEADLINE = re.compile(
+    r"\b(intends? to be ready|expects? to (be ready|play|return)|should be (ready|available)"
+    r"|on track|targeting|aiming for|cleared|good to go|no (structural )?damage"
+    r"|appears? minor|avoids? (serious|major))\b", re.I)
+
+
+def escalatable(body: str) -> str:
+    """The part of the body that may raise a grade — preseason and
+    forward-looking clauses removed."""
+    keep = [c for c in _CLAUSE_SPLIT.split(body or "") if c and not _DISCOUNTED.search(c)]
+    return " ".join(keep)
+
+
 # The body may only ESCALATE, never assign a soft grade. RotoWire's desk puts
 # the decision in the headline and the reporting underneath it, so body text
 # routinely contains practice and role words about things that did not happen
@@ -83,8 +116,13 @@ def severity(headline: str, body: str = "") -> str:
     for grade, pattern in _RULES:
         if pattern.search(headline or ""):
             return grade
+    # A headline about being ready is the desk's verdict; nothing under it
+    # outranks that.
+    if _READY_HEADLINE.search(headline or ""):
+        return "info"
+    scannable = escalatable(body)
     for grade, pattern in _RULES:
-        if grade in _BODY_GRADES and pattern.search(body or ""):
+        if grade in _BODY_GRADES and pattern.search(scannable):
             return grade
     return "info"
 

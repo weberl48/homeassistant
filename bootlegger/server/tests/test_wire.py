@@ -215,3 +215,95 @@ def test_an_unmatched_item_reaches_the_feed_but_never_a_push(conn, monkeypatch):
 def test_the_feed_carries_its_own_health(conn):
     f = alerts.feed(conn)
     assert "last_ok" in f and "missed_total" in f and f["source"] == "RotoWire"
+
+
+# --------------------------------------------------------------------------
+# What the live feed actually threw at it
+# --------------------------------------------------------------------------
+
+def test_a_preseason_absence_is_not_a_fantasy_status():
+    """Caught on the first live poll: RotoWire's 'Intends to be ready Week 1'
+    graded OUT, because the body mentioned sitting a preseason game. Good news
+    read as an injury."""
+    assert wire.severity(
+        "Intends to be ready Week 1",
+        "Penix (knee) won't play in Friday's preseason game in Miami, but he "
+        "believes he'll be available for a Week 1 road matchup with the "
+        "Steelers on Sunday, Sept. 13.") == "info"
+
+
+def test_a_readiness_headline_outranks_anything_beneath_it():
+    """What matters is that good news never reaches an ALARM grade off a stale
+    clause underneath it. "Cleared to return" legitimately grades `role` — it
+    is a status change worth a normal-channel line — but nothing here may buzz
+    through Do Not Disturb."""
+    assert wire.severity("Cleared to return",
+                         "He had been ruled out last week.") not in wire.ALARM
+    assert wire.severity("Avoids serious injury",
+                         "Initially feared to miss time.") == "info"
+    assert wire.severity("Appears minor", "Feared to miss multiple weeks.") == "info"
+
+
+def test_a_real_absence_in_the_body_still_escalates():
+    """The discount must not swallow the case body escalation exists for."""
+    assert wire.severity("Update on Sunday's availability",
+                         "Chase has been ruled out for Sunday's game.") == "out"
+    assert wire.severity("Sitting out Sunday",
+                         "Smith (hamstring) won't play in Sunday's game.") == "out"
+
+
+def test_no_pattern_carries_a_control_character():
+    """A `\b` written inside a non-raw string becomes a literal backspace, and
+    the regex then silently matches nothing — which is how a word boundary once
+    shipped as chr(8) and made two guards inert. Patterns are text; anything
+    unprintable in one is a generation bug, not a rule."""
+    import re as _re
+    patterns = [v for v in vars(wire).values() if isinstance(v, _re.Pattern)]
+    patterns += [p for _, p in wire._RULES]
+    assert patterns
+    for p in patterns:
+        bad = [c for c in p.pattern if ord(c) < 32]
+        assert not bad, f"control character {bad!r} in {p.pattern[:40]!r}"
+
+
+def test_a_re_poll_regrades_but_never_re_alarms(conn, monkeypatch):
+    """The classifier improves; a mis-grade written on first sight must not
+    stand forever behind INSERT OR IGNORE. But an item already notified keeps
+    its grade and its silence."""
+    from app import ingest
+    item = {"guid": "rg-1", "seq": 10, "name": "Someone",
+            "headline": "Intends to be ready Week 1",
+            "body": "He won't play in Friday's preseason game.",
+            "link": "", "published_at": None}
+    monkeypatch.setattr(ingest, "fetch_rotowire_news", lambda: [item])
+    conn.execute("DELETE FROM news")
+    conn.execute(
+        "INSERT INTO news(guid,seq,source,player_id,name_raw,headline,body,link,"
+        "severity,ailment,departure,published_at,fetched_at) "
+        "VALUES('rg-1',10,'rotowire',NULL,'Someone',?,?,'','out',NULL,0,NULL,?)",
+        (item["headline"], item["body"], db.utcnow()))
+    conn.commit()
+    ingest.etl_news(conn)
+    assert conn.execute("SELECT severity FROM news WHERE guid='rg-1'").fetchone()[0] == "info"
+
+    # Now the same item, already notified: its grade is frozen.
+    conn.execute("UPDATE news SET severity='out', pushed_at=? WHERE guid='rg-1'",
+                 (db.utcnow(),))
+    conn.commit()
+    ingest.etl_news(conn)
+    assert conn.execute("SELECT severity FROM news WHERE guid='rg-1'").fetchone()[0] == "out"
+
+
+def test_an_item_the_filter_ignored_is_not_recorded_as_notified(conn, monkeypatch):
+    """Collapsing "considered" and "pushed" into one column made the ledger
+    claim a notification for every street item, and froze those items' grades
+    against later classifier fixes."""
+    monkeypatch.setattr(alerts.push, "send", lambda *a, **k: 1)
+    conn.execute("DELETE FROM news")
+    _news(conn, "g-street", "not-in-any-roster", "Ruled out for Sunday")
+    alerts.scan(conn, week=1)
+    row = conn.execute(
+        "SELECT seen_at, pushed_at FROM news WHERE guid='g-street'").fetchone()
+    assert row["seen_at"], "the filter judged it"
+    assert row["pushed_at"] is None, "nobody's phone rang"
+    assert alerts.scan(conn, week=1)["considered"] == 0, "and it is not re-judged"

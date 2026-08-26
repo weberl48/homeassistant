@@ -247,7 +247,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
                  # have since retired off the players table entirely, and
                  # dropping them would bend the room's early-round curve — the
                  # exact part of it that matters (engines/room.py).
-                 "ALTER TABLE draft_picks ADD COLUMN pos TEXT"):
+                 "ALTER TABLE draft_picks ADD COLUMN pos TEXT",
+                 # `pushed_at` was doing double duty — the alert filter stamped
+                 # every item it CONSIDERED, including the ones it deliberately
+                 # stayed silent about. That made "notified" unreadable and
+                 # froze a street item's grade forever. seen_at is the filter's
+                 # own mark; pushed_at now means a phone actually rang.
+                 "ALTER TABLE news ADD COLUMN seen_at TEXT"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:

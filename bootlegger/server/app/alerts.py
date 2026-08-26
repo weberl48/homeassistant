@@ -19,7 +19,13 @@ Three audiences, three treatments:
   for a departure (IR, released, suspended, season-ending), never for a
   questionable tag.
 
-Every item notifies at most once: `pushed_at` is the ledger, and the poll is
+Two marks, not one. `seen_at` says the filter has judged an item; `pushed_at`
+says a phone actually rang for it. Collapsing them into one column made the
+ledger claim a notification for every street item the filter deliberately
+ignored — and, because the re-grade pass skips notified rows, froze those
+items' grades against every later improvement to the classifier.
+
+Every item notifies at most once: `pushed_at` is that ledger, and the poll is
 idempotent because the feed's own guid is the primary key.
 """
 from __future__ import annotations
@@ -71,9 +77,14 @@ def audience(player_id: str | None, mine: set[str], league: set[str]) -> str:
 
 
 def pending(conn: sqlite3.Connection, max_age_h: float = MAX_AGE_H) -> list[sqlite3.Row]:
-    """Matched, un-notified wire items young enough to still matter."""
+    """Matched wire items the filter has not judged yet, young enough to matter.
+
+    Gated on `seen_at`, not `pushed_at`: most items are somebody else's man and
+    are deliberately passed over, and stamping those as "pushed" would both
+    make the ledger lie and freeze their grade against a later re-read.
+    """
     return conn.execute(
-        "SELECT * FROM news WHERE pushed_at IS NULL AND player_id IS NOT NULL "
+        "SELECT * FROM news WHERE seen_at IS NULL AND player_id IS NOT NULL "
         "AND severity <> 'info' "
         "AND (published_at IS NULL OR published_at >= datetime('now', ?)) "
         "ORDER BY published_at DESC",
@@ -81,11 +92,15 @@ def pending(conn: sqlite3.Connection, max_age_h: float = MAX_AGE_H) -> list[sqli
     ).fetchall()
 
 
-def _mark(conn: sqlite3.Connection, guids: list[str]) -> None:
+def _mark(conn: sqlite3.Connection, guids: list[str], pushed: bool = False) -> None:
+    """Record that the filter has judged these items — and, separately, whether
+    a notification actually went out for them."""
     if not guids:
         return
-    conn.executemany("UPDATE news SET pushed_at=? WHERE guid=?",
-                     [(db.utcnow(), g) for g in guids])
+    col = "pushed_at=?, seen_at=?" if pushed else "seen_at=?"
+    now = db.utcnow()
+    args = [((now, now, g) if pushed else (now, g)) for g in guids]
+    conn.executemany(f"UPDATE news SET {col} WHERE guid=?", args)
     conn.commit()
 
 
@@ -145,7 +160,15 @@ def scan(conn: sqlite3.Connection, week: int | None = None) -> dict:
                   data={"deep_link": "bootlegger://waivers", "guid": head["guid"]})
         sent += 1
 
-    _mark(conn, seen)
+    # Everything the filter looked at is now judged; only the items that
+    # actually reached a phone are recorded as pushed.
+    notified = [r["guid"] for r in alarm[:MAX_PUSHES]]
+    if notice and len(notified) < MAX_PUSHES:
+        notified.append(notice[0]["guid"])
+    if window and len(notified) < MAX_PUSHES:
+        notified.append(window[0]["guid"])
+    _mark(conn, [g for g in seen if g not in set(notified)])
+    _mark(conn, notified, pushed=True)
 
     # An alarm means the lineup the owner has set is now wrong. Propose the fix
     # before they open the app rather than waiting for the next 5-minute scan.
