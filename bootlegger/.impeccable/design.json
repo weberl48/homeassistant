@@ -1,572 +1,77 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-24T03:10:23Z",
-  "title": "Design System: Bootlegger",
+  "generatedAt": "2026-08-25T00:00:00Z",
+  "title": "Design System: Bootlegger — Orchard Park Night",
   "extensions": {
     "colorMeta": {
-      "ground": {
-        "role": "neutral",
-        "displayName": "Walnut Ground",
-        "canonical": "#17120e",
-        "tonalRamp": [
-          "#0f0a07",
-          "#292420",
-          "#47413c",
-          "#66605b",
-          "#88817c",
-          "#aba49e",
-          "#cfc8c2",
-          "#f4ede7"
-        ]
-      },
-      "panel": {
-        "role": "neutral",
-        "displayName": "Walnut Panel",
-        "canonical": "#1e1712",
-        "tonalRamp": [
-          "#100a06",
-          "#2b231e",
-          "#48403a",
-          "#685f59",
-          "#8a807a",
-          "#ada39c",
-          "#d1c7c0",
-          "#f7ece5"
-        ]
-      },
-      "panel-2": {
-        "role": "neutral",
-        "displayName": "Walnut Panel Raised",
-        "canonical": "#251c14",
-        "tonalRamp": [
-          "#110904",
-          "#2c231b",
-          "#4a4037",
-          "#6a5f56",
-          "#8b8076",
-          "#afa398",
-          "#d3c7bc",
-          "#f9ece1"
-        ]
-      },
-      "panel-3": {
-        "role": "neutral",
-        "displayName": "Walnut Panel High",
-        "canonical": "#2d2318",
-        "tonalRamp": [
-          "#120902",
-          "#2d2318",
-          "#4b4034",
-          "#6b5f52",
-          "#8c8073",
-          "#b0a395",
-          "#d4c7b8",
-          "#faecdd"
-        ]
-      },
-      "line": {
-        "role": "neutral",
-        "displayName": "Hairline",
-        "canonical": "#3b2f21",
-        "tonalRamp": [
-          "#130901",
-          "#2e2315",
-          "#4c4031",
-          "#6c5f4f",
-          "#8e8070",
-          "#b1a292",
-          "#d6c6b5",
-          "#fcecda"
-        ]
-      },
-      "line-soft": {
-        "role": "neutral",
-        "displayName": "Soft Hairline",
-        "canonical": "#2a2118",
-        "tonalRamp": [
-          "#110903",
-          "#2c231a",
-          "#4a4036",
-          "#6a5f55",
-          "#8b8075",
-          "#aea397",
-          "#d3c7bb",
-          "#f9ece0"
-        ]
-      },
-      "ink": {
-        "role": "neutral",
-        "displayName": "Aged-Cream Ink",
-        "canonical": "#ecdfc6",
-        "tonalRamp": [
-          "#110a00",
-          "#2d230f",
-          "#4b412c",
-          "#6b604a",
-          "#8d816a",
-          "#b0a48c",
-          "#d4c8af",
-          "#faedd4"
-        ]
-      },
-      "ink-dim": {
-        "role": "neutral",
-        "displayName": "Dim Ink",
-        "canonical": "#b5a483",
-        "tonalRamp": [
-          "#110a00",
-          "#302304",
-          "#4f4022",
-          "#6f5f40",
-          "#918060",
-          "#b4a382",
-          "#d9c7a5",
-          "#ffecc9"
-        ]
-      },
-      "ink-faint": {
-        "role": "neutral",
-        "displayName": "Faint Ink",
-        "canonical": "#91805f",
-        "tonalRamp": [
-          "#110a00",
-          "#312202",
-          "#4f4020",
-          "#6f5f3f",
-          "#91805f",
-          "#b4a381",
-          "#d9c7a4",
-          "#ffecc9"
-        ]
-      },
-      "brass": {
-        "role": "primary",
-        "displayName": "Brass",
-        "canonical": "#c9a25c",
-        "tonalRamp": [
-          "#120900",
-          "#322200",
-          "#573d00",
-          "#7e5a06",
-          "#a17b34",
-          "#c59e58",
-          "#ebc37c",
-          "#ffeccc"
-        ]
-      },
-      "brass-bright": {
-        "role": "primary",
-        "displayName": "Bright Brass",
-        "canonical": "#e6c684",
-        "tonalRamp": [
-          "#110a00",
-          "#312200",
-          "#553e02",
-          "#795c16",
-          "#9c7e3d",
-          "#c0a160",
-          "#e5c583",
-          "#ffedc8"
-        ]
-      },
-      "brass-deep": {
-        "role": "primary",
-        "displayName": "Deep Brass",
-        "canonical": "#8a6d33",
-        "tonalRamp": [
-          "#120a00",
-          "#322201",
-          "#563d01",
-          "#795c21",
-          "#9b7e44",
-          "#bfa066",
-          "#e4c589",
-          "#ffecca"
-        ]
-      },
-      "lamp": {
-        "role": "secondary",
-        "displayName": "Banker's-Lamp Green",
-        "canonical": "#58a06c",
-        "tonalRamp": [
-          "#001004",
-          "#012e12",
-          "#015024",
-          "#287241",
-          "#4c9461",
-          "#70b883",
-          "#94dda6",
-          "#c7ffd3"
-        ]
-      },
-      "lamp-bright": {
-        "role": "secondary",
-        "displayName": "Bright Lamp",
-        "canonical": "#79c28c",
-        "tonalRamp": [
-          "#001004",
-          "#002e12",
-          "#005024",
-          "#287241",
-          "#4c9461",
-          "#70b883",
-          "#94dda6",
-          "#c7ffd3"
-        ]
-      },
-      "marigold": {
-        "role": "tertiary",
-        "displayName": "Marigold",
-        "canonical": "#d9a441",
-        "tonalRamp": [
-          "#120900",
-          "#332201",
-          "#573c02",
-          "#7f5902",
-          "#a97801",
-          "#cf9b36",
-          "#f5bf5f",
-          "#ffecce"
-        ]
-      },
-      "oxblood": {
-        "role": "tertiary",
-        "displayName": "Oxblood",
-        "canonical": "#cf6152",
-        "tonalRamp": [
-          "#1f0000",
-          "#4c0201",
-          "#7d1009",
-          "#a3392c",
-          "#c95c4d",
-          "#f17f6f",
-          "#ffb3a7",
-          "#ffe9e5"
-        ]
-      },
-      "oxblood-deep": {
-        "role": "tertiary",
-        "displayName": "Deep Oxblood",
-        "canonical": "#8e3e33",
-        "tonalRamp": [
-          "#1f0000",
-          "#4c0301",
-          "#72241b",
-          "#96453a",
-          "#bc675a",
-          "#e28a7b",
-          "#feb3a7",
-          "#ffe9e5"
-        ]
-      },
-      "qb": {
-        "role": "data",
-        "displayName": "QB Rose",
-        "canonical": "#b8455f",
-        "tonalRamp": [
-          "#1e0006",
-          "#4b011a",
-          "#7d0230",
-          "#a3324e",
-          "#ca566e",
-          "#f27990",
-          "#feb0bc",
-          "#ffe8eb"
-        ]
-      },
-      "rb": {
-        "role": "data",
-        "displayName": "RB Green",
-        "canonical": "#3aa96b",
-        "tonalRamp": [
-          "#001005",
-          "#012e17",
-          "#03502b",
-          "#037541",
-          "#269a5d",
-          "#52be7e",
-          "#79e3a2",
-          "#c5ffd8"
-        ]
-      },
-      "wr": {
-        "role": "data",
-        "displayName": "WR Blue",
-        "canonical": "#4f8fd8",
-        "tonalRamp": [
-          "#000b1e",
-          "#00254b",
-          "#00427e",
-          "#2162a8",
-          "#4585cd",
-          "#68a9f3",
-          "#a4cdfe",
-          "#e4f0ff"
-        ]
-      },
-      "te": {
-        "role": "data",
-        "displayName": "TE Amber",
-        "canonical": "#cb7c2c",
-        "tonalRamp": [
-          "#160700",
-          "#391d00",
-          "#623501",
-          "#8d5007",
-          "#ba6d15",
-          "#e09043",
-          "#feb87c",
-          "#ffeada"
-        ]
-      },
-      "k": {
-        "role": "data",
-        "displayName": "K Violet",
-        "canonical": "#8768cf",
-        "tonalRamp": [
-          "#100029",
-          "#2e0061",
-          "#4b2689",
-          "#6a49ad",
-          "#8b6cd3",
-          "#ad8ffa",
-          "#cdbeff",
-          "#efebff"
-        ]
-      },
-      "def": {
-        "role": "data",
-        "displayName": "DEF Olive",
-        "canonical": "#9c8f38",
-        "tonalRamp": [
-          "#0e0b00",
-          "#2b2500",
-          "#4b4302",
-          "#6e6202",
-          "#91842b",
-          "#b4a751",
-          "#d8cb76",
-          "#fef19a"
-        ]
-      },
-      "paper": {
-        "role": "neutral",
-        "displayName": "Ledger Paper",
-        "canonical": "#e8dcba",
-        "tonalRamp": [
-          "#100a00",
-          "#2e2406",
-          "#4b4124",
-          "#6b6042",
-          "#8d8262",
-          "#b0a484",
-          "#d4c9a7",
-          "#faeecc"
-        ]
-      },
-      "paper-2": {
-        "role": "neutral",
-        "displayName": "Ledger Paper Low Stop",
-        "canonical": "#e0d2a9",
-        "tonalRamp": [
-          "#100a00",
-          "#2e2401",
-          "#4d411c",
-          "#6d603b",
-          "#8f825b",
-          "#b2a47d",
-          "#d6c9a0",
-          "#fceec4"
-        ]
-      },
-      "paper-ink": {
-        "role": "neutral",
-        "displayName": "Paper Ink",
-        "canonical": "#33291a",
-        "tonalRamp": [
-          "#120901",
-          "#2d2314",
-          "#4b4030",
-          "#6b5f4f",
-          "#8c806f",
-          "#b0a391",
-          "#d4c7b4",
-          "#faecd9"
-        ]
-      },
-      "paper-faint": {
-        "role": "neutral",
-        "displayName": "Faint Paper Ink",
-        "canonical": "#5a4c31",
-        "tonalRamp": [
-          "#110a00",
-          "#302308",
-          "#4e4025",
-          "#6e5f44",
-          "#8f8064",
-          "#b3a385",
-          "#d7c7a9",
-          "#fdedcd"
-        ]
-      },
-      "paper-ok": {
-        "role": "secondary",
-        "displayName": "Paper OK Ink",
-        "canonical": "#2f5a3d",
-        "tonalRamp": [
-          "#001004",
-          "#012e15",
-          "#214c30",
-          "#416d4f",
-          "#628f6f",
-          "#84b291",
-          "#a8d7b4",
-          "#ccfdd9"
-        ]
-      },
-      "paper-bad": {
-        "role": "tertiary",
-        "displayName": "Paper Bad Ink",
-        "canonical": "#7e352b",
-        "tonalRamp": [
-          "#1f0000",
-          "#4c0301",
-          "#6f271e",
-          "#93483d",
-          "#b8695d",
-          "#de8c7e",
-          "#feb4a7",
-          "#ffe9e5"
-        ]
-      },
-      "paper-rule": {
-        "role": "neutral",
-        "displayName": "Paper Rule",
-        "canonical": "rgba(51, 41, 26, .18)"
-      },
-      "paper-margin": {
-        "role": "neutral",
-        "displayName": "Paper Margin Red",
-        "canonical": "rgba(164, 82, 63, .55)"
-      }
+      "ground": { "role": "neutral", "displayName": "Stadium Navy Ground", "canonical": "#06122e", "tonalRamp": ["#08173b", "#0e2a6c", "#153e9e", "#1c53d4", "#4273e6", "#789bed", "#aec3f4", "#dfe8fb"] },
+      "panel": { "role": "neutral", "displayName": "Navy Panel", "canonical": "#0b1c44", "tonalRamp": ["#091739", "#112b69", "#193f9a", "#2155ce", "#4775e1", "#7b9cea", "#b0c4f2", "#e0e8fa"] },
+      "panel-2": { "role": "neutral", "displayName": "Navy Panel Raised", "canonical": "#112552", "tonalRamp": ["#0b1937", "#152e65", "#1f4394", "#295ac7", "#4e79da", "#809fe5", "#b3c6ef", "#e1e9f9"] },
+      "panel-3": { "role": "neutral", "displayName": "Navy Panel High", "canonical": "#172e62", "tonalRamp": ["#0d1936", "#172f63", "#224491", "#2e5bc2", "#527ad6", "#83a0e2", "#b5c6ee", "#e2e9f8"] },
+      "line": { "role": "neutral", "displayName": "Hairline", "canonical": "rgba(236, 242, 255, .28)" },
+      "line-soft": { "role": "neutral", "displayName": "Soft Hairline", "canonical": "rgba(236, 242, 255, .13)" },
+      "ink": { "role": "neutral", "displayName": "Floodlight White Ink", "canonical": "#f2f6ff", "tonalRamp": ["#001442", "#00267a", "#0037b2", "#004af0", "#296bff", "#6695ff", "#a3bfff", "#dbe6ff"] },
+      "ink-dim": { "role": "neutral", "displayName": "Dim Ink", "canonical": "#c2cde6", "tonalRamp": ["#131c2f", "#243357", "#344b7f", "#4664aa", "#6782c1", "#92a6d3", "#becae4", "#e6eaf5"] },
+      "ink-faint": { "role": "neutral", "displayName": "Faint Ink", "canonical": "#8499c4", "tonalRamp": ["#151d2d", "#283653", "#3a4e79", "#4e69a2", "#6e87ba", "#98a9cd", "#c1cce1", "#e7ebf3"] },
+      "accent": { "role": "primary", "displayName": "Electric Royal", "canonical": "#5b8cff", "tonalRamp": ["#001442", "#00257a", "#0035b2", "#0048f0", "#2969ff", "#6694ff", "#a3bfff", "#dbe6ff"] },
+      "accent-bright": { "role": "primary", "displayName": "Bright Royal", "canonical": "#93b4ff", "tonalRamp": ["#001442", "#00257a", "#0037b2", "#0049f0", "#296aff", "#6695ff", "#a3bfff", "#dbe6ff"] },
+      "accent-deep": { "role": "primary", "displayName": "Deep Royal", "canonical": "#2e5fd9", "tonalRamp": ["#0a1738", "#132b68", "#1b3f97", "#2554cb", "#4a74de", "#7e9ce7", "#b1c4f1", "#e1e8fa"] },
+      "good": { "role": "secondary", "displayName": "Verified Green", "canonical": "#3ed98a", "tonalRamp": ["#0b3721", "#14663c", "#1d9558", "#27c876", "#4cdc93", "#7fe6b2", "#b2f0d1", "#e1f9ed"] },
+      "good-bright": { "role": "secondary", "displayName": "Bright Verified Green", "canonical": "#7fedb6", "tonalRamp": ["#083a21", "#0f6b3d", "#169c59", "#1ed278", "#43e594", "#79ecb3", "#aff4d1", "#e0fbed"] },
+      "warn": { "role": "tertiary", "displayName": "Warning Marigold", "canonical": "#ffa23d", "tonalRamp": ["#422300", "#7a4000", "#b25d00", "#f07d00", "#ff9829", "#ffb666", "#ffd3a3", "#ffeedb"] },
+      "flag": { "role": "tertiary", "displayName": "Trouble Red", "canonical": "#ff5d66", "tonalRamp": ["#420004", "#7a0007", "#b2000a", "#f0000d", "#ff2935", "#ff666e", "#ffa3a8", "#ffdbdd"] },
+      "flag-deep": { "role": "tertiary", "displayName": "Bills Red", "canonical": "#c60c30", "tonalRamp": ["#3f040f", "#73071c", "#a80a29", "#e20e37", "#f3355a", "#f66f89", "#faa8b8", "#fddde3"] },
+      "qb": { "role": "data", "displayName": "QB Rose", "canonical": "#ff7a95", "tonalRamp": ["#42000d", "#7a0019", "#b20024", "#f00031", "#ff2954", "#ff6685", "#ffa3b6", "#ffdbe3"] },
+      "rb": { "role": "data", "displayName": "RB Green", "canonical": "#52d98b", "tonalRamp": ["#0c361e", "#166437", "#209250", "#2bc56c", "#4fd889", "#82e3ab", "#b4eecd", "#e2f9eb"] },
+      "wr": { "role": "data", "displayName": "WR Sky", "canonical": "#59d3f2", "tonalRamp": ["#05323d", "#095c72", "#0d87a6", "#11b5de", "#38caef", "#71d9f4", "#aae8f8", "#def6fc"] },
+      "te": { "role": "data", "displayName": "TE Amber", "canonical": "#f0954a", "tonalRamp": ["#3d1e05", "#713809", "#a5520e", "#dd6e12", "#ef8b39", "#f3ac72", "#f8cdaa", "#fcecde"] },
+      "k": { "role": "data", "displayName": "K Violet", "canonical": "#c39bff", "tonalRamp": ["#1b0042", "#31007a", "#4700b2", "#6000f0", "#7e29ff", "#a366ff", "#c8a3ff", "#eadbff"] },
+      "def": { "role": "data", "displayName": "DEF Olive", "canonical": "#e4de6b", "tonalRamp": ["#38360a", "#686313", "#97911c", "#cbc225", "#ded74a", "#e7e27e", "#f1eeb1", "#f9f8e1"] },
+      "paper": { "role": "neutral", "displayName": "Game-Program White", "canonical": "#f2f5fd", "tonalRamp": ["#091639", "#10296a", "#183c9b", "#2050d0", "#4570e2", "#7a99eb", "#afc2f3", "#e0e7fa"] },
+      "paper-2": { "role": "neutral", "displayName": "Program Low Stop", "canonical": "#e4eaf8", "tonalRamp": ["#0e1935", "#192f61", "#25448e", "#315cbe", "#557bd3", "#85a0e0", "#b6c6ec", "#e3e9f8"] },
+      "paper-ink": { "role": "neutral", "displayName": "Program Ink", "canonical": "#17233e", "tonalRamp": ["#121b30", "#213259", "#304982", "#4163af", "#6381c5", "#8fa5d6", "#bcc9e6", "#e5eaf5"] },
+      "paper-faint": { "role": "neutral", "displayName": "Faint Program Ink", "canonical": "#4c5c82", "tonalRamp": ["#181e2a", "#2d374d", "#425071", "#586b97", "#7888b0", "#9eaac7", "#c5ccdd", "#e8ebf2"] },
+      "paper-rule": { "role": "neutral", "displayName": "Program Rule", "canonical": "rgba(23, 35, 62, .16)" },
+      "paper-margin": { "role": "neutral", "displayName": "Ledger Margin Red", "canonical": "rgba(198, 12, 48, .5)" },
+      "paper-ok": { "role": "secondary", "displayName": "Program OK Ink", "canonical": "#1f7a4d", "tonalRamp": ["#0d3521", "#19623e", "#248e5a", "#31bf79", "#54d495", "#85e0b3", "#b6ecd1", "#e3f8ed"] },
+      "paper-bad": { "role": "tertiary", "displayName": "Program Bad Ink", "canonical": "#b01230", "tonalRamp": ["#3c0610", "#6f0b1e", "#a2112c", "#d9163b", "#eb3d5e", "#f1748c", "#f6acba", "#fcdfe4"] }
     },
     "typographyMeta": {
-      "display": {
-        "displayName": "Marquee",
-        "purpose": "The BOOTLEGGER wordmark only (the Marquee Rule)."
-      },
-      "headline": {
-        "displayName": "Headline",
-        "purpose": "Room titles (uppercase), verdict line, The Call's player name; 1.3-1.55rem."
-      },
-      "title": {
-        "displayName": "Plate Title",
-        "purpose": "Engraved plate lettering: THE CALL, MY SHELF; .22em tracked uppercase."
-      },
-      "body": {
-        "displayName": "Body",
-        "purpose": "Prose, rationale, notes; 62-70ch measure cap."
-      },
-      "label": {
-        "displayName": "Label",
-        "purpose": "Whisper layer: position tags, stat micro-labels, table heads, tabs; .62-.78rem uppercase, wider tracking as it shrinks."
-      },
-      "figures": {
-        "displayName": "Figures",
-        "purpose": "Every number and all ledger/tape/stepper/clock text (the Typewriter Figures Rule); 700 marks the emphasized figure."
-      },
-      "figures-display": {
-        "displayName": "Figures Display",
-        "purpose": "The verdict delta - the one loud number; brass or lamp text-glow; 1.6rem at <=900px."
-      }
+      "display": { "displayName": "Marquee", "purpose": "Anton: the BOOTLEGGER wordmark (italic, Bills-red drop shadow) and room/plate titles." },
+      "body": { "displayName": "Working Voice", "purpose": "Barlow Semi Condensed: prose, labels, tabs, buttons; also the legibility floor for the smallest, densest labels." },
+      "figures": { "displayName": "Figures", "purpose": "Courier Prime, every number always (the Typewriter Figures Rule); ledger, tape, stepper, and clock text ride along; 700 marks the emphasized figure." },
+      "banner": { "displayName": "Bedsheet Banner", "purpose": "Permanent Marker, memes only: the Mafia stamps and THE TABLE's FOLDED tag. Never data, labels, or controls (the Bedsheet Marker Rule)." }
     },
     "shadows": [
-      {
-        "name": "plate",
-        "value": "0 2px 6px rgba(0,0,0,.45), 0 8px 24px rgba(0,0,0,.35)",
-        "purpose": "--shadow-plate: the loud objects (masthead, The Call, verdict, all-good plate)."
-      },
-      {
-        "name": "raise",
-        "value": "0 1px 3px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.3)",
-        "purpose": "--shadow-raise: working furniture (shelf, board columns, tables)."
-      },
-      {
-        "name": "paper-drop",
-        "value": "0 3px 8px rgba(0,0,0,.55), 0 14px 34px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,250,232,.85)",
-        "purpose": "Ledger sheets float highest; the inset is the lamp catching the paper's top edge."
-      },
-      {
-        "name": "paper-drop-tape",
-        "value": "0 2px 6px rgba(0,0,0,.5), 0 8px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,250,232,.8)",
-        "purpose": "Shallower drop for the pick ticker tape."
-      },
-      {
-        "name": "glow-brass-plate",
-        "value": "inset 0 1px 0 rgba(236,223,198,.08), 0 2px 10px rgba(201,162,92,.35)",
-        "purpose": "Clockplate when you're on the clock - brass glow means yours/act."
-      },
-      {
-        "name": "glow-brass-button",
-        "value": "0 2px 5px rgba(0,0,0,.5), 0 6px 16px rgba(201,162,92,.22), inset 0 1px 0 rgba(255,244,214,.5)",
-        "purpose": "Primary button underglow + warm top edge."
-      },
-      {
-        "name": "glow-lamp-dot",
-        "value": "0 1px 6px rgba(88,160,108,.8)",
-        "purpose": "Wire-live lamp dot; swaps to rgba(207,97,82,.8) when the wire is down."
-      }
+      { "name": "plate", "value": "0 2px 8px rgba(2,6,20,.5), 0 10px 28px rgba(2,6,20,.35)", "purpose": "--shadow-plate: the loud objects (masthead, The Call, verdict)." },
+      { "name": "raise", "value": "0 1px 3px rgba(2,6,20,.5), 0 6px 16px rgba(2,6,20,.3)", "purpose": "--shadow-raise: working furniture (shelf, board columns, tables)." },
+      { "name": "paper-drop", "value": "0 3px 8px rgba(2,6,20,.55), 0 14px 34px rgba(2,6,20,.35), inset 0 1px 0 rgba(255,255,255,.9)", "purpose": "Program sheets float highest; the inset is floodlight catching the paper's top edge." },
+      { "name": "paper-drop-tape", "value": "0 2px 6px rgba(2,6,20,.5), 0 8px 20px rgba(2,6,20,.3), inset 0 1px 0 rgba(255,255,255,.9)", "purpose": "Shallower drop for the pick ticker tape." },
+      { "name": "glow-royal-plate", "value": "inset 0 1px 0 rgba(236,242,255,.08), 0 2px 10px rgba(91,140,255,.4)", "purpose": "Clockplate when you're on the clock — royal glow means yours/act." },
+      { "name": "glow-royal-key", "value": "0 3px 0 #0a1c44, 0 6px 18px rgba(91,140,255,.3)", "purpose": "Primary button: the hard 3px press edge plus royal underglow; active collapses to 0 1px 0 #0a1c44 with translateY(2px)." },
+      { "name": "glow-lamp-dot", "value": "0 1px 6px rgba(62,217,138,.8)", "purpose": "Wire-live lamp dot; swaps to rgba(255,93,102,.8) when the wire is down." }
     ],
     "motion": [
-      {
-        "name": "ease-settle",
-        "value": "cubic-bezier(.16, 1, .3, 1)",
-        "purpose": "The authored moment's spring - used by both strike and settle."
-      },
-      {
-        "name": "strike",
-        "value": "strike .5s cubic-bezier(.16,1,.3,1) both (scaleX 0->1 at -1.1deg, transform-origin left center)",
-        "purpose": "The pick strike draws left-to-right through the name. Off under prefers-reduced-motion."
-      },
-      {
-        "name": "settle",
-        "value": "settle .55s cubic-bezier(.16,1,.3,1) both (scale 1.7->.95->1 with 6deg->-2deg->0 counter-rotation)",
-        "purpose": "The pick stamp slams and settles; .just-picked class held 1.4s by JS. Off under prefers-reduced-motion."
-      },
-      {
-        "name": "micro-filter",
-        "value": "filter .12s ease",
-        "purpose": "Button hover brightness."
-      },
-      {
-        "name": "press",
-        "value": "transform .06s ease",
-        "purpose": "Button active 1px press."
-      },
-      {
-        "name": "toggle",
-        "value": "background .15s ease, transform .15s ease",
-        "purpose": "Paper toggle track/knob; off under prefers-reduced-motion."
-      },
-      {
-        "name": "spin",
-        "value": "spin .7s linear infinite",
-        "purpose": "12px in-button spinner; slowed to 1.5s (not removed) under prefers-reduced-motion."
-      }
+      { "name": "ease-settle", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "The house spring — rows, strike, settle, and the tag slam all ride it." },
+      { "name": "room-in", "value": "room-in .2s ease-out both (opacity + translateY(6px))", "purpose": "The broadcast cut: rooms, verdict, sheets, report card, deals rise and settle. Keys off the [hidden] display restart, so 1 Hz polls never re-fire it." },
+      { "name": "row-in", "value": "row-in .28s cubic-bezier(.16,1,.3,1) both; 30ms stagger, capped at 180ms from nth-child(7)", "purpose": "Board rows cascade on rebuild only; transform/opacity only." },
+      { "name": "strike", "value": "strike .5s cubic-bezier(.16,1,.3,1) both (scaleX 0→1 at -1.1deg, origin left center)", "purpose": "The pick strike draws left-to-right through the name. Off under prefers-reduced-motion." },
+      { "name": "settle", "value": "settle .55s cubic-bezier(.16,1,.3,1) both (scale 1.7→.95→1 with counter-rotation)", "purpose": "The pick stamp slams and settles; .just-picked held 1.4s by JS. Off under prefers-reduced-motion." },
+      { "name": "buf-idle", "value": "buf-idle 3.6s ease-in-out infinite", "purpose": "The Buffalo's breathing bob on The Call; the static mascot remains under prefers-reduced-motion." },
+      { "name": "buf-stampede", "value": "buf-stampede 1.15s cubic-bezier(.3,.05,.2,1) 2 + dust-puff loop", "purpose": "On your clock the Buffalo stampedes across the plate twice; dust is display:none under prefers-reduced-motion." },
+      { "name": "run-route", "value": "run-route 7s ease-in-out infinite (stroke-dashoffset 260→0)", "purpose": "The telestrator's royal pen draws the route on loop; display:none under prefers-reduced-motion." },
+      { "name": "hurdle", "value": "hurdle 1s cubic-bezier(.3,.1,.5,1) both (2.5 turns, up and over the row)", "purpose": "Your landed pick's football flyby; display:none under prefers-reduced-motion." },
+      { "name": "tag-slam", "value": "tag-slam .45–.5s cubic-bezier(.16,1,.3,1) both (rotate -8deg, scale 1.6→1)", "purpose": "THE TABLE's FOLDED tag and the mafia-stamp slam; renders instantly under prefers-reduced-motion." },
+      { "name": "micro-filter", "value": "filter .12s ease", "purpose": "Button hover brightness." },
+      { "name": "press", "value": "transform .06s ease", "purpose": "Primary key 2px press." },
+      { "name": "toggle", "value": "background .15s ease, transform .15s ease", "purpose": "Program-sheet toggle track/knob; off under prefers-reduced-motion." },
+      { "name": "spin", "value": "spin .7s linear infinite", "purpose": "12px in-button spinner; slowed to 1.5s (not removed) under prefers-reduced-motion." }
     ],
     "breakpoints": [
-      {
-        "name": "board-two-col",
-        "value": "1180px"
-      },
-      {
-        "name": "single-column",
-        "value": "900px"
-      },
-      {
-        "name": "one-thumb",
-        "value": "420px"
-      }
+      { "name": "board-two-col", "value": "1180px" },
+      { "name": "single-column", "value": "900px" },
+      { "name": "program-compact", "value": "560px" },
+      { "name": "one-thumb", "value": "420px" }
     ]
   },
   "components": [
@@ -574,65 +79,57 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The brass approval hardware - Approve & Execute; >=46px tall, full-width on the phone.",
+      "description": "The royal key — Approve & Execute; white 700 text on the royal gradient, hard 3px press edge, >=46px tall, full-width on the phone.",
       "html": "<button class=\"ds-btn-primary\">Approve &amp; Execute</button>",
-      "css": ".ds-btn-primary { appearance: none; cursor: pointer; border-radius: 5px; font: 700 .95rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; padding: 15px 22px; min-height: 46px; background: linear-gradient(180deg, var(--brass-bright, #e6c684), var(--brass, #c9a25c) 55%, #b58c47); color: var(--ground, #17120e); border: 1px solid var(--brass-deep, #8a6d33); box-shadow: 0 2px 5px rgba(0,0,0,.5), 0 6px 16px rgba(201,162,92,.22), inset 0 1px 0 rgba(255,244,214,.5); transition: filter .12s ease, transform .06s ease; } .ds-btn-primary:hover { filter: brightness(1.07); } .ds-btn-primary:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,.5); } .ds-btn-primary:focus-visible { outline: 2px solid var(--brass, #c9a25c); outline-offset: 2px; } .ds-btn-primary[disabled] { opacity: .45; cursor: not-allowed; }"
+      "css": ".ds-btn-primary { appearance: none; cursor: pointer; border-radius: 10px; font: 700 1.02rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; padding: 15px 22px; min-height: 46px; background: linear-gradient(180deg, var(--brass, #5b8cff), var(--brass-deep, #2e5fd9) 45%, #2451b8); color: var(--ink, #f2f6ff); border: 2px solid #0a1c44; box-shadow: 0 3px 0 #0a1c44, 0 6px 18px rgba(91,140,255,.3); transition: filter .12s ease, transform .06s ease; } .ds-btn-primary:hover { filter: brightness(1.09); } .ds-btn-primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #0a1c44; } .ds-btn-primary:focus-visible { outline: 2px solid var(--brass, #5b8cff); outline-offset: 2px; } .ds-btn-primary[disabled] { opacity: .45; cursor: not-allowed; }"
     },
     {
       "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "The quiet option - Snooze, Ignore; hairline border that warms to brass on hover.",
+      "description": "The quiet option — Snooze, Ignore, Disarm; hairline border that turns royal on hover.",
       "html": "<button class=\"ds-btn-ghost\">Snooze 30m</button>",
-      "css": ".ds-btn-ghost { appearance: none; cursor: pointer; border-radius: 5px; font: 700 .95rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; padding: 15px 22px; min-height: 46px; background: transparent; color: var(--ink-dim, #b5a483); border: 1px solid var(--line, #3b2f21); transition: filter .12s ease, transform .06s ease; } .ds-btn-ghost:hover { color: var(--ink, #ecdfc6); border-color: var(--brass-deep, #8a6d33); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--brass, #c9a25c); outline-offset: 2px; }"
-    },
-    {
-      "name": "Filter Chip",
-      "kind": "chip",
-      "refersTo": "chip",
-      "description": "Mobile-only position filter pills; active is solid brass with aria-pressed.",
-      "html": "<button class=\"ds-chip is-active\" aria-pressed=\"true\">All</button> <button class=\"ds-chip\" aria-pressed=\"false\">RB</button> <button class=\"ds-chip\" aria-pressed=\"false\">WR</button>",
-      "css": ".ds-chip { appearance: none; cursor: pointer; font: 600 .84rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim, #b5a483); background: var(--panel, #1e1712); border: 1px solid var(--line, #3b2f21); border-radius: 999px; padding: 9px 15px; } .ds-chip:hover { color: var(--ink, #ecdfc6); border-color: var(--brass-deep, #8a6d33); } .ds-chip:focus-visible { outline: 2px solid var(--brass, #c9a25c); outline-offset: 2px; } .ds-chip.is-active { color: var(--ground, #17120e); background: var(--brass, #c9a25c); border-color: var(--brass, #c9a25c); font-weight: 700; }"
+      "css": ".ds-btn-ghost { appearance: none; cursor: pointer; border-radius: 10px; font: 400 1.02rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; padding: 15px 22px; min-height: 46px; background: transparent; color: var(--ink-dim, #c2cde6); border: 1px solid var(--line, rgba(236,242,255,.28)); transition: filter .12s ease, transform .06s ease; } .ds-btn-ghost:hover { color: var(--ink, #f2f6ff); border-color: var(--brass-deep, #2e5fd9); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--brass, #5b8cff); outline-offset: 2px; }"
     },
     {
       "name": "Room Tab",
       "kind": "nav",
       "refersTo": "tab",
-      "description": "File-drawer tabs; the active drawer merges with the ground and takes a 2px inset brass top bar.",
-      "html": "<div style=\"display:flex; gap:2px; align-items:flex-end; background:#17120e; padding:12px 12px 0;\"><button class=\"ds-tab is-active\" aria-current=\"page\">The Board</button><button class=\"ds-tab\">This Week</button><button class=\"ds-tab\">The Ledger</button></div>",
-      "css": ".ds-tab { appearance: none; border: 1px solid var(--line, #3b2f21); border-bottom: none; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, #201810, #1b140f); color: var(--ink-dim, #b5a483); font: 600 .86rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; padding: 11px 16px 12px; cursor: pointer; } .ds-tab:hover { color: var(--ink, #ecdfc6); background: linear-gradient(180deg, #261d13, #1e1610); } .ds-tab:focus-visible { outline: 2px solid var(--brass, #c9a25c); outline-offset: 2px; } .ds-tab.is-active { color: var(--brass-bright, #e6c684); background: var(--ground, #17120e); border-color: var(--brass-deep, #8a6d33); box-shadow: inset 0 2px 0 var(--brass, #c9a25c); }"
+      "description": "Broadcast-board tabs with a ghost subtitle (the in-world name over the plain word); the active tab merges with the ground under a 2px inset royal bar.",
+      "html": "<div style=\"display:flex; gap:2px; align-items:flex-end; background:#06122e; padding:12px 12px 0;\"><button class=\"ds-tab is-active\" aria-current=\"page\">The Board<small>the draft</small></button><button class=\"ds-tab\">This Week<small>lineup</small></button><button class=\"ds-tab\">The Ledger<small>rules &middot; audit</small></button></div>",
+      "css": ".ds-tab { appearance: none; border: 1px solid var(--line, rgba(236,242,255,.28)); border-bottom: none; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, #10234e, #0c1d45); color: var(--ink-dim, #c2cde6); font: 600 .86rem/1 \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; padding: 8px 16px 9px; cursor: pointer; } .ds-tab small { display: block; margin-top: 3px; font-size: .56rem; font-weight: 500; letter-spacing: .12em; text-transform: lowercase; color: var(--ink-faint, #8499c4); opacity: .85; } .ds-tab:hover { color: var(--ink, #f2f6ff); background: linear-gradient(180deg, #16306a, #112552); } .ds-tab:focus-visible { outline: 2px solid var(--brass, #5b8cff); outline-offset: 2px; } .ds-tab.is-active { color: var(--brass-bright, #93b4ff); background: var(--ground, #06122e); border-color: var(--brass-deep, #2e5fd9); box-shadow: inset 0 2px 0 var(--brass, #5b8cff); } .ds-tab.is-active small { color: var(--ink-dim, #c2cde6); }"
     },
     {
       "name": "Position Tag",
       "kind": "custom",
       "refersTo": "label",
       "description": "The categorical key: hue swatch + written label, never color alone (the Written Label Rule).",
-      "html": "<div style=\"display:flex; gap:14px; flex-wrap:wrap; background:#1e1712; padding:12px;\"><span class=\"ds-pos ds-pos-qb\">QB</span><span class=\"ds-pos ds-pos-rb\">RB</span><span class=\"ds-pos ds-pos-wr\">WR</span><span class=\"ds-pos ds-pos-te\">TE</span><span class=\"ds-pos ds-pos-k\">K</span><span class=\"ds-pos ds-pos-def\">DEF</span></div>",
-      "css": ".ds-pos { display: inline-flex; align-items: center; gap: 5px; font: 700 .7rem \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .1em; color: var(--ink-dim, #b5a483); text-transform: uppercase; } .ds-pos::before { content: \"\"; width: 8px; height: 8px; border-radius: 2px; background: var(--pc, #91805f); } .ds-pos-qb { --pc: #b8455f; } .ds-pos-rb { --pc: #3aa96b; } .ds-pos-wr { --pc: #4f8fd8; } .ds-pos-te { --pc: #cb7c2c; } .ds-pos-k { --pc: #8768cf; } .ds-pos-def { --pc: #9c8f38; }"
+      "html": "<div style=\"display:flex; gap:14px; flex-wrap:wrap; background:#0b1c44; padding:12px;\"><span class=\"ds-pos ds-pos-qb\">QB</span><span class=\"ds-pos ds-pos-rb\">RB</span><span class=\"ds-pos ds-pos-wr\">WR</span><span class=\"ds-pos ds-pos-te\">TE</span><span class=\"ds-pos ds-pos-k\">K</span><span class=\"ds-pos ds-pos-def\">DEF</span></div>",
+      "css": ".ds-pos { display: inline-flex; align-items: center; gap: 5px; font: 700 .7rem \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .1em; color: var(--ink-dim, #c2cde6); text-transform: uppercase; } .ds-pos::before { content: \"\"; width: 8px; height: 8px; border-radius: 2px; background: var(--pc, #8499c4); } .ds-pos-qb { --pc: #ff7a95; } .ds-pos-rb { --pc: #52d98b; } .ds-pos-wr { --pc: #59d3f2; } .ds-pos-te { --pc: #f0954a; } .ds-pos-k { --pc: #c39bff; } .ds-pos-def { --pc: #e4de6b; }"
     },
     {
       "name": "Board Row",
       "kind": "custom",
       "refersTo": "stamp",
-      "description": "The board's unit: stamp, name, figures, survival meter; picked rows take the -1.1deg strike, yours go brass. Home of the authored strike/settle moment.",
-      "html": "<div style=\"background:#1e1712; border:1px solid #2a2118; border-radius:6px; max-width:340px;\"><div class=\"ds-prow\"><div class=\"ds-l1\"><span class=\"ds-stamp\">3</span><span class=\"ds-name\">Jahmyr Gibbs</span></div><div class=\"ds-l2\"><span class=\"ds-team\">DET &middot; bye 12</span><span class=\"ds-nums\"><span><span class=\"ds-lbl\">vbd</span><b>137.3</b></span><span><span class=\"ds-lbl\">adp</span>5.7</span></span></div><div class=\"ds-surv\"><div class=\"ds-surv-bar\"><div class=\"ds-surv-fill\" style=\"width:26%\"></div></div><span class=\"ds-surv-pct\">26%</span></div></div><div class=\"ds-prow is-picked is-mine just-picked\"><div class=\"ds-l1\"><span class=\"ds-stamp\">MINE &middot; P7</span><span class=\"ds-name\">Ja'Marr Chase</span></div><div class=\"ds-l2\"><span class=\"ds-team\">CIN &middot; bye 6</span><span class=\"ds-nums\"><span><span class=\"ds-lbl\">vbd</span><b>173.6</b></span></span></div></div></div>",
-      "css": ".ds-prow { padding: 7px 12px 8px; position: relative; border-bottom: 1px solid var(--line-soft, #2a2118); display: grid; gap: 3px; font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; color: var(--ink, #ecdfc6); font-size: 15px; } .ds-prow:last-child { border-bottom: none; } .ds-prow:hover { background: var(--panel-2, #251c14); } .ds-l1 { display: flex; align-items: baseline; gap: 7px; min-width: 0; } .ds-name { font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; flex: 1; min-width: 0; } .ds-l2 { display: flex; align-items: baseline; gap: 10px; } .ds-team { color: var(--ink-faint, #91805f); font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; } .ds-nums { margin-left: auto; display: flex; gap: 12px; align-items: baseline; font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .84rem; color: var(--ink-dim, #b5a483); } .ds-nums b { color: var(--ink, #ecdfc6); font-weight: 700; } .ds-lbl { font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; font-size: .62rem; letter-spacing: .1em; color: var(--ink-faint, #91805f); text-transform: uppercase; margin-right: 3px; } .ds-surv { display: flex; align-items: center; gap: 8px; } .ds-surv-bar { flex: 1; height: 3px; background: var(--line-soft, #2a2118); border-radius: 2px; overflow: hidden; } .ds-surv-fill { height: 100%; background: linear-gradient(90deg, var(--brass-deep, #8a6d33), var(--brass, #c9a25c)); border-radius: 2px; } .ds-surv-pct { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .76rem; color: var(--ink-dim, #b5a483); } .ds-stamp { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .74rem; font-weight: 700; color: var(--ink-faint, #91805f); border: 1px solid var(--line, #3b2f21); border-radius: 3px; padding: 1px 5px; white-space: nowrap; } .ds-prow.is-picked { opacity: .5; } .ds-prow.is-picked .ds-name::after { content: \"\"; position: absolute; left: -2px; right: -2px; top: 54%; height: 2px; background: var(--oxblood, #cf6152); transform: rotate(-1.1deg); } .ds-prow.is-mine { opacity: 1; background: linear-gradient(90deg, rgba(201,162,92,.12), transparent 70%); } .ds-prow.is-mine .ds-stamp { color: var(--ground, #17120e); background: var(--brass, #c9a25c); border-color: var(--brass, #c9a25c); } .ds-prow.is-mine .ds-name::after { background: var(--brass-deep, #8a6d33); } @keyframes ds-strike { from { transform: scaleX(0) rotate(-1.1deg); } to { transform: scaleX(1) rotate(-1.1deg); } } @keyframes ds-settle { 0% { transform: scale(1.7) rotate(6deg); opacity: 0; } 60% { transform: scale(.95) rotate(-2deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } } .ds-prow.just-picked .ds-name::after { transform-origin: left center; animation: ds-strike .5s cubic-bezier(.16,1,.3,1) both; } .ds-prow.just-picked .ds-stamp { animation: ds-settle .55s cubic-bezier(.16,1,.3,1) both; } @media (prefers-reduced-motion: reduce) { .ds-prow.just-picked .ds-name::after, .ds-prow.just-picked .ds-stamp { animation: none; } }"
+      "description": "The board's unit: stamp, name, figures, chalked survival track (a hash every ten yards, royal fill burning yardage); picked rows take the -1.1deg red strike, yours go royal. Home of the strike/settle moment.",
+      "html": "<div style=\"background:#0b1c44; border:1px solid rgba(236,242,255,.13); border-radius:12px; max-width:340px;\"><div class=\"ds-prow\"><div class=\"ds-l1\"><span class=\"ds-stamp\">3</span><span class=\"ds-name\">Jahmyr Gibbs</span></div><div class=\"ds-l2\"><span class=\"ds-team\">DET &middot; bye 12</span><span class=\"ds-nums\"><span><span class=\"ds-lbl\">vbd</span><b>137.3</b></span><span><span class=\"ds-lbl\">adp</span>5.7</span></span></div><div class=\"ds-surv\"><div class=\"ds-surv-bar\"><div class=\"ds-surv-fill\" style=\"width:26%\"></div></div><span class=\"ds-surv-pct\">26%</span></div></div><div class=\"ds-prow is-picked is-mine just-picked\"><div class=\"ds-l1\"><span class=\"ds-stamp\">MINE &middot; P7</span><span class=\"ds-name\">Ja'Marr Chase</span></div><div class=\"ds-l2\"><span class=\"ds-team\">CIN &middot; bye 6</span><span class=\"ds-nums\"><span><span class=\"ds-lbl\">vbd</span><b>173.6</b></span></span></div></div></div>",
+      "css": ".ds-prow { padding: 7px 12px 8px; position: relative; border-bottom: 1px solid var(--line-soft, rgba(236,242,255,.13)); display: grid; gap: 3px; font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; color: var(--ink, #f2f6ff); font-size: 15px; } .ds-prow:last-child { border-bottom: none; } .ds-prow:hover { background: var(--panel-2, #112552); } .ds-l1 { display: flex; align-items: baseline; gap: 7px; min-width: 0; } .ds-name { font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; flex: 1; min-width: 0; } .ds-l2 { display: flex; align-items: baseline; gap: 10px; } .ds-team { color: var(--ink-faint, #8499c4); font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; } .ds-nums { margin-left: auto; display: flex; gap: 12px; align-items: baseline; font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .84rem; color: var(--ink-dim, #c2cde6); } .ds-nums b { color: var(--ink, #f2f6ff); font-weight: 700; } .ds-lbl { font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; font-size: .62rem; letter-spacing: .1em; color: var(--ink-faint, #8499c4); text-transform: uppercase; margin-right: 3px; } .ds-surv { display: flex; align-items: center; gap: 8px; } .ds-surv-bar { flex: 1; height: 4px; border-radius: 2px; overflow: hidden; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--line, rgba(236,242,255,.28)) calc(10% - 1px) 10%), var(--line-soft, rgba(236,242,255,.13)); } .ds-surv-fill { height: 100%; background: linear-gradient(90deg, var(--brass-deep, #2e5fd9), var(--brass, #5b8cff)); border-radius: 2px; } .ds-surv-pct { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .76rem; color: var(--ink-dim, #c2cde6); } .ds-stamp { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .74rem; font-weight: 700; color: var(--ink-faint, #8499c4); border: 1px solid var(--line, rgba(236,242,255,.28)); border-radius: 3px; padding: 1px 5px; white-space: nowrap; } .ds-prow.is-picked { opacity: .5; } .ds-prow.is-picked .ds-name::after { content: \"\"; position: absolute; left: -2px; right: -2px; top: 54%; height: 2px; background: var(--oxblood, #ff5d66); transform: rotate(-1.1deg); } .ds-prow.is-mine { opacity: 1; background: linear-gradient(90deg, rgba(91,140,255,.14), transparent 70%); } .ds-prow.is-mine .ds-stamp { color: var(--ground, #06122e); background: var(--brass, #5b8cff); border-color: var(--brass, #5b8cff); } .ds-prow.is-mine .ds-name::after { background: var(--brass-deep, #2e5fd9); } @keyframes ds-strike { from { transform: scaleX(0) rotate(-1.1deg); } to { transform: scaleX(1) rotate(-1.1deg); } } @keyframes ds-settle { 0% { transform: scale(1.7) rotate(6deg); opacity: 0; } 60% { transform: scale(.95) rotate(-2deg); opacity: 1; } 100% { transform: scale(1) rotate(0); opacity: 1; } } .ds-prow.just-picked .ds-name::after { transform-origin: left center; animation: ds-strike .5s cubic-bezier(.16,1,.3,1) both; } .ds-prow.just-picked .ds-stamp { animation: ds-settle .55s cubic-bezier(.16,1,.3,1) both; } @media (prefers-reduced-motion: reduce) { .ds-prow.just-picked .ds-name::after, .ds-prow.just-picked .ds-stamp { animation: none; } }"
     },
     {
       "name": "Pick Ticker",
       "kind": "custom",
       "refersTo": "sheet",
-      "description": "The wire prints to paper tape: recent picks on a horizontal strip with paper-calibrated scrollbars; scrolls in its own container, never the page.",
+      "description": "The wire prints to game-program tape: recent picks on a horizontal white strip with paper-calibrated scrollbars; scrolls in its own container, never the page.",
       "html": "<ul class=\"ds-ticker\"><li><span class=\"ds-t-no\">R1&middot;P1</span><span>Bijan Robinson</span><span class=\"ds-t-pos\">RB</span></li><li class=\"t-mine\"><span class=\"ds-t-no\">R1&middot;P7</span><span>Ja'Marr Chase</span><span class=\"ds-t-pos\">WR</span></li><li><span class=\"ds-t-no\">R1&middot;P8</span><span>Justin Jefferson</span><span class=\"ds-t-pos\">WR</span></li></ul>",
-      "css": ".ds-ticker { list-style: none; margin: 0; display: flex; gap: 22px; overflow-x: auto; background: linear-gradient(180deg, #efe3c3, var(--paper, #e8dcba) 55%, var(--paper-2, #e0d2a9)); border-radius: 2px; padding: 9px 16px 10px; box-shadow: 0 2px 6px rgba(0,0,0,.5), 0 8px 20px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,250,232,.8); scrollbar-color: #b9a87e var(--paper-2, #e0d2a9); } .ds-ticker li { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .84rem; color: #4a3d28; } .ds-ticker .ds-t-no { color: var(--paper-faint, #5a4c31); font-size: .76rem; } .ds-ticker li.t-mine { color: var(--paper-bad, #7e352b); font-weight: 700; } .ds-ticker .ds-t-pos { color: var(--paper-faint, #5a4c31); font: 700 .7rem \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .1em; } .ds-ticker::-webkit-scrollbar { height: 10px; } .ds-ticker::-webkit-scrollbar-track { background: var(--paper-2, #e0d2a9); } .ds-ticker::-webkit-scrollbar-thumb { background: #b9a87e; border: 2px solid var(--paper-2, #e0d2a9); border-radius: 5px; } .ds-ticker ::selection { background: var(--paper-ink, #33291a); color: var(--paper, #e8dcba); }"
+      "css": ".ds-ticker { list-style: none; margin: 0; display: flex; gap: 22px; overflow-x: auto; background: linear-gradient(180deg, #fbfcff, var(--paper, #f2f5fd) 55%, var(--paper-2, #e4eaf8)); border-radius: 4px; padding: 9px 16px 10px; box-shadow: 0 2px 6px rgba(2,6,20,.5), 0 8px 20px rgba(2,6,20,.3), inset 0 1px 0 rgba(255,255,255,.9); scrollbar-color: #a9b8d8 var(--paper-2, #e4eaf8); } .ds-ticker li { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .84rem; color: #26355c; } .ds-ticker .ds-t-no { color: var(--paper-faint, #4c5c82); font-size: .76rem; } .ds-ticker li.t-mine { color: var(--paper-bad, #b01230); font-weight: 700; } .ds-ticker .ds-t-pos { color: var(--paper-faint, #4c5c82); font: 700 .7rem \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; letter-spacing: .1em; } .ds-ticker::-webkit-scrollbar { height: 10px; } .ds-ticker::-webkit-scrollbar-track { background: var(--paper-2, #e4eaf8); } .ds-ticker::-webkit-scrollbar-thumb { background: #a9b8d8; border: 2px solid var(--paper-2, #e4eaf8); border-radius: 5px; } .ds-ticker ::selection { background: var(--paper-ink, #17233e); color: var(--paper, #f2f5fd); }"
     },
     {
-      "name": "Ledger Sheet",
+      "name": "Program Sheet",
       "kind": "card",
       "refersTo": "sheet",
-      "description": "The world's core material: a paper page with the red margin rule, its own ink set, rule rows with paper toggles, and Courier audit lines.",
-      "html": "<div class=\"ds-sheet\"><div class=\"ds-rule-row\"><span class=\"ds-rule-name\">questionable near kickoff</span><span class=\"ds-rule-th\">trips inside 3h of kickoff</span><input type=\"checkbox\" class=\"ds-toggle\" checked aria-label=\"Toggle rule\"></div><div class=\"ds-rule-row\"><span class=\"ds-rule-name\">any faab involved</span><input type=\"checkbox\" class=\"ds-toggle\" aria-label=\"Toggle rule\"></div><div class=\"ds-ledger-line\"><span>2026-08-24 02:55:37</span><span>rec #1</span><span class=\"ds-step-name ok\">state:verified</span></div><div class=\"ds-ledger-line\"><span>2026-08-24 02:41:12</span><span>rec #1</span><span class=\"ds-step-name\">state:proposed</span></div></div>",
-      "css": ".ds-sheet { position: relative; background: linear-gradient(180deg, #efe3c3, var(--paper, #e8dcba) 45%, var(--paper-2, #e0d2a9)); border-radius: 3px; box-shadow: 0 3px 8px rgba(0,0,0,.55), 0 14px 34px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,250,232,.85); padding: 18px 26px 22px 58px; color: var(--paper-ink, #33291a); font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; font-size: 15px; } .ds-sheet::before { content: \"\"; position: absolute; top: 0; bottom: 0; left: 42px; width: 1px; background: var(--paper-margin, rgba(164,82,63,.55)); } .ds-sheet ::selection { background: var(--paper-ink, #33291a); color: var(--paper, #e8dcba); } .ds-rule-row { display: flex; align-items: center; gap: 14px; padding: 11px 2px; border-bottom: 1px solid var(--paper-rule, rgba(51,41,26,.18)); } .ds-rule-name { font-weight: 600; } .ds-rule-th { font-family: \"Courier Prime\", \"Courier New\", monospace; color: var(--paper-faint, #5a4c31); font-size: .82rem; } .ds-toggle { margin-left: auto; appearance: none; cursor: pointer; flex: none; width: 46px; height: 24px; border-radius: 12px; position: relative; background: #cbbd97; border: 1px solid rgba(51,41,26,.3); transition: background .15s ease; } .ds-toggle::after { content: \"\"; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #8d7c58; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .15s ease, background .15s ease; } .ds-toggle:checked { background: var(--brass-deep, #8a6d33); border-color: var(--brass-deep, #8a6d33); } .ds-toggle:checked::after { transform: translateX(22px); background: var(--brass-bright, #e6c684); } .ds-toggle:focus-visible { outline: 2px solid var(--paper-bad, #7e352b); outline-offset: 2px; } .ds-ledger-line { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .84rem; color: var(--paper-faint, #5a4c31); padding: 6px 2px 7px; border-bottom: 1px solid var(--paper-rule, rgba(51,41,26,.18)); display: flex; gap: 14px; flex-wrap: wrap; } .ds-ledger-line:last-child { border-bottom: none; } .ds-step-name { color: var(--paper-ink, #33291a); font-weight: 700; } .ds-step-name.ok { color: var(--paper-ok, #2f5a3d); } .ds-step-name.bad { color: var(--paper-bad, #7e352b); }"
+      "description": "The world's core material: white game-program paper with the red ledger margin rule at 42px, its own ink set, rule rows with toggles, and Courier audit lines.",
+      "html": "<div class=\"ds-sheet\"><div class=\"ds-rule-row\"><span class=\"ds-rule-name\">questionable near kickoff</span><span class=\"ds-rule-th\">trips inside 3h of kickoff</span><input type=\"checkbox\" class=\"ds-toggle\" checked aria-label=\"Toggle rule\"></div><div class=\"ds-rule-row\"><span class=\"ds-rule-name\">any faab involved</span><input type=\"checkbox\" class=\"ds-toggle\" aria-label=\"Toggle rule\"></div><div class=\"ds-ledger-line\"><span>2026-08-25 02:55:37</span><span>rec #1</span><span class=\"ds-step-name ok\">state:verified</span></div><div class=\"ds-ledger-line\"><span>2026-08-25 02:41:12</span><span>rec #1</span><span class=\"ds-step-name\">state:proposed</span></div></div>",
+      "css": ".ds-sheet { position: relative; background: linear-gradient(180deg, #fbfcff, var(--paper, #f2f5fd) 45%, var(--paper-2, #e4eaf8)); border-radius: 6px; box-shadow: 0 3px 8px rgba(2,6,20,.55), 0 14px 34px rgba(2,6,20,.35), inset 0 1px 0 rgba(255,255,255,.9); padding: 18px 26px 22px 58px; color: var(--paper-ink, #17233e); font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; font-size: 15px; } .ds-sheet::before { content: \"\"; position: absolute; top: 0; bottom: 0; left: 42px; width: 1px; background: var(--paper-margin, rgba(198,12,48,.5)); } .ds-sheet ::selection { background: var(--paper-ink, #17233e); color: var(--paper, #f2f5fd); } .ds-rule-row { display: flex; align-items: center; gap: 14px; padding: 11px 2px; border-bottom: 1px solid var(--paper-rule, rgba(23,35,62,.16)); } .ds-rule-name { font-weight: 600; } .ds-rule-th { font-family: \"Courier Prime\", \"Courier New\", monospace; color: var(--paper-faint, #4c5c82); font-size: .82rem; } .ds-toggle { margin-left: auto; appearance: none; cursor: pointer; flex: none; width: 46px; height: 24px; border-radius: 12px; position: relative; background: #c3cfe7; border: 1px solid rgba(23,35,62,.3); transition: background .15s ease; } .ds-toggle::after { content: \"\"; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #6d80a8; box-shadow: 0 1px 3px rgba(2,6,20,.35); transition: transform .15s ease, background .15s ease; } .ds-toggle:checked { background: var(--brass-deep, #2e5fd9); border-color: var(--brass-deep, #2e5fd9); } .ds-toggle:checked::after { transform: translateX(22px); background: var(--brass-bright, #93b4ff); } .ds-toggle:focus-visible { outline: 2px solid var(--paper-bad, #b01230); outline-offset: 2px; } .ds-ledger-line { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .84rem; color: var(--paper-faint, #4c5c82); padding: 6px 2px 7px; border-bottom: 1px solid var(--paper-rule, rgba(23,35,62,.16)); display: flex; gap: 14px; flex-wrap: wrap; } .ds-ledger-line:last-child { border-bottom: none; } .ds-step-name { color: var(--paper-ink, #17233e); font-weight: 700; } .ds-step-name.ok { color: var(--paper-ok, #1f7a4d); } .ds-step-name.bad { color: var(--paper-bad, #b01230); }"
     },
     {
       "name": "Lifecycle Stepper",
@@ -640,92 +137,63 @@
       "refersTo": "stamp",
       "description": "The actuation state machine: proposed -> notified -> approved -> executed -> verified, always all five; scrolls, never wraps; compresses at 420px to fit one 390px line.",
       "html": "<div class=\"ds-stepper\" aria-label=\"Recommendation state\"><span class=\"ds-step is-done\">proposed</span><span class=\"ds-step-link\"></span><span class=\"ds-step is-done\">notified</span><span class=\"ds-step-link\"></span><span class=\"ds-step is-now\">approved</span><span class=\"ds-step-link\"></span><span class=\"ds-step\">executed</span><span class=\"ds-step-link\"></span><span class=\"ds-step is-verified\">verified</span></div>",
-      "css": ".ds-stepper { display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; padding: 12px; background: var(--panel, #1e1712); } .ds-step { flex: none; font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--line, #3b2f21); border-radius: 3px; padding: 3px 8px; color: var(--ink-faint, #91805f); } .ds-step-link { flex: none; width: 18px; height: 1px; background: var(--line, #3b2f21); } .ds-step.is-done { color: var(--brass, #c9a25c); border-color: var(--brass-deep, #8a6d33); } .ds-step.is-now { color: var(--ground, #17120e); background: var(--brass, #c9a25c); border-color: var(--brass, #c9a25c); font-weight: 700; } .ds-step.is-verified { color: var(--ground, #17120e); background: var(--lamp, #58a06c); border-color: var(--lamp, #58a06c); font-weight: 700; } .ds-step.is-failed { color: #fff; background: var(--oxblood-deep, #8e3e33); border-color: var(--oxblood, #cf6152); font-weight: 700; } @media (max-width: 420px) { .ds-step { font-size: .58rem; letter-spacing: .05em; padding: 2px 4px; } .ds-step-link { width: 7px; } }"
+      "css": ".ds-stepper { display: flex; align-items: center; gap: 0; flex-wrap: nowrap; overflow-x: auto; padding: 12px; background: var(--panel, #0b1c44); } .ds-step { flex: none; font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--line, rgba(236,242,255,.28)); border-radius: 3px; padding: 3px 8px; color: var(--ink-faint, #8499c4); } .ds-step-link { flex: none; width: 18px; height: 1px; background: var(--line, rgba(236,242,255,.28)); } .ds-step.is-done { color: var(--brass, #5b8cff); border-color: var(--brass-deep, #2e5fd9); } .ds-step.is-now { color: var(--ground, #06122e); background: var(--brass, #5b8cff); border-color: var(--brass, #5b8cff); font-weight: 700; } .ds-step.is-verified { color: var(--ground, #06122e); background: var(--lamp, #3ed98a); border-color: var(--lamp, #3ed98a); font-weight: 700; } .ds-step.is-failed { color: #fff; background: var(--oxblood-deep, #c60c30); border-color: var(--oxblood, #ff5d66); font-weight: 700; } @media (max-width: 420px) { .ds-step { font-size: .58rem; letter-spacing: .05em; padding: 2px 4px; } .ds-step-link { width: 7px; } }"
     },
     {
       "name": "Clock Plate",
       "kind": "custom",
       "refersTo": "clockplate",
-      "description": "The draft's heartbeat (aria-live): Courier status line over a dim sub-line; brass border + glow when you're on the clock.",
-      "html": "<div style=\"background:#17120e; padding:14px; display:grid; gap:10px;\"><div class=\"ds-clockplate\"><div class=\"ds-clock-line\">PICK 20 OF 180 &middot; ROUND 2</div><div class=\"ds-clock-sub\">slot 5 on the clock &middot; you pick at #31</div></div><div class=\"ds-clockplate is-mine\"><div class=\"ds-clock-line\">YOU'RE ON THE CLOCK &mdash; PICK 18</div><div class=\"ds-clock-sub\">the room likes Trey McBride</div></div></div>",
-      "css": ".ds-clockplate { border: 1px solid var(--line, #3b2f21); border-radius: 4px; background: linear-gradient(180deg, var(--panel-2, #251c14), var(--panel, #1e1712)); box-shadow: inset 0 1px 0 rgba(236,223,198,.05), 0 2px 5px rgba(0,0,0,.4); padding: 7px 14px; min-width: 250px; } .ds-clock-line { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .95rem; color: var(--ink, #ecdfc6); letter-spacing: .04em; white-space: nowrap; } .ds-clock-sub { color: var(--ink-dim, #b5a483); font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; font-size: .8rem; letter-spacing: .06em; } .ds-clockplate.is-mine { border-color: var(--brass, #c9a25c); box-shadow: inset 0 1px 0 rgba(236,223,198,.08), 0 2px 10px rgba(201,162,92,.35); } .ds-clockplate.is-mine .ds-clock-line { color: var(--brass-bright, #e6c684); }"
+      "description": "The draft's heartbeat (aria-live): Courier status line over a dim sub-line; royal border + glow when you're on the clock.",
+      "html": "<div style=\"background:#06122e; padding:14px; display:grid; gap:10px;\"><div class=\"ds-clockplate\"><div class=\"ds-clock-line\">PICK 20 OF 180 &middot; ROUND 2</div><div class=\"ds-clock-sub\">slot 5 on the clock &middot; you pick at #31</div></div><div class=\"ds-clockplate is-mine\"><div class=\"ds-clock-line\">YOU'RE ON THE CLOCK &mdash; PICK 18</div><div class=\"ds-clock-sub\">the room likes Trey McBride</div></div></div>",
+      "css": ".ds-clockplate { border: 1px solid var(--line, rgba(236,242,255,.28)); border-radius: 4px; background: linear-gradient(180deg, var(--panel-2, #112552), var(--panel, #0b1c44)); box-shadow: inset 0 1px 0 rgba(236,242,255,.05), 0 2px 5px rgba(0,0,0,.4); padding: 7px 14px; min-width: 250px; } .ds-clock-line { font-family: \"Courier Prime\", \"Courier New\", monospace; font-size: .95rem; color: var(--ink, #f2f6ff); letter-spacing: .04em; white-space: nowrap; } .ds-clock-sub { color: var(--ink-dim, #c2cde6); font-family: \"Barlow Semi Condensed\", \"Arial Narrow\", system-ui, sans-serif; font-size: .8rem; letter-spacing: .06em; } .ds-clockplate.is-mine { border-color: var(--brass, #5b8cff); box-shadow: inset 0 1px 0 rgba(236,242,255,.08), 0 2px 10px rgba(91,140,255,.4); } .ds-clockplate.is-mine .ds-clock-line { color: var(--brass-bright, #93b4ff); }"
+    },
+    {
+      "name": "Mafia Stamp",
+      "kind": "custom",
+      "refersTo": "banner",
+      "description": "The bedsheet-banner celebration stamp — \"Table's folded\" on a verified swap; the ONLY home of Permanent Marker besides THE TABLE's FOLDED tag. Slams once per rec; renders instantly under prefers-reduced-motion.",
+      "html": "<div style=\"background:#0b1c44; padding:16px; font-family:'Barlow Semi Condensed', sans-serif; color:#f2f6ff;\">Lineup optimal. <span class=\"ds-mafia-stamp\">Table's folded &#10003;</span></div>",
+      "css": ".ds-mafia-stamp { display: inline-block; margin-left: 10px; padding: 2px 10px 3px; font-family: \"Permanent Marker\", \"Comic Sans MS\", cursive; font-size: .92rem; letter-spacing: .04em; color: var(--oxblood, #ff5d66); border: 2px solid var(--oxblood, #ff5d66); border-radius: 4px; transform: rotate(-5deg); vertical-align: 2px; text-transform: uppercase; white-space: nowrap; }"
     }
   ],
   "narrative": {
-    "northStar": "The Bootlegger's Back Room",
-    "overview": "Bootlegger is the discreet back room of the household's pinned Speakeasy Cinema world: a walnut desk under one lamp, brass fittings, and paper records - rendered as a working tool, never a costume. The room is built from exactly two materials. The walnut surface (near-black warm browns, aged-cream ink, hairline brass rules) carries the live working board; the ledger paper (warm cream sheets and ticker tape with their own darker inks) carries anything the house has committed to record - rules, the audit trail, the pick tape. Everything that glows - brass for attention and action, banker's-lamp green for verified good news - reads as lamplight on metal, not as UI chrome.\n\nThe room is dense on purpose. It is read at a glance under a draft clock or before kickoff, so hierarchy does the work density would otherwise destroy: tier bands, survival meters, and stamped pick numbers on the board; one loud brass-edged plate (The Call, the verdict) per screen telling you the single thing the room thinks. Numbers are the cargo, and every one of them is set in typewriter type. Two worlds were explicitly refused at direction time and stay refused: the white-card sports-app dashboard and the neon terminal.\n\nThe web surface (server/app/web/) is the authority for this system; the companion Expo/React Native app consumes the same palette via mobile/src/theme.ts, which mirrors these tokens and must follow this file.",
+    "northStar": "A Bills Night Game as a Working Interface",
+    "overview": "ORCHARD PARK NIGHT: a Bills night game rendered as a broadcast-grade board, never a costume of team logos. Deep stadium navy carries the working surfaces, with faint yard lines and hash ticks drawn into the ground itself and grain over everything; white ink does the reading. Electric royal is the voice of everything you can touch — tabs, the primary key, focus rings, your rows, the burning survival track — and Bills red is reserved strictly for trouble. The fandom lives in a strictly rationed meme layer: one authored zubaz stripe, a cartoon buffalo on The Call, a folding table beside the shelf, and bedsheet-marker stamps.\n\nThe second material is the white game program: the ledger, rules, ticker tape, and Scout's File print on cool white paper with a red ledger margin rule, carrying its own complete ink set. Numbers are the cargo and every one of them is typewriter type. The board is dense on purpose — read at a glance under a draft clock or before kickoff — so hierarchy does the work: tier bands, chalked survival meters, stamped picks, one loud royal-edged plate per room.\n\nThe web surface (server/app/web/) is the authority for this system; the draft-overlay extension (v1.4.0) and the Expo app's mobile/src/theme.ts mirror these tokens and must follow this file. In styles.css the variable names keep their old spellings (--brass = royal, --lamp = good, --marigold = warn, --oxblood = flag); the world they paint is this one.",
     "keyCharacteristics": [
-      "Two materials only: dark walnut working surfaces and cream ledger paper, each with its own complete ink set.",
-      "Brass is the voice of attention and action; lamp green is earned (verified/good); oxblood is trouble.",
-      "Six validated categorical hues for positions, never shown without their written label.",
-      "Every figure is typewriter type (Courier Prime); the marquee face belongs to the house name alone.",
-      "Dense, glanceable plates with hairline rules; one loud object per room.",
-      "Motion is a single authored moment (the pick-stamp strike and settle); everything else is quiet."
+      "Two materials: stadium-navy working surfaces (with yard lines in the ground) and white game-program paper, each with its own complete ink set.",
+      "Royal is touchable; Bills red is trouble only; verified green is earned. The meme layer's red is fandom, not status.",
+      "One zubaz: an authored irregular red/royal tile worn only by the masthead and the report card.",
+      "Every figure is typewriter type (Courier Prime); Anton belongs to the wordmark and titles; Permanent Marker to the meme stamps alone.",
+      "A rationed fun layer — buffalo, telestrator, ball hurdle, THE TABLE — that reacts to real events and never talks over the figures.",
+      "One motion grammar (the broadcast cut): rise-settle entries keyed off [hidden] toggles, transform/opacity only, dead under reduced motion."
     ],
     "rules": [
-      {
-        "name": "The Written Label Rule",
-        "section": "colors",
-        "body": "A position hue never appears without its written label beside it - the swatch-plus-text .pos tag is the only way position identity is drawn. Color alone identifies nothing, anywhere: injury, failure, and verification likewise always pair color with a word or icon."
-      },
-      {
-        "name": "The Reserved Status Rule",
-        "section": "colors",
-        "body": "Lamp green (good/verified), marigold (warning), and oxblood (trouble/OUT) are status colors. They are never used as series, position, or decorative colors - and the six position hues are never used to signal status. The two vocabularies do not mix."
-      },
-      {
-        "name": "The Paper Ink Rule",
-        "section": "colors",
-        "body": "Paper surfaces carry their own ink tokens (paper-ink, paper-faint, paper-ok, paper-bad), each holding >=4.5:1 against the sheet gradient's darkest stop (#e0d2a9). Walnut-surface inks and accents never sit directly on paper; paper inks never sit on walnut. Crossing a material means switching ink sets."
-      },
-      {
-        "name": "The Marquee Rule",
-        "section": "typography",
-        "body": "Limelight is the house name only. It sets the wordmark and nothing else - no headings, no numbers, no empty states. Everything that works for a living is Barlow Semi Condensed; everything counted is Courier Prime."
-      },
-      {
-        "name": "The Typewriter Figures Rule",
-        "section": "typography",
-        "body": "If it is a number, it is Courier Prime - in tables, meters, stamps, steppers, clocks, and tape. UI labels around a figure stay in the gothic (.lbl beside a Courier value), so figures always look typed onto the surface rather than styled."
-      },
-      {
-        "name": "The Pinned Track Rule",
-        "section": "layout",
-        "body": "Every flexible grid track is minmax(0, 1fr), and any grid/flex item that can host a wide strip carries min-width: 0 (.board-main, .rail, .col, .ticker-wrap). Intrinsic-width blowouts from the ticker and stepper are the known hazard; a bare 1fr is how they get loose."
-      },
-      {
-        "name": "The No Sideways Page Rule",
-        "section": "layout",
-        "body": "The page never scrolls horizontally (body { overflow-x: clip }). Wide strips - the ticker tape, the stepper, the mobile tab row - scroll inside their own containers instead, with their own material-matched scrollbars. On phones the stepper compresses rather than wraps: a broken chain drops orphan connectors."
-      },
-      {
-        "name": "The One Lamp Rule",
-        "section": "elevation",
-        "body": "Light comes from above and is warm: gradients run dark downward, insets highlight top edges only, and shadows are soft and black. Colored glow is a state signal (brass = yours/on the clock, lamp = live/verified, oxblood dot-glow = wire down) - never decoration at rest."
-      },
-      {
-        "name": "The One Authored Moment Rule",
-        "section": "components",
-        "body": "The pick-stamp strike-and-settle is the room's single piece of theater, with the on-the-clock brass glow as its supporting light cue. Everything else moves functionally or not at all: <=150ms filter/transform micro-transitions on buttons and toggles, one 12px spinner. prefers-reduced-motion removes the theater entirely (animations off, transitions off, spinner slowed to 1.5s) - the room must read perfectly as a still photograph."
-      }
+      { "name": "The Typewriter Figures Rule", "section": "typography", "body": "If it is a number, it is Courier Prime — in tables, meters, stamps, steppers, clocks, and tape. UI labels around a figure stay in the condensed gothic, so figures always look typed onto the surface rather than styled." },
+      { "name": "The Written Label Rule", "section": "colors", "body": "A position hue never appears without its written code beside it — the swatch-plus-text .pos tag is the only way position identity is drawn. Color alone identifies nothing, anywhere: injury, failure, and verification likewise always pair color with a word or icon." },
+      { "name": "The Royal Is Touchable, Red Is Trouble Rule", "section": "colors", "body": "Royal marks the interactive world; Bills red marks trouble only — wire down, failed, hurt, struck through. The two semantics never blur. The meme layer's red (zubaz, wordmark drop shadow, bedsheet stamps) is fandom, not status: it never colors a figure, a label, or a control." },
+      { "name": "The One Zubaz Rule", "section": "colors", "body": "The zubaz is an authored SVG tile of irregular hand-cut red/royal jags on white — real zebra print, not a candy stripe. Exactly two things wear it: the masthead strip and the report card headband. Nowhere else, ever." },
+      { "name": "The Paper Ink Rule", "section": "colors", "body": "Program-paper surfaces carry their own ink tokens (paper-ink, paper-faint, paper-ok, paper-bad), each holding >=4.5:1 against the sheet gradient's darkest stop. Navy-surface inks never sit on paper; paper inks never sit on navy. Crossing a material means switching ink sets." },
+      { "name": "The Bedsheet Marker Rule", "section": "typography", "body": "Permanent Marker appears only in the meme stamps — .mafia-stamp and THE TABLE's FOLDED tag. Never in data, labels, or controls. Anywhere else it is a defect." },
+      { "name": "The No Sideways Page Rule", "section": "layout", "body": "The page never scrolls horizontally (body { overflow-x: clip }). Wide strips — the ticker tape, the stepper, the report card, the mobile tab row — scroll inside their own containers with material-matched scrollbars. On phones the stepper compresses rather than wraps." },
+      { "name": "The Broadcast Cut Rule", "section": "components", "body": "One motion grammar: rooms rise and settle in 200ms; rows cascade on a 30ms stagger capped at 180ms; transform/opacity only. Entries key off the [hidden] toggle's display restart, so tab switches and rebuilds animate and the 1 Hz poll patches never re-fire anything. prefers-reduced-motion strips the characters rather than freezing them: dust, telestrator, and flyby go display:none, the static buffalo stays, and the board reads perfectly as a still." }
     ],
     "dos": [
-      "Do pair every position hue with its written label (.pos swatch + code) and every status color with a word or icon - color alone carries no meaning anywhere.",
-      "Do set every number in Courier Prime - figures, stamps, timestamps, bids, percentages - with gothic micro-labels beside them.",
-      "Do use minmax(0, 1fr) for flexible tracks and min-width: 0 on anything that hosts a wide strip; let the ticker and stepper scroll inside their own containers.",
-      "Do switch to the paper ink set (paper-ink/paper-faint/paper-ok/paper-bad, all >=4.5:1 on #e0d2a9) the moment content sits on a sheet or tape, including selection, scrollbars, and focus rings.",
-      "Do keep approval actions at least 44px tall (46px built), full-width on the phone, and reachable with one thumb.",
-      "Do make every degraded state visible and worded in the house voice - a wire-down banner with the data's age, never a silent stall.",
-      "Do light from above: top-lit gradients, warm inset top edges, soft black drops; save brass and lamp glow for state."
+      "Do pair every position hue with its written label and every status color with a word or icon — color alone carries no meaning anywhere.",
+      "Do set every number in Courier Prime — figures, stamps, timestamps, bids, percentages — with gothic micro-labels beside them.",
+      "Do keep royal for the interactive world and Bills red for trouble; a red button or a royal error state is a defect.",
+      "Do switch to the program-paper ink set the moment content sits on a sheet or tape, including selection, scrollbars, and focus rings.",
+      "Do keep approval actions at least 44px tall (46px built), full-width on the phone, with the hard 3px press edge.",
+      "Do make every degraded state visible and worded in the house voice — CIRCLE THE WAGONS with the data's age, never a silent stall.",
+      "Do key entry animations off [hidden] display restarts so polling never re-fires them; new motion is transform/opacity only."
     ],
     "donts": [
-      "Don't set anything but the BOOTLEGGER wordmark in Limelight.",
-      "Don't use lamp green, marigold, or oxblood as series/position/decoration colors, or position hues as status colors.",
-      "Don't let the page scroll horizontally, ever - overflow-x: clip stays on body, and a bare 1fr track is a bug waiting for a wide ticker.",
-      "Don't put walnut-surface inks or accents on paper, or paper inks on walnut - crossing materials means switching ink sets.",
-      "Don't drift toward the refused worlds: no white cards, no cool grays, no neon-terminal chrome, no borderless floating dashboards.",
-      "Don't add a second theatrical animation; new motion is functional, <=150ms, and dies under prefers-reduced-motion.",
-      "Don't write cute copy near money or kickoffs - the voice is dry, confident, a little clandestine."
+      "Don't put the zubaz anywhere but the masthead and the report card.",
+      "Don't set anything but the wordmark and room/plate titles in Anton, and nothing but meme stamps in Permanent Marker.",
+      "Don't use good/warn/flag as series, position, or decorative colors, or position hues as status colors.",
+      "Don't let the page scroll horizontally, ever — wide data scrolls inside its own container.",
+      "Don't put navy-surface inks or accents on program paper, or paper inks on navy — crossing materials means switching ink sets.",
+      "Don't drift toward the refused worlds: no white-card sports-app dashboard, no costume of team logos or licensed marks.",
+      "Don't add a character or theatrical animation beyond the built four (buffalo, telestrator, hurdle, THE TABLE); anything new must die under prefers-reduced-motion."
     ]
   }
 }

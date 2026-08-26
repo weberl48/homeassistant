@@ -34,6 +34,59 @@ def test_draft_sim_progresses(conn):
     assert len(picked) == 1
 
 
+def test_recording_a_pick_refreshes_the_feed_heartbeat(conn):
+    """drafts.updated_at is the freshness heartbeat the board watches: the web
+    UI banners PICK FEED STALE once synced_at ages past 10s during a drafting
+    draft. The sim must refresh it as picks land, the way ingest.draft_poll
+    does in live mode — otherwise the alarm cries wolf on a healthy feed."""
+    from datetime import datetime, timezone
+
+    from app import db
+
+    # Backdate the heartbeat so the assertion cannot hinge on two events
+    # landing in the same second (db.utcnow() is second-resolution).
+    conn.execute("UPDATE drafts SET updated_at=? WHERE draft_id=?",
+                 ("2000-01-01T00:00:00+00:00", demo.DEMO_DRAFT_ID))
+    conn.commit()
+    stale = brain.get_board(conn)["draft"]["synced_at"]
+    assert stale.startswith("2000")
+
+    db.meta_set(conn, "demo_draft_next_tick", "0")  # make it due now
+    assert demo.tick(conn, lambda: brain.suggest_my_pick(conn))
+
+    fresh = brain.get_board(conn)["draft"]["synced_at"]
+    assert fresh > stale, (
+        f"heartbeat still {fresh} after a pick landed — the board will banner "
+        "a stale wire while the feed is healthy")
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(fresh)).total_seconds()
+    assert age < 10, f"heartbeat {age:.0f}s old — past the UI's stale threshold"
+
+
+def test_heartbeat_stays_fresh_while_the_sim_waits(conn):
+    """The heartbeat means "the feed is alive", not "a pick just landed" —
+    live mode stamps it on every poll, pick or no pick (etl_draft_picks
+    full=False). The sim deliberately idles up to demo_my_clock_seconds (16s)
+    on my clock, well past the UI's 10s threshold, so stamping only on a pick
+    would still banner a healthy feed through every one of those pauses."""
+    import time
+
+    from app import db
+
+    # Hold the sim's clock so this tick records no pick.
+    db.meta_set(conn, "demo_draft_next_tick", str(time.time() + 3600))
+    conn.execute("UPDATE drafts SET updated_at=? WHERE draft_id=?",
+                 ("2000-01-01T00:00:00+00:00", demo.DEMO_DRAFT_ID))
+    conn.commit()
+
+    assert not demo.tick(conn, lambda: brain.suggest_my_pick(conn)), \
+        "clock held — the sim must not record a pick here"
+
+    fresh = brain.get_board(conn)["draft"]["synced_at"]
+    assert not fresh.startswith("2000"), (
+        "heartbeat frozen while the sim idled — the board banners a stale wire "
+        "through every pause on my clock")
+
+
 def test_my_pick_uses_suggestion(conn):
     from app import db
     # fast-forward to my first pick (slot 7 -> pick 7)

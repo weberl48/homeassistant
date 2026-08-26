@@ -197,7 +197,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
                  "ALTER TABLE nfl_games ADD COLUMN total_line REAL",
                  "ALTER TABLE nfl_games ADD COLUMN implied_total REAL",
                  "ALTER TABLE players ADD COLUMN practice_status TEXT",
-                 "ALTER TABLE players ADD COLUMN report_status TEXT"):
+                 "ALTER TABLE players ADD COLUMN report_status TEXT",
+                 # Season record, carried in Sleeper's roster.settings block.
+                 "ALTER TABLE rosters ADD COLUMN wins INTEGER NOT NULL DEFAULT 0",
+                 "ALTER TABLE rosters ADD COLUMN losses INTEGER NOT NULL DEFAULT 0",
+                 "ALTER TABLE rosters ADD COLUMN ties INTEGER NOT NULL DEFAULT 0",
+                 "ALTER TABLE rosters ADD COLUMN fpts REAL NOT NULL DEFAULT 0"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:

@@ -392,6 +392,13 @@ def get_league_rosters():
     return brain.league_rosters(get_conn())
 
 
+@app.get("/api/league/overview")
+def get_league_overview():
+    """The League — every seat ranked on what it can start, each room scored
+    against the field, and the season record off the wire."""
+    return brain.league_overview(get_conn())
+
+
 class PracticeBody(BaseModel):
     url: str
 

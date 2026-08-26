@@ -3,33 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#17120e">
+<meta name="theme-color" content="#06122e">
 <title>BOOTLEGGER</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2317120e'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' font-weight='700' fill='%23c9a25c' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2306122e'/%3E%3Cg transform='skewX(-8) translate(3.6 0)'%3E%3Cpath d='M9 5 h10 c4 0 6.5 2.2 6.5 5.4 c0 2.6 -1.6 4.3 -3.6 5 c2.6 .6 4.6 2.6 4.6 5.6 c0 3.7 -3 6 -7.3 6 H9 Z M14 9.5 v4.5 h4 c1.7 0 2.7 -.9 2.7 -2.2 c0 -1.4 -1 -2.3 -2.7 -2.3 Z M14 18 v5 h4.6 c1.8 0 2.9 -1 2.9 -2.5 c0 -1.5 -1.1 -2.5 -2.9 -2.5 Z' fill='%23c60c30' fill-rule='evenodd' transform='translate(1.6 1.2)'/%3E%3Cpath d='M9 5 h10 c4 0 6.5 2.2 6.5 5.4 c0 2.6 -1.6 4.3 -3.6 5 c2.6 .6 4.6 2.6 4.6 5.6 c0 3.7 -3 6 -7.3 6 H9 Z M14 9.5 v4.5 h4 c1.7 0 2.7 -.9 2.7 -2.2 c0 -1.4 -1 -2.3 -2.7 -2.3 Z M14 18 v5 h4.6 c1.8 0 2.9 -1 2.9 -2.5 c0 -1.5 -1.1 -2.5 -2.9 -2.5 Z' fill='%23f2f6ff' fill-rule='evenodd'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/fonts/fonts.css">
 <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
 <!--
-THESIS: A bootlegger's back-room ledger for one league — the draft and the Sunday
-lineup run as a working board of tier bands, survival odds, and stamped, verified
-actions. Refused: the white-card sports-app dashboard and the neon terminal.
-OWN-WORLD: Walnut ground, hairline brass rules, aged-cream ink, banker's-lamp
-green for verified, oxblood for trouble; marquee lettering (Limelight) for the
-house name only, industrial semi-condensed gothic for the working surface,
-typewriter figures for every number. Position identity in six validated hues,
-always beside their written label. Recognizable with all content removed.
+THESIS: A Bills night game as a working interface — ORCHARD PARK NIGHT. One
+league's draft and Sunday lineup run as a broadcast-grade board: stadium navy
+under the lights, everything touchable in electric royal, trouble strictly in
+Bills red. Refused: the white-card sports-app dashboard and a costume of team
+logos — the fandom lives in one zubaz stripe, a cartoon buffalo, and a folding
+table, never in the figures.
+OWN-WORLD: Deep navy ground with faint yard lines; royal interactive accents;
+white game-program paper for the ledger surfaces; Anton (italic, red drop) for
+the house name, Barlow Semi Condensed as the working voice, typewriter figures
+for every number, Permanent Marker ONLY for bedsheet-banner meme stamps.
+Recognizable with all content removed. Verified AA on every pair 2026-08-25.
 STORY: Glance → know who to pick or whether the lineup is wrong → approve with
-one thumb → watch the stamp land and the API verify it.
-FIRST VIEWPORT: Masthead plate (wordmark, live wire status, tabs); The Call —
-the room's single loudest object — leads the LEFT rail with my shelf beneath
-it (forcing answer: Operate scanability — the call sits where reading starts,
-and the board's tier columns scan left-to-right away from it; this supersedes
-the earlier right-rail sketch). The four-column tier-banded board with
-survival meters fills the remainder; on the phone the call precedes the board.
-Primary action on This Week: a 46px brass Approve & Execute.
-FORM: Back-room ledger board; brief-pinned world (Speakeasy Cinema household),
-so no concept roll — the pinned direction beats the dice, per the house skill.
+one thumb → watch the stamp land, the API verify it, and the table fold.
+FIRST VIEWPORT: Masthead (Anton wordmark, zubaz strip, tabs, wire lamp); The
+Call leads the LEFT rail — the buffalo idles on it and stampedes on your
+clock; tier columns scan rightward; rooms cut in like broadcast graphics
+(rise-settle, 200ms, capped stagger). Primary action on This Week: a 46px
+royal Approve & Execute with a hard press edge.
+FORM: Broadcast board, user-pinned direction (Stadium Night + full-send meme
+layer, chosen from a structured probe 2026-08-25) — a pinned direction beats
+the dice, per the house skill. Code-led: no image generation in this harness.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the
 finish review, the verdict, DESIGN.md, and every shipping raster carrying its
 provenance.
@@ -43,7 +45,7 @@ provenance.
       <p class="est">est. 2026 <svg class="pigskin" viewBox="0 0 20 12" aria-hidden="true"
         fill="none" stroke="currentColor"><ellipse cx="10" cy="6" rx="8.6" ry="4.9"
         stroke-width="1.4"/><path d="M6.6 6h6.8M8.3 4.5v3M10 4.5v3M11.7 4.5v3"
-        stroke-width="1.1"/></svg> the back room</p>
+        stroke-width="1.1"/></svg> the war room</p>
     </div>
     <div class="clockplate" id="clockplate" aria-live="polite">
       <div class="clock-line" id="clock-line">TAPPING THE WIRE…</div>
@@ -53,6 +55,7 @@ provenance.
       <button class="tab is-active" data-tab="board">The Board<small>the draft</small></button>
       <button class="tab" data-tab="week">This Week<small>lineup</small></button>
       <button class="tab" data-tab="waivers">Waivers<small>the street</small></button>
+      <button class="tab" data-tab="league">The League<small>the field</small></button>
       <button class="tab" data-tab="parlor">The Parlor<small>trades</small></button>
       <button class="tab" data-tab="ledger">The Ledger<small>rules · audit</small></button>
     </nav>
@@ -64,7 +67,8 @@ provenance.
 </header>
 
 <div class="wire-banner" id="wire-banner" role="alert" hidden>
-  WIRE DOWN — showing the last board from <span id="wire-age">—</span> ago. Retrying.
+  CIRCLE THE WAGONS — the wire is down. Showing the last board from
+  <span id="wire-age">—</span> ago. Retrying.
 </div>
 
 <div class="practice-banner" id="practice-banner" hidden>
@@ -93,6 +97,17 @@ provenance.
           <h2 class="shelf-title">My Shelf</h2>
           <div id="shelf-needs" class="needs"></div>
           <ol id="shelf-list" class="shelf-list"></ol>
+          <!-- THE TABLE. It stands beside the shelf until a pick verifies
+               through it. It always stands back up. -->
+          <svg class="folding-table" viewBox="0 0 44 40" aria-hidden="true">
+            <g class="smash-tag">
+              <rect x="1" y="1" width="42" height="13" rx="2.5" fill="#c60c30"/>
+              <text x="22" y="11" text-anchor="middle" font-size="8.5" fill="#f2f6ff">FOLDED</text>
+            </g>
+            <g class="top"><rect x="4" y="17" width="36" height="5" rx="1.5" fill="#c2cde6"/></g>
+            <g class="leg leg-l"><path d="M10 22 L 8 38" stroke="#8499c4" stroke-width="2.5" stroke-linecap="round"/></g>
+            <g class="leg leg-r"><path d="M34 22 L 36 38" stroke="#8499c4" stroke-width="2.5" stroke-linecap="round"/></g>
+          </svg>
         </div>
         <button class="btn btn-ghost btn-small" id="reset-mock" hidden>Re-run the mock draft</button>
 
@@ -162,6 +177,17 @@ provenance.
       <p class="room-note">Bids sized from this league's own history. Advisory only —
       waivers have no actuation path in this house.</p>
       <div id="waivers-body"><p class="muted">Working the phones…</p></div>
+    </div>
+  </section>
+
+  <!-- ============================ THE LEAGUE ============================ -->
+  <section class="room" id="room-league" hidden>
+    <div class="wide">
+      <h2 class="room-title">The League</h2>
+      <p class="room-note">Twelve seats, ranked by what each can actually start —
+      bench hoarding doesn't buy a seat a better table. The grid reads every
+      room against the field; where your thin meets their deep, there's a deal.</p>
+      <div id="league-body"><p class="muted">Casing the room…</p></div>
     </div>
   </section>
 

@@ -65,27 +65,44 @@ function applyPhase(status, practice) {
 }
 
 /* ---------------------------------- icons -------------------------------- */
-/* The ref: cartoon zebra with rotatable arms — TOUCHDOWN pose on your clock. */
+/* The Buffalo: an original cartoon bison, head down, red speed streak. Keeps
+   the ref's class contract (.ref / .is-td) so every call site still works —
+   idle he breathes, on your clock he stampedes across the plate. */
 const REF_SVG = (td) => `
-<svg class="ref ${td ? "is-td" : ""}" viewBox="0 0 48 62" aria-hidden="true">
-  <g fill="none" stroke="#20241f" stroke-width="2" stroke-linecap="round">
-    <circle cx="24" cy="13" r="8" fill="#f0c9a0"/>
-    <path d="M16 10a8 8 0 0 1 16 0z" fill="#20241f"/>
-    <rect x="15" y="24" width="18" height="20" rx="5" fill="#f2f7ef"/>
-    <path d="M15 29h18M15 34h18M15 39h18" stroke="#20241f" stroke-width="3.4"/>
-    <g class="arm-l"><path d="M17 30 L7 42" stroke="#f2f7ef" stroke-width="4.6"/><circle cx="7" cy="42" r="2.6" fill="#f0c9a0" stroke="none"/></g>
-    <g class="arm-r"><path d="M31 30 L41 42" stroke="#f2f7ef" stroke-width="4.6"/><circle cx="41" cy="42" r="2.6" fill="#f0c9a0" stroke="none"/></g>
-    <path d="M20 44 L18 58 M28 44 L30 58" stroke="#20241f" stroke-width="4"/>
+<svg class="ref ${td ? "is-td" : ""}" viewBox="0 0 60 44" aria-hidden="true">
+  <g class="dust" fill="#c2cde6">
+    <circle cx="54" cy="38" r="3"/><circle cx="57" cy="33" r="2.2"/><circle cx="52" cy="30" r="1.6"/>
   </g>
+  <path d="M14 13 L 48 7" stroke="#c60c30" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".9"/>
+  <path d="M10 22 C 12 12, 24 8, 34 10 C 44 11, 50 16, 51 22 C 52 27, 48 30, 44 31
+           L 44 40 L 40 40 L 39 32 L 25 32 L 24 40 L 20 40 L 20 31
+           C 14 30, 9 28, 10 22 Z" fill="#2e5fd9"/>
+  <path d="M10 20 C 3 21, 1 28, 5 32 C 8 34, 12 33, 14 30 L 13 22 Z" fill="#1f47ad"/>
+  <path d="M5 22 C 1 20, 1 15, 5 13" stroke="#f2f6ff" stroke-width="1.8"
+    stroke-linecap="round" fill="none"/>
+  <circle cx="9.5" cy="25" r="1.1" fill="#f2f6ff"/>
+  <path d="M51 22 C 54 21, 55 23, 54 25" stroke="#2e5fd9" stroke-width="2"
+    stroke-linecap="round" fill="none"/>
 </svg>`;
 
+/* The telestrator: the booth's glowing pen, forever drawing the route. */
 const CHALK_LIVE = `
 <svg class="chalk-live" viewBox="0 0 150 100" aria-hidden="true" fill="none"
-  stroke="#f2f7ef" stroke-width="2.2" stroke-linecap="round">
+  stroke="#5b8cff" stroke-width="2.2" stroke-linecap="round">
   <circle cx="22" cy="82" r="7" stroke-opacity=".55"/>
   <path class="route" d="M28 76 C 52 66, 60 48, 78 44 S 118 30, 138 12" stroke-dasharray="7 8"/>
   <path d="M138 12l-11 1M138 12l-4 10" stroke-opacity=".8"/>
 </svg>`;
+
+/* THE TABLE lives in the shelf's corner (static markup in index.html). It
+   folds when a pick of yours lands, and always stands back up — there is
+   always another table. */
+function foldTable() {
+  document.querySelectorAll(".folding-table").forEach((t) => {
+    t.classList.add("is-folded");
+    setTimeout(() => t.classList.remove("is-folded"), 3200);
+  });
+}
 
 const icon = {
   cross: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 2h4v4h4v4h-4v4H6v-4H2V6h4z"/></svg>`,
@@ -142,9 +159,10 @@ function setTab(tab) {
     if (active) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
-  for (const room of ["board", "week", "waivers", "parlor", "ledger"])
+  for (const room of ["board", "week", "waivers", "league", "parlor", "ledger"])
     $(`#room-${room}`).hidden = room !== tab;
   if (tab === "waivers") loadWaivers();
+  if (tab === "league") loadLeague();
   if (tab === "parlor") loadParlor();
   if (tab === "ledger") loadLedger();
   if (tab === "week") pollWeek();
@@ -194,11 +212,12 @@ function updateRow(el, p, justPicked) {
   if (p.pick_no) {
     el.classList.add("is-picked");
     el.classList.toggle("is-mine", !!p.mine);
-    stamp.textContent = p.mine ? `MINE · P${p.pick_no}` : `P${p.pick_no}`;
+    stamp.textContent = p.mine ? `MAFIA · P${p.pick_no}` : `P${p.pick_no}`;
     surv.hidden = true;
     if (justPicked) {
       el.classList.add("just-picked");
       setTimeout(() => el.classList.remove("just-picked"), 1400);
+      if (p.mine) foldTable(); // your pick lands: the table does not survive
     }
   } else {
     el.classList.remove("is-picked", "is-mine");
@@ -508,7 +527,7 @@ async function pollBoard() {
     // rooms, and a finished scrimmage light them; the roster never lies.)
     const seasonOn = (state.board?.my_roster || []).length > 0;
     document.querySelectorAll(".tab").forEach((b) => {
-      if (["week", "waivers", "parlor"].includes(b.dataset.tab))
+      if (["week", "waivers", "league", "parlor"].includes(b.dataset.tab))
         b.classList.toggle("is-dormant", !seasonOn);
     });
     wireOK();
@@ -581,10 +600,18 @@ function renderWeek(card) {
   if (!card.material && (!rec || ["verified", "ignored", "failed", "dry_run", null].includes(recState))) {
     const verifiedLine = recState === "verified"
       ? `The last swap was <strong>verified against the API</strong>. ` : "";
+    // The season's payoff lands HERE: a verified swap slams the bedsheet
+    // stamp once (first render of this rec only — re-polls don't re-slam).
+    let stamp = "";
+    if (recState === "verified") {
+      const fresh = state.celebratedRec !== rec.rec_id;
+      stamp = `<span class="mafia-stamp${fresh ? " slam" : ""}">Table's folded ✓</span>`;
+      state.celebratedRec = rec.rec_id;
+    }
     wrap.innerHTML = `
       <div class="allgood"><span class="lampdot"></span>
         <div><p><strong>Lineup optimal.</strong> ${verifiedLine}Projected
-        ${card.actual_total.toFixed(1)} for week ${card.week} — the room is satisfied.</p></div>
+        ${card.actual_total.toFixed(1)} for week ${card.week} — the room is satisfied.${stamp}</p></div>
       </div>
       ${lineupBlock(card)}`;
     return;
@@ -616,7 +643,7 @@ function renderWeek(card) {
     actions = `<div class="actions"><button class="btn btn-primary" disabled>
       <span class="spin"></span>The hands are moving…</button></div>`;
   } else if (recState === "failed") {
-    actions = `<p class="holds">${icon.hold} The swap failed or expired — every failure
+    actions = `<p class="holds">${icon.hold} WIDE RIGHT — the swap missed. Every failure
       degrades to this notice, never to silence. <a href="https://sleeper.com" rel="noopener">Set it in Sleeper</a>.</p>`;
   } else if (recState === "dry_run") {
     actions = `<p class="holds">${icon.hold} Dry run — the hands touched nothing.
@@ -714,6 +741,134 @@ async function loadWaivers() {
         <tbody>${rows}</tbody></table>
       <p class="optimal-note">Sized at the P70 of the league's bids for each value tier (${data.history_n} on the books), +$1 over round numbers.</p>`
       : `<p class="muted">${esc(data.note || "Nobody on the street worth a dollar this week.")}</p>`;
+    wireOK();
+  } catch { wireFail(); }
+}
+
+/* --------------------------------- the league ----------------------------- */
+const LEAGUE_POS = ["QB", "RB", "WR", "TE", "K", "DEF"];
+
+/* The grid's glyphs are cut straight from the z-score, so a cell says how far
+   off the field that room sits — not merely which side of average it's on. */
+function zCell(z) {
+  if (z >= 1.5) return { g: "++", c: "g-pp" };
+  if (z >= 0.8) return { g: "+", c: "g-p" };
+  if (z <= -1.5) return { g: "––", c: "g-nn" };
+  if (z <= -0.8) return { g: "–", c: "g-n" };
+  return { g: "·", c: "g-z" };
+}
+
+function seatRecord(rec, ready) {
+  if (!ready || !rec) return `<span class="street">–</span>`;
+  return `<b>${rec.wins}–${rec.losses}${rec.ties ? `–${rec.ties}` : ""}</b>`;
+}
+
+/* Live carries the real Sleeper handle, where this chip is the only thing
+   marking which seat is mine. The demo already names that seat "You" — so
+   don't stamp it twice. */
+function youChip(s) {
+  return s.mine && s.owner.trim().toLowerCase() !== "you"
+    ? ` <span class="seat-you">YOU</span>` : "";
+}
+
+async function loadLeague() {
+  try {
+    const [ov, rost] = await Promise.all([
+      fetchJSON("/api/league/overview"),
+      fetchJSON("/api/league/rosters"),
+    ]);
+    const depth = new Map(rost.rosters.map((r) => [r.roster_id, r.players]));
+    const me = ov.seats.find((s) => s.mine);
+    const myNeed = new Set(me ? me.need : []);
+    const mySurplus = new Set(me ? me.surplus : []);
+
+    const table = ov.seats.map((s) => {
+      const rec = seatRecord(s.record, ov.records_ready);
+      const pf = ov.records_ready && s.record
+        ? s.record.fpts.toLocaleString(undefined, { maximumFractionDigits: 0 })
+        : "–";
+      const roster = depth.get(s.roster_id) || [];
+      const chart = LEAGUE_POS.map((pos) => {
+        const room = roster.filter((p) => posOf(p) === pos);
+        if (!room.length) return "";
+        return `<div class="depth-room"><span class="pos pos-${pos}">${pos}</span>
+          ${room.slice(0, 5).map((p) =>
+          `<span class="depth-p">${esc(p.name)} <i>${p.pts.toFixed(0)}</i></span>`).join("")}</div>`;
+      }).join("");
+      return `
+        <tr class="seat-row${s.mine ? " is-mine" : ""}" data-seat="${s.roster_id}"
+            tabindex="0" role="button" aria-expanded="false"
+            aria-label="Open the depth chart — ${esc(s.owner)}">
+          <td class="num seat-rank">${s.rank}</td>
+          <td><span class="seat-owner">${esc(s.owner)}</span>${youChip(s)}</td>
+          <td class="num">${rec}</td>
+          <td class="num street">${pf}</td>
+          <td class="num"><b>${s.proj.toFixed(1)}</b></td>
+          <td class="seat-read">${esc(s.read)}</td>
+        </tr>
+        <tr class="seat-depth" data-depth="${s.roster_id}" hidden>
+          <td colspan="6"><div class="depth-wrap">${chart}</div></td>
+        </tr>`;
+    }).join("");
+
+    const grid = ov.seats.map((s) => {
+      const cells = LEAGUE_POS.map((pos) => {
+        const room = s.by_pos[pos];
+        const cell = zCell(room.z);
+        // A fit is where one seat's surplus meets the other's need. Only ever
+        // marked on someone else's row — you cannot trade with yourself.
+        const fit = !s.mine && (
+          (s.surplus.includes(pos) && myNeed.has(pos)) ||
+          (s.need.includes(pos) && mySurplus.has(pos)));
+        return `<td class="gcell ${cell.c}${fit ? " is-fit" : ""}"
+          title="${esc(s.owner)} ${pos}: ${room.pts} pts from ${room.depth} bodies${
+          fit ? " — fits your room" : ""}">${cell.g}</td>`;
+      }).join("");
+      return `<tr class="${s.mine ? "is-mine" : ""}">
+        <td class="gname">${esc(s.owner)}${youChip(s)}</td>
+        ${cells}</tr>`;
+    }).join("");
+
+    const fits = ov.seats.filter((s) => !s.mine && LEAGUE_POS.some((pos) =>
+      (s.surplus.includes(pos) && myNeed.has(pos)) ||
+      (s.need.includes(pos) && mySurplus.has(pos)))).length;
+
+    $("#league-body").innerHTML = `
+      ${ov.note ? `<p class="muted">${esc(ov.note)}</p>` : ""}
+      <table class="wtable league-table">
+        <thead><tr>
+          <th style="text-align:right">#</th><th>Seat</th>
+          <th style="text-align:right">Rec</th><th style="text-align:right">PF</th>
+          <th style="text-align:right">Can start</th><th>The read</th>
+        </tr></thead>
+        <tbody>${table}</tbody>
+      </table>
+
+      <h3 class="grid-title">The rooms, against the field</h3>
+      <p class="room-note">${me
+        ? `Highlighted cells are where this league's shape meets yours —
+           ${fits ? `${fits} seat${fits === 1 ? "" : "s"} worth a knock.`
+          : "nothing obvious right now."}`
+        : "Your seat isn't on the board yet."}</p>
+      <table class="wtable gridtable">
+        <thead><tr><th>Seat</th>${LEAGUE_POS.map((p) =>
+        `<th class="gcol">${p === "DEF" ? "D/ST" : p}</th>`).join("")}</tr></thead>
+        <tbody>${grid}</tbody>
+      </table>`;
+
+    $("#league-body").querySelectorAll(".seat-row").forEach((row) => {
+      const toggle = () => {
+        const body = $(`#league-body [data-depth="${row.dataset.seat}"]`);
+        const open = body.hidden;
+        body.hidden = !open;
+        row.setAttribute("aria-expanded", String(open));
+        row.classList.toggle("is-open", open);
+      };
+      row.addEventListener("click", toggle);
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
     wireOK();
   } catch { wireFail(); }
 }
@@ -1133,6 +1288,7 @@ async function boot() {
   }, 15000);
   setInterval(() => {
     if (state.tab === "parlor") loadParlor();  // full-league scan — slower cadence
+    if (state.tab === "league") loadLeague();  // twelve rosters + z-scores; same
   }, 60000);
 }
 boot();

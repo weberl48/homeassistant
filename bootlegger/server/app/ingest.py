@@ -132,13 +132,22 @@ def etl_rosters(client: SleeperClient, conn: sqlite3.Connection) -> None:
     users = {u["user_id"]: u.get("display_name", u["user_id"])
              for u in client.users(settings.league_id)}
     for r in client.rosters(settings.league_id):
+        # Sleeper keeps the record in settings and splits the score across
+        # fpts (whole) + fpts_decimal (hundredths). A league with no games
+        # played yet sends no settings block at all, which reads as 0-0.
+        rs = r.get("settings") or {}
+        fpts = float(rs.get("fpts") or 0) + float(rs.get("fpts_decimal") or 0) / 100.0
         conn.execute(
-            "INSERT INTO rosters(roster_id,owner,players_json,starters_json,updated_at) "
-            "VALUES(?,?,?,?,?) ON CONFLICT(roster_id) DO UPDATE SET owner=excluded.owner,"
+            "INSERT INTO rosters(roster_id,owner,players_json,starters_json,updated_at,"
+            "wins,losses,ties,fpts) "
+            "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(roster_id) DO UPDATE SET owner=excluded.owner,"
             "players_json=excluded.players_json,starters_json=excluded.starters_json,"
-            "updated_at=excluded.updated_at",
+            "updated_at=excluded.updated_at,wins=excluded.wins,losses=excluded.losses,"
+            "ties=excluded.ties,fpts=excluded.fpts",
             (r["roster_id"], users.get(r.get("owner_id"), r.get("owner_id")),
-             json.dumps(r.get("players") or []), json.dumps(r.get("starters") or []), now),
+             json.dumps(r.get("players") or []), json.dumps(r.get("starters") or []), now,
+             int(rs.get("wins") or 0), int(rs.get("losses") or 0),
+             int(rs.get("ties") or 0), round(fpts, 2)),
         )
     conn.commit()
 

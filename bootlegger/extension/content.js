@@ -12,7 +12,7 @@
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const POS_HUES = { QB: "#ff7a95", RB: "#52d98b", WR: "#6fb1ff", TE: "#f0954a", K: "#b591ff", DEF: "#d8d060" };
+  const POS_HUES = { QB: "#ff7a95", RB: "#52d98b", WR: "#59d3f2", TE: "#f0954a", K: "#c39bff", DEF: "#e4de6b" };
   const posOf = (p) => (p.pos === "DST" ? "DEF" : p.pos);
 
   const host = document.createElement("div");
@@ -22,21 +22,21 @@
 <style>
   :host {
     all: initial;
-    /* CHALK & TURF tokens — mirrors bootlegger/server/app/web/styles.css
+    /* ORCHARD PARK NIGHT tokens — mirrors bootlegger/server/app/web/styles.css
        :root so every hex here appears exactly once. */
-    --ground: #16382b;
-    --panel: #1b4234;
-    --panel-2: #215040;
-    --line: rgba(242,247,239,.30);
-    --line-soft: rgba(242,247,239,.14);
-    --ink: #f2f7ef;
-    --ink-dim: #c9dccd;
-    --ink-faint: #9fc2ab;
-    --brass: #f7c948;
-    --brass-bright: #ffdd6b;
-    --brass-deep: #c29a25;
-    --lamp: #58c07c;
-    --oxblood: #ff8177;
+    --ground: #06122e;
+    --panel: #0b1c44;
+    --panel-2: #112552;
+    --line: rgba(236,242,255,.28);
+    --line-soft: rgba(236,242,255,.13);
+    --ink: #f2f6ff;
+    --ink-dim: #c2cde6;
+    --ink-faint: #8499c4;
+    --brass: #5b8cff;
+    --brass-bright: #93b4ff;
+    --brass-deep: #2e5fd9;
+    --lamp: #3ed98a;
+    --oxblood: #ff5d66;
     --font-ledger: "Courier Prime", "Courier New", monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,8 +53,8 @@
   }
   .mark { font: 400 13px Georgia, serif; letter-spacing: .18em; color: var(--brass); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lamp);
-         box-shadow: 0 1px 5px rgba(88,192,124,.8); }
-  .dot.bad { background: var(--oxblood); box-shadow: 0 1px 5px rgba(255,129,119,.8); }
+         box-shadow: 0 1px 5px rgba(62,217,138,.8); }
+  .dot.bad { background: var(--oxblood); box-shadow: 0 1px 5px rgba(255,93,102,.8); }
   .fold { margin-left: auto; color: var(--ink-faint); font-size: 14px; }
   .body { padding: 9px 10px 10px; }
   .clock { font-family: var(--font-ledger); font-size: 12px; color: var(--ink-dim);
@@ -62,9 +62,9 @@
   .clock.mine { color: var(--brass-bright); font-weight: 700; }
   .warn { color: var(--oxblood); font-size: 11px; margin-bottom: 6px; }
   .call { border: 1px solid var(--brass-deep); border-radius: 5px; padding: 8px 9px;
-          background: linear-gradient(180deg, rgba(247,201,72,.10), rgba(247,201,72,.02));
+          background: linear-gradient(180deg, rgba(91,140,255,.10), rgba(91,140,255,.02));
           cursor: pointer; }
-  .call:hover { background: linear-gradient(180deg, rgba(247,201,72,.16), rgba(247,201,72,.05)); }
+  .call:hover { background: linear-gradient(180deg, rgba(91,140,255,.16), rgba(91,140,255,.05)); }
   .cname { font-size: 16px; font-weight: 700; }
   .cmeta { display: flex; gap: 10px; font-family: var(--font-ledger); font-size: 11px;
            color: var(--ink-dim); margin-top: 2px; }
@@ -188,7 +188,7 @@
         </div>
         <ul class="runners">${s.slice(1, 4).map((r, i) => `
           <li data-i="${i + 1}" title="click: search him in Sleeper">
-            <span class="swatch" style="background:${POS_HUES[posOf(r)] || "#9fc2ab"}"></span>
+            <span class="swatch" style="background:${POS_HUES[posOf(r)] || "#8499c4"}"></span>
             <span class="rpos">${esc(posOf(r))}</span>
             <span class="rname">${esc(r.name)}</span>
             <span class="rnum">${r.score ?? ""}</span></li>`).join("")}

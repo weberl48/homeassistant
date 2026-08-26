@@ -259,6 +259,54 @@ def _boost_street(conn: sqlite3.Connection) -> None:
     compute_consensus(conn, week=1)
 
 
+SEASON_WEEKS = 14          # the regular season the demo's records come from
+NFL_SEASON_WEEKS = 17      # converts a season-long projection to a weekly rate
+# Week-to-week scoring noise. Real fantasy runs nearer 25, which over a
+# 14-game slate drowns roster quality entirely (r≈0.35) — true to life, and
+# unreadable in a demo: the top-ranked seat lands mid-table for no visible
+# reason. Dialled to 12 so upsets still happen but the standings and the
+# ranking printed beside them tell the same story.
+_SEASON_SIGMA = 12.0
+
+
+def _round_robin_pairs(teams: int, week: int) -> list[tuple[int, int]]:
+    """Circle method: seat 1 is fixed and the rest rotate, so with an even
+    field every seat plays exactly once a week and nobody sits. Eleven unique
+    rounds over twelve seats, then the slate repeats — which is what a real
+    14-week fantasy season does too."""
+    others = list(range(2, teams + 1))
+    r = (week - 1) % (teams - 1)
+    rot = others[r:] + others[:r]
+    pairs = [(1, rot[0])]
+    for i in range(1, teams // 2):
+        pairs.append((rot[i], rot[-i]))
+    return pairs
+
+
+def _play_season(teams: int, strength: dict[int, float]) -> dict[int, dict]:
+    """Play a deterministic regular season so the League room opens on a real
+    table rather than a wall of 0-0. Scores come from each seat's startable
+    strength plus weekly noise, so the standings correlate with roster quality
+    without being a straight ranking of it."""
+    rec = {t: {"w": 0, "l": 0, "t": 0, "pf": 0.0} for t in range(1, teams + 1)}
+    for week in range(1, SEASON_WEEKS + 1):
+        for home, away in _round_robin_pairs(teams, week):
+            hs = max(0.0, strength[home] + _rng("game", week, home, away).gauss(0, _SEASON_SIGMA))
+            aws = max(0.0, strength[away] + _rng("game", week, away, home).gauss(0, _SEASON_SIGMA))
+            rec[home]["pf"] += hs
+            rec[away]["pf"] += aws
+            if hs > aws:
+                rec[home]["w"] += 1
+                rec[away]["l"] += 1
+            elif aws > hs:
+                rec[away]["w"] += 1
+                rec[home]["l"] += 1
+            else:
+                rec[home]["t"] += 1
+                rec[away]["t"] += 1
+    return rec
+
+
 OWNER_NAMES = ["Front Room", "Coat Check", "House Band", "The Chemist", "Card Table",
                "Projectionist", "You", "Rum Runner", "The Doorman", "Night Shift",
                "Green Lamp", "Last Call"]
@@ -308,17 +356,39 @@ def _seed_rosters(conn: sqlite3.Connection, ordered_rows) -> None:
     week1 = {r["player_id"]: r["pts_robust"] or 0.0 for r in
              conn.execute("SELECT player_id, pts_robust FROM consensus WHERE week=1")}
     from .engines.lineup import PlayerProj, optimize
+    # Pass 1: the week-1 lineup each seat would field, and its weekly scoring
+    # power for the season just played.
+    season_pts = {r["player_id"]: r["pts_robust"] or 0.0 for r in
+                  conn.execute("SELECT player_id, pts_robust FROM consensus WHERE week=0")}
+    lineups: dict[int, list[str]] = {}
+    strength: dict[int, float] = {}
     for team_id, players in rosters.items():
         projs = [PlayerProj(pid, pos_of[pid], week1.get(pid, 0.0)) for pid in players]
-        starters = [p.player_id for _, p in
-                    optimize(projs, DEMO_ROSTER_POSITIONS).assignment]
+        lineups[team_id] = [p.player_id for _, p in
+                            optimize(projs, DEMO_ROSTER_POSITIONS).assignment]
+        # Scoring power comes off the SEASON book, not week 1 — The League ranks
+        # seats on season points, and a record simulated from a different basis
+        # would contradict the ranking printed beside it. Taken from the optimal
+        # lineup, so my record isn't punished for the deliberately-wrong week-1
+        # lineup that the week card exists to fix.
+        season_best = optimize([PlayerProj(pid, pos_of[pid], season_pts.get(pid, 0.0))
+                                for pid in players], DEMO_ROSTER_POSITIONS)
+        strength[team_id] = season_best.total / NFL_SEASON_WEEKS
+
+    season = _play_season(teams, strength)
+
+    # Pass 2: write the seats, each carrying the season it just played.
+    for team_id, players in rosters.items():
+        starters = lineups[team_id]
         if team_id == settings.my_roster_id:
             starters = _spoil_my_lineup(conn, players, starters, pos_of)
+        rec = season[team_id]
         conn.execute(
-            "INSERT OR REPLACE INTO rosters(roster_id,owner,players_json,starters_json,updated_at) "
-            "VALUES(?,?,?,?,?)",
+            "INSERT OR REPLACE INTO rosters(roster_id,owner,players_json,starters_json,updated_at,"
+            "wins,losses,ties,fpts) VALUES(?,?,?,?,?,?,?,?,?)",
             (team_id, OWNER_NAMES[(team_id - 1) % len(OWNER_NAMES)],
-             json.dumps(players), json.dumps(starters), now),
+             json.dumps(players), json.dumps(starters), now,
+             rec["w"], rec["l"], rec["t"], round(rec["pf"], 2)),
         )
     for w in (1,):
         for team_id in range(1, teams + 1):
@@ -472,6 +542,15 @@ def tick(conn: sqlite3.Connection, suggest_for_me) -> bool:
     row = conn.execute("SELECT status FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone()
     if not row or row["status"] != "drafting":
         return False
+    # The sim is the demo's poller, so every visit refreshes drafts.updated_at —
+    # the freshness heartbeat the board watches — exactly as
+    # etl_draft_picks(full=False) does on each live poll. It has to happen here
+    # rather than in record_pick: the sim idles up to demo_my_clock_seconds on
+    # my clock, and a heartbeat that only moved on a landed pick would banner a
+    # stale wire through every one of those pauses.
+    conn.execute("UPDATE drafts SET updated_at=? WHERE draft_id=?",
+                 (db.utcnow(), DEMO_DRAFT_ID))
+    conn.commit()
     next_tick = float(db.meta_get(conn, "demo_draft_next_tick", "0") or 0)
     if time.time() < next_tick:
         return False

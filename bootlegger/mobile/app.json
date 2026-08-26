@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#16382b",
+    "backgroundColor": "#06122e",
     "scheme": "bootlegger",
     "android": {
       "package": "house.speakeasy.bootlegger",

@@ -1,43 +1,50 @@
-/* BOOTLEGGER — the back room. Walnut, brass, ledger paper, one green lamp. */
+/* BOOTLEGGER — Orchard Park Night. Stadium navy, electric royal, one zubaz. */
 
 :root {
-  /* CHALK & TURF: a Saturday-morning-cartoon playbook — deep chalkboard
-     green, chalk-white ink, penalty yellow for attention, flag red for
-     trouble. Variable NAMES keep their old spellings (brass/lamp/oxblood)
-     so every downstream rule keeps working; the WORLD they paint changed. */
-  --ground: #16382b;
-  --panel: #1b4234;
-  --panel-2: #215040;
-  --panel-3: #275c4a;
-  --line: rgba(242, 247, 239, .30);
-  --line-soft: rgba(242, 247, 239, .14);
-  --ink: #f2f7ef;
-  --ink-dim: #c9dccd;
-  --ink-faint: #9fc2ab;
-  --brass: #f7c948;
-  --brass-bright: #ffdd6b;
-  --brass-deep: #c29a25;
-  --lamp: #58c07c;
-  --lamp-bright: #86e6a8;
-  --marigold: #ff9838;
-  --oxblood: #ff8177;
-  --oxblood-deep: #c23b30;
-  --qb: #ff7a95; --rb: #52d98b; --wr: #6fb1ff;
-  --te: #f0954a; --k: #b591ff; --def: #d8d060;
-  /* paper inks hold >=4.5:1 against the sheet's darkest stop (#e0d2a9) */
-  --paper: #e8dcba;
-  --paper-2: #e0d2a9;
-  --paper-ink: #33291a;
-  --paper-faint: #5a4c31;
-  --paper-rule: rgba(51, 41, 26, .18);
-  --paper-margin: rgba(164, 82, 63, .55);
-  --paper-ok: #2f5a3d;
-  --paper-bad: #7e352b;
-  --font-ui: "Patrick Hand", "Barlow Semi Condensed", system-ui, sans-serif;
-  --font-marquee: "Permanent Marker", "Comic Sans MS", cursive;
+  /* ORCHARD PARK NIGHT: a Bills night game as an interface — deep stadium
+     navy under the lights, electric royal for everything you can touch,
+     Bills red strictly for trouble, white ink, and a Mafia fun layer in
+     bedsheet-banner marker. Variable NAMES keep their old spellings
+     (brass/lamp/oxblood) so every downstream rule keeps working; the WORLD
+     they paint changed. All pairs verified AA 2026-08-25. */
+  --ground: #06122e;
+  --panel: #0b1c44;
+  --panel-2: #112552;
+  --panel-3: #172e62;
+  --line: rgba(236, 242, 255, .28);
+  --line-soft: rgba(236, 242, 255, .13);
+  --ink: #f2f6ff;
+  --ink-dim: #c2cde6;
+  --ink-faint: #8499c4;
+  --brass: #5b8cff;
+  --brass-bright: #93b4ff;
+  --brass-deep: #2e5fd9;
+  --lamp: #3ed98a;
+  --lamp-bright: #7fedb6;
+  --marigold: #ffa23d;
+  --oxblood: #ff5d66;
+  --oxblood-deep: #c60c30;
+  --qb: #ff7a95; --rb: #52d98b; --wr: #59d3f2;
+  --te: #f0954a; --k: #c39bff; --def: #e4de6b;
+  /* paper = the white game program; inks hold >=4.5:1 on its darkest stop */
+  --paper: #f2f5fd;
+  --paper-2: #e4eaf8;
+  --paper-ink: #17233e;
+  --paper-faint: #4c5c82;
+  --paper-rule: rgba(23, 35, 62, .16);
+  --paper-margin: rgba(198, 12, 48, .5);
+  --paper-ok: #1f7a4d;
+  --paper-bad: #b01230;
+  --font-ui: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-marquee: "Anton", "Barlow Semi Condensed", system-ui, sans-serif;
+  --font-banner: "Permanent Marker", "Comic Sans MS", cursive; /* memes only */
   --font-ledger: "Courier Prime", "Courier New", monospace;
-  --shadow-plate: 0 2px 6px rgba(0,0,0,.35), 0 8px 22px rgba(0,0,0,.25);
-  --shadow-raise: 0 1px 3px rgba(0,0,0,.4), 0 5px 14px rgba(0,0,0,.22);
+  --shadow-plate: 0 2px 8px rgba(2, 6, 20, .5), 0 10px 28px rgba(2, 6, 20, .35);
+  --shadow-raise: 0 1px 3px rgba(2, 6, 20, .5), 0 6px 16px rgba(2, 6, 20, .3);
+  /* the one zubaz: an authored tile of irregular hand-cut red/royal jags on
+     white — real zebra print, not a candy stripe. Earned by the masthead
+     and the report card only. */
+  --zubaz: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 14' preserveAspectRatio='none'%3E%3Crect width='90' height='14' fill='%23f2f6ff'/%3E%3Cpolygon points='0,0 16,0 10,6 17,14 1,14 8,7 2,3' fill='%23c60c30'/%3E%3Cpolygon points='24,0 43,0 36,5 45,14 27,14 34,9 26,4' fill='%232e5fd9'/%3E%3Cpolygon points='52,0 62,0 68,8 63,14 53,14 60,7' fill='%23c60c30'/%3E%3Cpolygon points='72,0 88,0 81,6 90,11 90,14 76,14 83,8 74,3' fill='%232e5fd9'/%3E%3C/svg%3E") left center / 90px 100% repeat-x #f2f6ff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -60,8 +67,8 @@ body::before {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
   /* the field: yard lines every 120px with hash ticks, a soft vignette */
   background:
-    repeating-linear-gradient(90deg, rgba(242,247,239,.05) 0 2px, transparent 2px 120px),
-    repeating-linear-gradient(0deg, transparent 0 26px, rgba(242,247,239,.02) 26px 28px),
+    repeating-linear-gradient(90deg, rgba(236,242,255,.05) 0 2px, transparent 2px 120px),
+    repeating-linear-gradient(0deg, transparent 0 26px, rgba(236,242,255,.02) 26px 28px),
     radial-gradient(120% 90% at 50% 115%, rgba(0,0,0,.35), transparent 60%);
 }
 body::after {
@@ -98,9 +105,15 @@ a { color: var(--brass); text-underline-offset: 3px; }
 
 .masthead {
   position: sticky; top: 0; z-index: 30;
-  background: linear-gradient(180deg, #1d4a39, #1a4232 70%, #16382b);
+  background: linear-gradient(180deg, #13285c, #0d1f4a 70%, #06122e);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow-plate);
+}
+/* The zubaz strip: the one loud stripe in the house, worn where a stadium
+   wears its banner. */
+.masthead::after {
+  content: ""; display: block; height: 7px;
+  background: var(--zubaz); opacity: .92;
 }
 .masthead-inner {
   max-width: 1560px; margin: 0 auto; padding: 10px 20px 0;
@@ -111,9 +124,9 @@ a { color: var(--brass); text-underline-offset: 3px; }
 .marque { grid-area: marque; padding-bottom: 10px; }
 .wordmark {
   font-family: var(--font-marquee); font-weight: 400;
-  font-size: clamp(1.5rem, 3.4vw, 2.1rem); letter-spacing: .06em;
-  color: var(--brass-bright); transform: rotate(-1.6deg);
-  text-shadow: 2px 2px 0 rgba(0,0,0,.35);
+  font-size: clamp(1.5rem, 3.4vw, 2.15rem); letter-spacing: .05em;
+  color: var(--ink); font-style: italic; /* jersey-number forward lean */
+  text-shadow: 3px 2px 0 var(--oxblood-deep);
 }
 .est { color: var(--ink-faint); font-size: .78rem; letter-spacing: .18em; text-transform: uppercase; }
 .est .pigskin {
@@ -125,7 +138,7 @@ a { color: var(--brass); text-underline-offset: 3px; }
   grid-area: clock; justify-self: start; align-self: center; margin-bottom: 10px;
   border: 1px solid var(--line); border-radius: 4px;
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
-  box-shadow: inset 0 1px 0 rgba(236,223,198,.05), 0 2px 5px rgba(0,0,0,.4);
+  box-shadow: inset 0 1px 0 rgba(236,242,255,.05), 0 2px 5px rgba(0,0,0,.4);
   padding: 7px 14px; min-width: 250px;
 }
 .clock-line {
@@ -135,7 +148,7 @@ a { color: var(--brass); text-underline-offset: 3px; }
 .clock-sub { color: var(--ink-dim); font-size: .8rem; letter-spacing: .06em; }
 .clockplate.is-mine {
   border-color: var(--brass);
-  box-shadow: inset 0 1px 0 rgba(236,223,198,.08), 0 2px 10px rgba(247,201,72,.35);
+  box-shadow: inset 0 1px 0 rgba(236,242,255,.08), 0 2px 10px rgba(91,140,255,.4);
 }
 .clockplate.is-mine .clock-line { color: var(--brass-bright); }
 
@@ -143,12 +156,13 @@ a { color: var(--brass); text-underline-offset: 3px; }
 .tab {
   appearance: none; border: 1px solid var(--line); border-bottom: none;
   border-radius: 6px 6px 0 0;
-  background: linear-gradient(180deg, #1e4737, #1a4030);
+  background: linear-gradient(180deg, #10234e, #0c1d45);
   color: var(--ink-dim); font: 600 .86rem/1 var(--font-ui);
   letter-spacing: .08em; text-transform: uppercase;
   padding: 8px 16px 9px; cursor: pointer; /* tighter — the subtitle adds a line */
+  transition: color .14s ease-out, background-color .14s ease-out;
 }
-.tab:hover { color: var(--ink); background: linear-gradient(180deg, #245544, #1d4737); }
+.tab:hover { color: var(--ink); background: linear-gradient(180deg, #16306a, #112552); }
 .tab.is-active {
   color: var(--brass-bright); background: var(--ground);
   border-color: var(--brass-deep);
@@ -170,16 +184,16 @@ a { color: var(--brass); text-underline-offset: 3px; }
   color: var(--ink-dim); font-size: .8rem; letter-spacing: .1em; text-transform: uppercase;
 }
 .lampdot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--lamp); box-shadow: 0 1px 6px rgba(88,192,124,.8);
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  background: var(--lamp); box-shadow: 0 1px 6px rgba(62,217,138,.8);
 }
-.wire.is-down .lampdot { background: var(--oxblood); box-shadow: 0 1px 6px rgba(255,107,94,.8); }
+.wire.is-down .lampdot { background: var(--oxblood); box-shadow: 0 1px 6px rgba(255,93,102,.8); }
 .wire.is-down #wire-text { color: var(--oxblood); }
 
 .wire-banner {
   position: sticky; top: 0; z-index: 29;
-  background: linear-gradient(180deg, #5c231c, #4a1d17);
-  color: #ffd9d3; border-bottom: 2px dashed var(--oxblood);
+  background: linear-gradient(180deg, #571220, #420e19);
+  color: #ffd9de; border-bottom: 2px dashed var(--oxblood);
   padding: 9px 20px; font-weight: 600; letter-spacing: .03em;
 }
 
@@ -187,8 +201,8 @@ a { color: var(--brass); text-underline-offset: 3px; }
    mistakable for the league draft. */
 .practice-banner {
   position: sticky; top: 0; z-index: 28;
-  background: linear-gradient(180deg, #4a3f14, #3d3410);
-  color: var(--brass-bright); border-bottom: 2px dashed var(--brass);
+  background: linear-gradient(180deg, #4a3208, #3d2a06);
+  color: #ffc27a; border-bottom: 2px dashed var(--marigold);
   padding: 9px 20px; font-weight: 600; letter-spacing: .03em;
 }
 .btn-link {
@@ -204,18 +218,19 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .narrow { max-width: 860px; margin: 0 auto; }
 
 .room-title {
-  font-size: 1.35rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  font-family: var(--font-marquee); font-weight: 400;
+  font-size: 1.45rem; letter-spacing: .06em; text-transform: uppercase;
   color: var(--ink);
 }
 .room-note { color: var(--ink-dim); margin: 8px 0 18px; max-width: 62ch; }
 
 /* gridiron: the seam — a stitched pigskin lace under plate and room titles.
-   One center thread with cross-laces every 14px; walnut surfaces only. */
+   One center thread with cross-laces every 14px; the thread runs royal now. */
 .lace-seam::after, .call-title::after, .shelf-title::after, .room-title::after {
   content: ""; display: block; height: 9px; margin-top: 9px;
   background:
     linear-gradient(var(--line) 0 0) 0 50% / 100% 1px no-repeat,
-    repeating-linear-gradient(90deg, transparent 0 13px, rgba(247, 201, 72, .6) 13px 14px);
+    repeating-linear-gradient(90deg, transparent 0 13px, rgba(91, 140, 255, .65) 13px 14px);
 }
 .ledger-gap { margin-top: 44px; }
 
@@ -236,7 +251,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
      plate's lower corner. Decoration stays at whisper opacity, behind the ink. */
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 170 130' fill='none' stroke='%23f2f7ef' stroke-opacity='.14' stroke-width='2' stroke-linecap='round'%3E%3Cg transform='rotate(-4 85 65)'%3E%3Ccircle cx='34' cy='96' r='8'/%3E%3Ccircle cx='64' cy='106' r='8'/%3E%3Ccircle cx='94' cy='96' r='8'/%3E%3Cpath d='M46 44l14 14M60 44l-14 14'/%3E%3Cpath d='M96 52l14 14M110 52l-14 14'/%3E%3Cpath d='M94 86C104 66 116 50 138 30' stroke-dasharray='6 7'/%3E%3Cpath d='M138 30l-11 1M138 30l-4 10'/%3E%3C/g%3E%3C/svg%3E") right -12px bottom -10px / 185px auto no-repeat,
-    linear-gradient(180deg, rgba(247,201,72,.10), rgba(247,201,72,.03) 40%),
+    linear-gradient(180deg, rgba(91,140,255,.12), rgba(91,140,255,.04) 40%),
     linear-gradient(180deg, var(--panel-2), var(--panel));
   box-shadow: var(--shadow-plate);
   padding: 16px 16px 12px;
@@ -400,7 +415,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   color: var(--ink-faint); border: 1px solid var(--line); border-radius: 3px;
   padding: 1px 5px; white-space: nowrap;
 }
-.prow.is-mine { opacity: 1; background: linear-gradient(90deg, rgba(247,201,72,.12), transparent 70%); }
+.prow.is-mine { opacity: 1; background: linear-gradient(90deg, rgba(91,140,255,.14), transparent 70%); }
 .prow.is-mine .stamp { color: var(--ground); background: var(--brass); border-color: var(--brass); }
 .prow.is-mine .name::after { background: var(--brass-deep); }
 
@@ -418,30 +433,30 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .ticker-wrap { margin-top: 16px; }
 .ticker {
   list-style: none; display: flex; gap: 22px; overflow-x: auto;
-  background: linear-gradient(180deg, #efe3c3, var(--paper) 55%, var(--paper-2));
-  border-radius: 2px; padding: 9px 16px 10px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.5), 0 8px 20px rgba(0,0,0,.3),
-    inset 0 1px 0 rgba(255,250,232,.8);
+  background: linear-gradient(180deg, #fbfcff, var(--paper) 55%, var(--paper-2));
+  border-radius: 4px; padding: 9px 16px 10px;
+  box-shadow: 0 2px 6px rgba(2,6,20,.5), 0 8px 20px rgba(2,6,20,.3),
+    inset 0 1px 0 rgba(255,255,255,.9);
 }
 .ticker li {
   display: flex; gap: 8px; align-items: baseline; white-space: nowrap;
-  font-family: var(--font-ledger); font-size: .84rem; color: #43391f;
+  font-family: var(--font-ledger); font-size: .84rem; color: #26355c;
 }
 .ticker .t-no { color: var(--paper-faint); font-size: .76rem; }
 .ticker li.t-mine { color: var(--paper-bad); font-weight: 700; }
 .ticker .pos { color: var(--paper-faint); }
 .ticker::-webkit-scrollbar-track { background: var(--paper-2); }
-.ticker::-webkit-scrollbar-thumb { background: #b9a87e; border-color: var(--paper-2); }
-.ticker { scrollbar-color: #b9a87e var(--paper-2); }
+.ticker::-webkit-scrollbar-thumb { background: #a9b8d8; border-color: var(--paper-2); }
+.ticker { scrollbar-color: #a9b8d8 var(--paper-2); }
 
 /* ============================= THIS WEEK ============================= */
 
 .week-layout { max-width: 980px; display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
 
 .verdict {
-  border: 2px dashed var(--brass); border-radius: 12px;
+  border: 2px solid var(--brass-deep); border-radius: 12px;
   background:
-    linear-gradient(180deg, rgba(247,201,72,.08), transparent 50%),
+    linear-gradient(180deg, rgba(91,140,255,.10), transparent 50%),
     linear-gradient(180deg, var(--panel-2), var(--panel));
   box-shadow: var(--shadow-plate); padding: 18px 20px;
 }
@@ -449,12 +464,12 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .verdict-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
 .verdict-title { font-size: 1.3rem; font-weight: 700; letter-spacing: .02em; }
 .delta {
-  /* typewriter figures for every number — Limelight stays the house name's */
+  /* typewriter figures for every number — Anton stays the house name's */
   font-family: var(--font-ledger); font-weight: 700; font-size: 1.9rem;
-  color: var(--brass-bright); text-shadow: 0 2px 10px rgba(247,201,72,.25);
+  color: var(--brass-bright); text-shadow: 0 2px 12px rgba(91,140,255,.35);
   margin-left: auto; letter-spacing: .02em;
 }
-.verdict.is-good .delta { color: var(--lamp-bright); text-shadow: 0 2px 10px rgba(88,192,124,.25); }
+.verdict.is-good .delta { color: var(--lamp-bright); text-shadow: 0 2px 12px rgba(62,217,138,.3); }
 .rationale { color: var(--ink-dim); margin-top: 6px; max-width: 70ch; }
 
 .holds { margin-top: 10px; color: var(--oxblood); font-weight: 600; display: flex; gap: 8px; align-items: center; }
@@ -484,12 +499,15 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   transition: filter .12s ease, transform .06s ease;
 }
 .btn-primary {
-  background: linear-gradient(180deg, var(--brass-bright), var(--brass) 55%, #daa62c);
-  color: #113124; border: 2px solid #113124;
-  box-shadow: 0 3px 0 #0d271c, 0 6px 16px rgba(247,201,72,.25);
+  /* the royal key: white 700-weight text sits on the darker mid-stop
+     (5.2:1 measured); the press edge is the deep royal */
+  font-weight: 700;
+  background: linear-gradient(180deg, var(--brass), var(--brass-deep) 45%, #2451b8);
+  color: var(--ink); border: 2px solid #0a1c44;
+  box-shadow: 0 3px 0 #0a1c44, 0 6px 18px rgba(91,140,255,.3);
 }
-.btn-primary:hover { filter: brightness(1.07); }
-.btn-primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #0d271c; }
+.btn-primary:hover { filter: brightness(1.09); }
+.btn-primary:active { transform: translateY(2px); box-shadow: 0 1px 0 #0a1c44; }
 .btn-ghost {
   background: transparent; color: var(--ink-dim); border: 1px solid var(--line);
 }
@@ -518,8 +536,8 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .lineup tr:last-child td { border-bottom: none; }
 .lineup .slot { font-family: var(--font-ledger); color: var(--ink-faint); font-size: .78rem; width: 5ch; }
 .lineup .proj { font-family: var(--font-ledger); text-align: right; color: var(--ink); }
-.lineup tr.is-in td { background: rgba(88,192,124,.08); }
-.lineup tr.is-out td { background: rgba(255,107,94,.07); }
+.lineup tr.is-in td { background: rgba(62,217,138,.08); }
+.lineup tr.is-out td { background: rgba(255,93,102,.07); }
 .lineup tr.is-out .pname { text-decoration: line-through 2px var(--oxblood-deep); text-underline-offset: 0; }
 .pname { font-weight: 600; }
 
@@ -527,7 +545,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 
 .allgood {
   border: 1px solid var(--lamp); border-radius: 6px;
-  background: linear-gradient(180deg, rgba(88,192,124,.1), transparent 60%), var(--panel);
+  background: linear-gradient(180deg, rgba(62,217,138,.1), transparent 60%), var(--panel);
   box-shadow: var(--shadow-plate); padding: 22px;
   display: flex; gap: 14px; align-items: center;
 }
@@ -563,16 +581,21 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   box-shadow: var(--shadow-raise); padding: 12px 14px; margin-bottom: 12px;
 }
 
-/* the report card (post-draft grades) */
+/* the report card (post-draft grades) — wears the zubaz like a headband */
 .report-card {
-  border: 2px dashed var(--brass-deep); border-radius: 12px;
+  position: relative; overflow: hidden;
+  border: 2px solid var(--brass-deep); border-radius: 12px;
   background: var(--panel); box-shadow: var(--shadow-raise);
-  padding: 16px 18px; margin-bottom: 16px;
+  padding: 20px 18px 16px; margin-bottom: 16px;
+}
+.report-card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 7px;
+  background: var(--zubaz); opacity: .92;
 }
 .rc-table td, .rc-table th { padding: 7px 10px; }
 .rc-table .num { text-align: right; font-family: var(--font-ledger); }
 .rc-table tr.is-me td {
-  background: linear-gradient(90deg, rgba(247,201,72,.14), transparent 85%);
+  background: linear-gradient(90deg, rgba(91,140,255,.16), transparent 85%);
   font-weight: 700;
 }
 .rc-note { color: var(--ink-dim); font-size: .88rem; }
@@ -647,8 +670,8 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 }
 .pilot-banner {
   position: sticky; top: 0; z-index: 27;
-  background: linear-gradient(180deg, #52231d, #421d18);
-  color: #ffd9d3; border-bottom: 2px dashed var(--oxblood);
+  background: linear-gradient(180deg, #4d1120, #3a0d18);
+  color: #ffd9de; border-bottom: 2px dashed var(--oxblood);
   padding: 9px 20px; font-weight: 600; letter-spacing: .03em;
 }
 
@@ -713,7 +736,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .deal-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deal-row-pts { font-family: var(--font-ledger); font-size: .78rem; color: var(--ink-faint); }
 .deal-row.is-in {
-  background: linear-gradient(90deg, rgba(247,201,72,.16), transparent 75%);
+  background: linear-gradient(90deg, rgba(91,140,255,.18), transparent 75%);
   box-shadow: inset 3px 0 0 var(--brass);
 }
 .deal-row.is-in .deal-row-name { font-weight: 700; }
@@ -732,13 +755,13 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 
 /* ============================= LEDGER ============================= */
 
-/* the world's core material: an actual ledger page on the walnut desk */
+/* the world's core material: the white game program under stadium lights */
 .sheet {
   position: relative;
-  background: linear-gradient(180deg, #efe3c3, var(--paper) 45%, var(--paper-2));
-  border-radius: 3px;
-  box-shadow: 0 3px 8px rgba(0,0,0,.55), 0 14px 34px rgba(0,0,0,.35),
-    inset 0 1px 0 rgba(255,250,232,.85);
+  background: linear-gradient(180deg, #fbfcff, var(--paper) 45%, var(--paper-2));
+  border-radius: 6px;
+  box-shadow: 0 3px 8px rgba(2,6,20,.55), 0 14px 34px rgba(2,6,20,.35),
+    inset 0 1px 0 rgba(255,255,255,.9);
   padding: 18px 26px 22px 58px;
   color: var(--paper-ink);
   margin-bottom: 6px;
@@ -760,13 +783,13 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .toggle {
   margin-left: auto; appearance: none; cursor: pointer; flex: none;
   width: 46px; height: 24px; border-radius: 12px; position: relative;
-  background: #cbbd97; border: 1px solid rgba(51,41,26,.3);
+  background: #c3cfe7; border: 1px solid rgba(23,35,62,.3);
   transition: background .15s ease;
 }
 .toggle::after {
   content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
-  border-radius: 50%; background: #8d7c58;
-  box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .15s ease, background .15s ease;
+  border-radius: 50%; background: #6d80a8;
+  box-shadow: 0 1px 3px rgba(2,6,20,.35); transition: transform .15s ease, background .15s ease;
 }
 .toggle:checked { background: var(--brass-deep); border-color: var(--brass-deep); }
 .toggle:checked::after { transform: translateX(22px); background: var(--brass-bright); }
@@ -823,7 +846,7 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
 .d-bal-row { display: grid; grid-template-columns: 2.9em 1fr auto; gap: 9px; align-items: center; }
 .d-bal-row .blb { font-size: .66rem; font-weight: 700; letter-spacing: .12em; color: var(--paper-faint); }
 .d-bar { height: 8px; background: var(--paper-rule); border-radius: 2px; position: relative; overflow: hidden; }
-.d-bar-fill { position: absolute; top: 0; bottom: 0; left: 0; background: #8d7c58; }
+.d-bar-fill { position: absolute; top: 0; bottom: 0; left: 0; background: #6d80a8; }
 .d-bar-add { position: absolute; top: 0; bottom: 0; background: var(--paper-ok); }
 .d-bal-row .num { font-family: var(--font-ledger); font-size: .74rem; color: var(--paper-faint); min-width: 7ch; text-align: right; }
 .d-bal-row .num b { color: var(--paper-ok); }
@@ -893,34 +916,74 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   .sheet::before { left: 32px; }
 }
 
+/* ====================== MOTION: THE BROADCAST CUT ======================
+   One grammar: rooms cut in like a broadcast graphic — rise, settle, done.
+   Entry animations key off the [hidden] toggle (display restart), so they
+   fire on tab switches and column rebuilds, never on the 1 Hz row patches. */
+.room { animation: room-in .2s ease-out both; }
+@keyframes room-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.prow { animation: row-in .28s cubic-bezier(.16, 1, .3, 1) both; }
+.prow:nth-child(2) { animation-delay: .03s; }
+.prow:nth-child(3) { animation-delay: .06s; }
+.prow:nth-child(4) { animation-delay: .09s; }
+.prow:nth-child(5) { animation-delay: .12s; }
+.prow:nth-child(6) { animation-delay: .15s; }
+.prow:nth-child(n+7) { animation-delay: .18s; }
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.verdict, .sheet, .report-card, .deal { animation: room-in .24s ease-out both; }
+
 @media (prefers-reduced-motion: reduce) {
   .prow.just-picked .name::after, .prow.just-picked .stamp { animation: none; }
-  .btn, .toggle, .toggle::after { transition: none; }
+  .btn, .toggle, .toggle::after, .tab { transition: none; }
   .btn .spin { animation-duration: 1.5s; }
+  .room, .prow, .verdict, .sheet, .report-card, .deal { animation: none; }
 }
 
-/* ============================= CHARACTERS & PLAY ============================= */
+/* ========================= CHARACTERS & GAME DAY ========================= */
 
-/* The ref lives on The Call. Idle: a gentle bob. On your clock: TOUCHDOWN
-   arms. He is the fun; the numbers stay the facts. */
+/* The Buffalo lives on The Call. Idle: a slow breathing bob. On your clock:
+   he STAMPEDES across the plate, dust behind him. He is the fun; the
+   numbers stay the facts. (Same contract the ref held.) */
 .call { position: relative; }
 .ref {
-  position: absolute; top: 6px; right: 10px; width: 46px; height: auto;
-  animation: ref-bob 3.2s ease-in-out infinite; transform-origin: 50% 90%;
+  position: absolute; top: 8px; right: 10px; width: 52px; height: auto;
+  animation: buf-idle 3.6s ease-in-out infinite; transform-origin: 50% 90%;
 }
-.ref .arm-l, .ref .arm-r { transition: transform .35s cubic-bezier(.34, 1.56, .64, 1); }
-.ref .arm-l { transform-origin: 17px 30px; }
-.ref .arm-r { transform-origin: 31px 30px; }
-.ref.is-td .arm-l { transform: rotate(-125deg); }
-.ref.is-td .arm-r { transform: rotate(125deg); }
-.ref.is-td { animation: ref-hop .55s cubic-bezier(.34, 1.56, .64, 1) 2; }
-@keyframes ref-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes ref-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.ref.is-td {
+  animation: buf-stampede 1.15s cubic-bezier(.3, .05, .2, 1) 2;
+}
+.ref.is-td .dust { opacity: 1; }
+.ref .dust { opacity: 0; transition: opacity .2s ease-out; }
+.ref .dust circle { animation: dust-puff 1.15s ease-out infinite; }
+.ref .dust circle:nth-child(2) { animation-delay: .18s; }
+.ref .dust circle:nth-child(3) { animation-delay: .36s; }
+@keyframes buf-idle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.015); }
+}
+@keyframes buf-stampede {
+  0%   { transform: translateX(0) rotate(0deg); }
+  45%  { transform: translateX(calc(-1 * min(230px, 60vw))) rotate(-4deg); }
+  55%  { transform: translateX(calc(-1 * min(230px, 60vw))) rotate(-4deg) scaleX(-1); }
+  100% { transform: translateX(0) rotate(0deg) scaleX(-1); }
+}
+@keyframes dust-puff {
+  0% { transform: translateX(0) scale(.4); opacity: .7; }
+  100% { transform: translateX(14px) scale(1.4); opacity: 0; }
+}
 
-/* A chalk route that draws itself across The Call, forever practicing. */
+/* The telestrator: a broadcast pen draws the route across The Call on a
+   slow loop — the booth is always cooking. (Mechanism unchanged.) */
 .chalk-live {
   position: absolute; right: 4px; bottom: 2px; width: 150px; height: 100px;
-  pointer-events: none; opacity: .5;
+  pointer-events: none; opacity: .55;
+  filter: drop-shadow(0 0 4px rgba(91, 140, 255, .8));
 }
 .chalk-live .route {
   stroke-dasharray: 260; stroke-dashoffset: 260;
@@ -934,22 +997,69 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
   100% { stroke-dashoffset: 0; opacity: 0; }
 }
 
-/* Your pick lands: a football spirals across the row. */
+/* Your pick lands: the ball hurdles the row — up, over, gone. */
 .prow.is-mine.just-picked::before {
   content: ""; position: absolute; top: 50%; left: -30px; width: 26px; height: 17px;
   z-index: 3; pointer-events: none;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 17'%3E%3Cellipse cx='13' cy='8.5' rx='12' ry='7.5' fill='%23a15c2f' stroke='%23f2f7ef' stroke-width='1.4'/%3E%3Cpath d='M8 8.5h10M10.5 6.5v4M13 6.5v4M15.5 6.5v4' stroke='%23f2f7ef' stroke-width='1.2'/%3E%3C/svg%3E") center / contain no-repeat;
-  animation: flyby 1s cubic-bezier(.3, .1, .5, 1) both;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 17'%3E%3Cellipse cx='13' cy='8.5' rx='12' ry='7.5' fill='%23a15c2f' stroke='%23f2f6ff' stroke-width='1.4'/%3E%3Cpath d='M8 8.5h10M10.5 6.5v4M13 6.5v4M15.5 6.5v4' stroke='%23f2f6ff' stroke-width='1.2'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation: hurdle 1s cubic-bezier(.3, .1, .5, 1) both;
 }
-@keyframes flyby {
-  0% { transform: translate(0, -50%) rotate(0turn); opacity: 1; }
-  100% { transform: translate(min(78vw, 900px), -140%) rotate(2.5turn); opacity: 0; }
+@keyframes hurdle {
+  0%   { transform: translate(0, -50%) rotate(0turn); opacity: 1; }
+  45%  { transform: translate(min(34vw, 400px), -240%) rotate(1.2turn); }
+  60%  { transform: translate(min(46vw, 540px), -260%) rotate(1.6turn); }
+  100% { transform: translate(min(78vw, 900px), -120%) rotate(2.5turn); opacity: 0; }
 }
 
+/* THE TABLE. It stands in The Call's corner all season, minding its own
+   business. When a pick verifies or the pilot lands one, somebody goes
+   through it. Bills Mafia physics: the celebration IS the destruction. */
+.shelf { position: relative; }
+.folding-table {
+  position: absolute; top: 10px; right: 12px; width: 40px; height: auto;
+  pointer-events: none; opacity: .9; z-index: 2;
+}
+.folding-table .top, .folding-table .leg, .folding-table .smash-tag {
+  transform-box: fill-box; /* CSS transforms on SVG children need a real box */
+}
+.folding-table .top { transform-origin: 50% 100%; transition: transform .3s ease-in; }
+.folding-table .leg { transform-origin: 50% 0%; transition: transform .25s ease-in .1s; }
+.folding-table.is-folded .top { transform: rotate(14deg) translateY(7px); }
+.folding-table.is-folded .leg-l { transform: rotate(72deg); }
+.folding-table.is-folded .leg-r { transform: rotate(-72deg); }
+.folding-table .smash-tag {
+  opacity: 0; transform: rotate(-8deg) scale(.6); transform-origin: 50% 50%;
+}
+.folding-table.is-folded .smash-tag {
+  animation: tag-slam .45s cubic-bezier(.16, 1, .3, 1) .32s both;
+}
+@keyframes tag-slam {
+  0% { opacity: 0; transform: rotate(-8deg) scale(1.6); }
+  100% { opacity: 1; transform: rotate(-8deg) scale(1); }
+}
+/* the tag text rides in the bedsheet-banner voice via SVG font-family */
+.smash-tag text { font-family: var(--font-banner); }
+
+/* VERIFIED, stamped in the bedsheet-banner voice on the Sunday surface —
+   the season's core loop ends in a celebration, not a copy line. */
+.mafia-stamp {
+  display: inline-block; margin-left: 10px; padding: 2px 10px 3px;
+  font-family: var(--font-banner); font-size: .92rem; letter-spacing: .04em;
+  color: var(--oxblood); border: 2px solid var(--oxblood);
+  border-radius: 4px; transform: rotate(-5deg); vertical-align: 2px;
+  text-transform: uppercase; white-space: nowrap;
+}
+.mafia-stamp.slam { animation: tag-slam .5s cubic-bezier(.16, 1, .3, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
+  /* strip the characters, don't freeze them: the still board keeps only the
+     static mascot; loops, dust, and flybys leave entirely */
   .ref, .ref.is-td { animation: none; }
-  .chalk-live .route { animation: none; stroke-dashoffset: 0; }
+  .ref .dust, .chalk-live { display: none; }
   .prow.is-mine.just-picked::before { animation: none; display: none; }
+  .folding-table .top, .folding-table .leg { transition: none; }
+  .folding-table.is-folded .smash-tag { animation: none; opacity: 1; }
+  .mafia-stamp.slam { animation: none; }
 }
 
 
@@ -957,3 +1067,67 @@ main { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; paddin
    gothic — the hand-drawn face is the voice, not the microscope. */
 .prow .lbl, .prow .team, .need, .call-meta .stat span, .wtable th,
 .col-head .count, .shelf-list .rd, .est, .stamp { font-family: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif; }
+
+/* ================================ THE LEAGUE ==============================
+   Twelve seats and their rooms. The table ranks on startable points; the grid
+   underneath scores each room against the field, so a surplus and a need can
+   be spotted in the same glance that finds who to call about it. */
+.wide { max-width: 1240px; margin: 0 auto; }
+
+.league-table .seat-row { cursor: pointer; }
+.league-table .seat-row:focus-visible { outline: 2px dashed var(--brass); outline-offset: -2px; }
+.league-table .seat-rank { color: var(--ink-faint); width: 3rem; }
+.league-table .seat-owner { font-weight: 600; }
+.league-table .seat-read { color: var(--ink-dim); font-size: .86rem; }
+.league-table tr.is-mine td { background: color-mix(in srgb, var(--brass) 11%, transparent); }
+.league-table tr.is-mine .seat-owner { color: var(--brass-bright); }
+.seat-you {
+  font-family: var(--font-ledger); font-size: .62rem; letter-spacing: .14em;
+  color: var(--ground); background: var(--brass-bright);
+  padding: 1px 5px; border-radius: 3px; vertical-align: middle;
+}
+.seat-row.is-open .seat-rank::before { content: "▾ "; color: var(--brass); }
+
+/* Depth chart: the seat's actual bodies, opened in place under its row. */
+.seat-depth td { background: var(--ground); padding: 0; }
+.depth-wrap {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 18px; padding: 12px 14px 14px;
+}
+.depth-room { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.depth-p {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: .82rem; color: var(--ink-dim); border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 2px;
+}
+.depth-p i { font-family: var(--font-ledger); font-style: normal; color: var(--ink-faint); }
+
+.grid-title {
+  font-family: var(--font-marquee); font-weight: 400; letter-spacing: .04em;
+  font-size: 1.3rem; margin: 30px 0 4px;
+}
+.gridtable { table-layout: fixed; }
+.gridtable .gname { font-weight: 600; }
+.gridtable .gcol { text-align: center; width: 4.4rem; }
+.gcell {
+  text-align: center; font-family: var(--font-ledger); font-weight: 700;
+  font-size: .95rem; letter-spacing: .04em;
+}
+/* Surplus reads warm, need reads cool-dim; Bills red stays reserved for
+   trouble, so a thin room is never dressed as a failure. */
+.g-pp { color: var(--lamp-bright); }
+.g-p  { color: var(--lamp); }
+.g-z  { color: var(--ink-faint); opacity: .55; }
+.g-n  { color: var(--marigold); }
+.g-nn { color: var(--marigold); font-weight: 800; }
+.gcell.is-fit {
+  background: color-mix(in srgb, var(--brass) 22%, transparent);
+  box-shadow: inset 0 0 0 1px var(--brass);
+  border-radius: 3px;
+}
+.gridtable tr.is-mine td { background: color-mix(in srgb, var(--brass) 11%, transparent); }
+
+@media (max-width: 720px) {
+  .league-table .seat-read { display: none; }
+  .gridtable .gcol { width: 2.6rem; }
+}

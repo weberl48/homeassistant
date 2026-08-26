@@ -681,6 +681,100 @@ def league_rosters(conn: sqlite3.Connection) -> dict:
     return {"rosters": out}
 
 
+LEAGUE_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
+_FLEX_SLOTS = ("FLEX", "SUPER_FLEX", "REC_FLEX", "WRRB_FLEX", "BN", "IR", "TAXI")
+_READ_Z = 0.8   # how far off the field a room must sit before it's worth saying
+
+
+def _norm_pos(pos: str) -> str:
+    return "DEF" if pos in ("DST", "D/ST") else pos
+
+
+def _starting_slots(conn: sqlite3.Connection) -> dict[str, int]:
+    """How many of each position the league actually starts — the yardstick a
+    room is measured against. FLEX is excluded on purpose: it belongs to no
+    single position, so counting it would flatter whichever room fills it."""
+    counts: dict[str, int] = {}
+    for slot in roster_positions(conn):
+        if slot in _FLEX_SLOTS:
+            continue
+        counts[slot] = counts.get(slot, 0) + 1
+    return counts
+
+
+def league_overview(conn: sqlite3.Connection) -> dict:
+    """Every seat scouted on one screen: what it can actually start, how each
+    of its rooms sits against the field, and the season it played.
+
+    Ranked on the optimal STARTING lineup, never the whole roster — a seat
+    hoarding four good backs on the bench should not outrank a balanced
+    contender, which is exactly the inversion total-roster points produces.
+    The per-position z-scores are the raw material the Parlor turns into a
+    deal: surplus needs both quality and a spare body behind it."""
+    from .engines.lineup import PlayerProj, optimize
+
+    slots = roster_positions(conn)
+    starting = _starting_slots(conn)
+    records = {r["roster_id"]: r for r in conn.execute(
+        "SELECT roster_id,wins,losses,ties,fpts FROM rosters")}
+
+    seats = []
+    for r in league_rosters(conn)["rosters"]:
+        players = r["players"]
+        proj = optimize([PlayerProj(p["id"], _norm_pos(p["pos"]), p["pts"])
+                         for p in players], slots).total
+        by_pos = {}
+        for pos in LEAGUE_POSITIONS:
+            room = sorted((p["pts"] for p in players if _norm_pos(p["pos"]) == pos),
+                          reverse=True)
+            starts = starting.get(pos, 1)
+            by_pos[pos] = {"pts": round(sum(room[:starts]), 1),
+                           "depth": len(room), "starts": starts}
+        rec = records.get(r["roster_id"])
+        seats.append({
+            "roster_id": r["roster_id"], "owner": r["owner"], "mine": r["mine"],
+            "proj": round(proj, 1), "by_pos": by_pos,
+            "record": {"wins": rec["wins"], "losses": rec["losses"],
+                       "ties": rec["ties"], "fpts": round(rec["fpts"], 1)} if rec else None,
+        })
+
+    # Score each room against the field. Left unrounded: a z-score that has
+    # been rounded no longer sums to zero, and the grid's glyphs are cut from
+    # these thresholds.
+    for pos in LEAGUE_POSITIONS:
+        vals = [s["by_pos"][pos]["pts"] for s in seats]
+        mean = sum(vals) / len(vals)
+        sd = (sum((v - mean) ** 2 for v in vals) / len(vals)) ** 0.5 or 1.0
+        for s in seats:
+            s["by_pos"][pos]["z"] = (s["by_pos"][pos]["pts"] - mean) / sd
+
+    for s in seats:
+        room = s["by_pos"]
+        # Surplus is quality AND a spare body — a great room you must start
+        # every week is not tradeable.
+        surplus = sorted((p for p in LEAGUE_POSITIONS
+                          if room[p]["z"] >= _READ_Z and room[p]["depth"] > room[p]["starts"]),
+                         key=lambda p: -room[p]["z"])
+        need = sorted((p for p in LEAGUE_POSITIONS if room[p]["z"] <= -_READ_Z),
+                      key=lambda p: room[p]["z"])
+        bits = []
+        if surplus:
+            bits.append("deep at " + "/".join(surplus[:2]))
+        if need:
+            bits.append("thin at " + "/".join(need[:2]))
+        s["surplus"], s["need"] = surplus, need
+        s["read"] = " · ".join(bits) or "balanced across the board"
+
+    seats.sort(key=lambda s: -s["proj"])
+    for i, s in enumerate(seats, start=1):
+        s["rank"] = i
+
+    played = any((s["record"] or {}).get("wins", 0) + (s["record"] or {}).get("losses", 0)
+                 + (s["record"] or {}).get("ties", 0) for s in seats)
+    return {"seats": seats, "records_ready": played,
+            "note": None if played else "Records open Week 1."}
+
+
 def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
     """Scan every opposing roster for deals that help BOTH starting lineups —
     mutual benefit is what actually gets accepted (the trade-finder lesson
