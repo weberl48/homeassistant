@@ -73,7 +73,19 @@ C:\Python314\python.exe .claude\skills\run-bootlegger\driver.py flow   <outdir>
 | `flow` | approve → executed → verified, via real button click | `OK: rec reached verified` |
 
 `all` runs the four in sequence. Every command exits nonzero on failure, so they
-are usable as a gate. **Look at the PNGs** — `check` passing only means the shell
+are usable as a gate.
+
+To smoke-test the **live** Pi after a deploy, point the driver at it — but run
+only `api`, `check`, and `shots`. Never `flow` against live: it clicks a real
+approve button on your real league.
+
+```powershell
+$env:BOOTLEGGER_BASE = "http://192.168.1.160:8484"
+```
+
+Verified against the live deploy: `13 endpoints healthy`, `6 tabs · 647 player
+rows · js errors none`. Pre-draft, The League correctly reads every seat 0.0 /
+`–` under a "Records open Week 1." note — empty rosters, not a broken page. **Look at the PNGs** — `check` passing only means the shell
 resolved and the board painted rows.
 
 **3. Stop it.** Ctrl-C does not reach a backgrounded uvicorn on Windows:

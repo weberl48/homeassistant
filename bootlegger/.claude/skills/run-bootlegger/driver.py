@@ -19,13 +19,16 @@ Exit code is nonzero if any assertion fails, so it is CI-usable.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import sys
 import time
 import urllib.error
 import urllib.request
 
-BASE = "http://localhost:8484"
+# Defaults to the local demo. Point it at the Pi to smoke-test a live deploy:
+#   $env:BOOTLEGGER_BASE = "http://192.168.1.160:8484"
+BASE = os.environ.get("BOOTLEGGER_BASE", "http://localhost:8484").rstrip("/")
 
 # The Board / This Week / Waivers / The League / The Parlor / The Ledger.
 # Bump deliberately when a room is added — a silently-changing tab count is
