@@ -238,6 +238,19 @@ function posOf(p) { return p.pos === "DST" ? "DEF" : p.pos; }
 
 function fmtSurv(s) { return `${Math.round(s * 100)}%`; }
 
+/* Significant figures, not fixed ones. A VBD of 166.3 against 166 is a
+   distinction nobody drafts on, while 4.6 against 5 is — and the tenth on the
+   big numbers is exactly what pushed the widest rows past their column on the
+   live board, where a four-figure negative VBD exists and the demo's fixture
+   never produced one. Precision where it decides something, width where it
+   does not. */
+function fmtVbd(v) {
+  if (v == null) return "–";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(1);
+}
+
 function playerRow(p) {
   const el = document.createElement("div");
   el.className = "prow";
@@ -260,7 +273,7 @@ function playerRow(p) {
     <div class="l2">
       <span class="team">${esc(p.team ?? "")} · bye ${esc(p.bye ?? "–")}</span>
       <span class="nums">
-        <span title="value over the last starter at his position"><span class="lbl">vbd</span><b data-vbd>${p.vbd}</b></span>
+        <span title="value over the last starter at his position"><span class="lbl">vbd</span><b data-vbd>${fmtVbd(p.vbd)}</b></span>
         <span title="average draft position across the sources on the wire"><span class="lbl">adp</span><span data-adp>${p.adp ?? "–"}</span></span>
       </span>
     </div>

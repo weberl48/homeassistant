@@ -248,6 +248,20 @@ def audit_rows_never_clip(pg, base: str, r: Results) -> None:
         pg.set_viewport_size({"width": w, "height": 1000})
         pg.goto(f"{base}#board", wait_until="networkidle")
         pg.wait_for_timeout(1200)
+        # Test the layout's CAPACITY, not the fixture's luck. The demo pool is
+        # shallow enough that its worst VBD is two digits; the live board
+        # carries -166.3, and that row was the one clipping. Writing the widest
+        # figures a real board can produce into every row makes the check about
+        # the design rather than about which players happen to be seeded.
+        pg.evaluate("""() => {
+          for (const row of document.querySelectorAll('.prow')) {
+            const v = row.querySelector('[data-vbd]');
+            const a = row.querySelector('[data-adp]');
+            if (v) v.textContent = '-299';
+            if (a) a.textContent = '300.5';
+          }
+        }""")
+        pg.wait_for_timeout(150)
         worst = pg.evaluate("""() => {
           let worst = null;
           for (const col of document.querySelectorAll('section.col')) {
