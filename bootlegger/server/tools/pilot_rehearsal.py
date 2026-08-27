@@ -75,6 +75,14 @@ def main() -> int:
     ap.add_argument("--slip", type=int, default=3,
                     help="how many of The Call's picks to pre-load onto the "
                          "slip, so BOTH decision sources are exercised")
+    ap.add_argument("--pilot-python", default=os.environ.get(
+        "BOOTLEGGER_PILOT_PYTHON", sys.executable),
+                    help="the interpreter that will actually FLY the pilot. It "
+                         "needs httpx and Playwright; the server venv "
+                         "deliberately has neither, so on a dev box this is "
+                         "usually the system Python. Rehearsing under an "
+                         "interpreter that could never fly proves nothing "
+                         "about the one that will.")
     args = ap.parse_args()
 
     port = free_port()
@@ -137,7 +145,7 @@ def main() -> int:
         slip_ids = {r["id"] for r in stored}
 
         pilot = subprocess.Popen(
-            [sys.executable, "-m", "hands.draft_pilot", "--api", base],
+            [args.pilot_python, "-m", "hands.draft_pilot", "--api", base],
             cwd=SERVER_DIR, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             bufsize=1)
@@ -233,19 +241,34 @@ def main() -> int:
         # three ways bringup dies on draft night are visible from here — no
         # playwright module, or a module with no chromium installed — and both
         # are only reached AFTER arming, which is the worst moment to find out.
+        # Probed in the FLYING interpreter, as a subprocess. Checking the one
+        # running this script was the obvious thing and the wrong one: the
+        # rehearsal is normally run from the server venv, which deliberately
+        # carries no browser tooling, so it reported a failure about an
+        # interpreter nobody was ever going to fly with.
+        probe = ";".join((
+            "import pathlib",
+            "from playwright.sync_api import sync_playwright",
+            "pw = sync_playwright().start()",
+            "exe = pw.chromium.executable_path",
+            "pw.stop()",
+            "print('OK' if exe and pathlib.Path(exe).exists() else 'NOCHROME', exe)",
+        ))
         try:
-            from playwright.sync_api import sync_playwright
-            with sync_playwright() as _pw:
-                exe = _pw.chromium.executable_path
-            browser_ready, why = bool(exe and Path(exe).exists()), str(exe)
-        except ImportError:
-            browser_ready, why = False, "playwright is not installed"
+            out = subprocess.run([args.pilot_python, "-c", probe],
+                                 capture_output=True, text=True, timeout=90)
+            first = (out.stdout or out.stderr or "").strip().splitlines()
+            line = first[-1] if first else ""
+            browser_ready = line.startswith("OK")
+            why = line[3:].strip() if browser_ready else (line[:160] or "no output")
         except Exception as exc:                # noqa: BLE001
             browser_ready, why = False, f"{type(exc).__name__}: {exc}"
+        who = Path(args.pilot_python).parent.parent.name or args.pilot_python
         check("the browser stack would actually come up", browser_ready,
-              why if browser_ready else
-              f"{why} — a live pilot would die AFTER arming; "
-              "run `playwright install chromium` on the flying host")
+              f"{who}: {why}" if browser_ready else
+              f"{who}: {why} — a live pilot would die AFTER arming. Point "
+              "--pilot-python at an interpreter with Playwright, or run "
+              "`playwright install chromium` for this one.")
 
         print(f"\n  {'REHEARSAL CLEAN' if ok else 'REHEARSAL FAILED'} — "
               f"{rounds_seen} clocks, {by_source['slip']} slip / "

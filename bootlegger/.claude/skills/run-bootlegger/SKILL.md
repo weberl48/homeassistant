@@ -129,25 +129,32 @@ would have made and where the choice came from. Safe by construction: a
 throwaway DB in a temp dir, a demo server on an ephemeral port,
 `HANDS_DRY_RUN` forced on, no Sleeper contact.
 
+**`--pilot-python` is the argument that matters.** The pilot needs `httpx` and
+Playwright and nothing else — it talks to the board API, not the DB — and the
+server venv deliberately carries no browser tooling, so the interpreter that
+FLIES is the system Python, not the venv running the rehearsal. Rehearsing
+under an interpreter that could never fly proves nothing about the one that
+will.
+
 ```powershell
 cd server
-.\.venv\Scripts\python.exe tools\pilot_rehearsal.py --rounds 3   # a quick look
-.\.venv\Scripts\python.exe tools\pilot_rehearsal.py             # full 15 rounds
+.\.venv\Scripts\python.exe tools\pilot_rehearsal.py --rounds 3 `
+    --pilot-python C:\Python314\python.exe
 ```
 
-Nine checks; exits nonzero on any failure. **Expect one failure on this
-machine** and it is a true one:
+Verified 2026-08-27: `REHEARSAL CLEAN — 3 clocks, 3 slip / 0 Call, nothing was
+clicked`, nine of nine, including
 
 ```
-[FAIL] the browser stack would actually come up — playwright is not installed
+[PASS] the browser stack would actually come up — C:/Python314/python.exe: …chrome.exe
 ```
 
-Playwright is deliberately kept out of the server venv (see Prerequisites), so
-that check is telling you *this host cannot fly the pilot* — run
-`playwright install chromium` on whichever host will. It exists because a dry
-run returns before the lazy Playwright import, so a clean rehearsal otherwise
-says nothing about whether the browser would come up at all, and the three
-ways bringup dies are reached only AFTER arming.
+Omit `--pilot-python` and it defaults to `sys.executable`; from the venv that
+correctly FAILS the browser check, because that host cannot fly. `BOOTLEGGER_PILOT_PYTHON`
+sets it for good. That check exists because a dry run returns before the lazy
+Playwright import, so a clean rehearsal otherwise says nothing about whether
+the browser would come up at all — and all three ways bringup dies are reached
+only AFTER arming.
 
 What it does NOT prove: the browser half. Dry run opens no page, so the
 Sleeper locators are not exercised. A live-room rehearsal is still owed before
