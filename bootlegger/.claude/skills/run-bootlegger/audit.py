@@ -120,6 +120,42 @@ def audit_live_regions(pg, r: Results) -> None:
             else f"{live['changes']} real change(s), 0 repeats")
 
 
+def audit_rooms_hold_still(pg, base: str, r: Results) -> None:
+    """A room repaints when it has something new to say, and not otherwise.
+
+    DESIGN.md's motion rule is "the 1 Hz poll patches never re-fire anything",
+    and every room here draws by replacing innerHTML — so a room that redraws
+    on unchanged data replays its children's room-in entry animation on its own
+    poll interval. This Week did it every 1500ms and read as THE BEAT blinking
+    on a two-second cycle. Nothing caught it because nothing was watching for
+    a repaint that changed nothing.
+
+    Only the QUIET half is asserted. Proving the other half — that a room DOES
+    repaint on real change — needs the underlying data mutated, and this gate
+    is run against the live league where that is not a thing to do casually.
+    That half is covered by hand and recorded in the commit.
+    """
+    bad = []
+    for room, seconds in (("week", 8), ("waivers", 8), ("league", 8)):
+        pg.goto(f"{base}#{room}", wait_until="networkidle")
+        pg.wait_for_timeout(2500)
+        pg.evaluate("""(room) => {
+          window.__repaints = 0;
+          const host = document.querySelector('#room-' + room);
+          if (!host) return;
+          new MutationObserver((recs) => {
+            for (const rec of recs)
+              if (rec.type === 'childList' && rec.addedNodes.length) window.__repaints++;
+          }).observe(host, {childList: true, subtree: true});
+        }""", room)
+        pg.wait_for_timeout(seconds * 1000)
+        n = pg.evaluate("() => window.__repaints || 0")
+        if n:
+            bad.append(f"{room} repainted {n}x in {seconds}s on unchanged data")
+    r.check(not bad, "rooms hold still when nothing changed",
+            "; ".join(bad) if bad else "week, waivers, league quiet")
+
+
 def audit_deep_link(pg, base: str, r: Results) -> None:
     pg.goto(f"{base}#waivers", wait_until="networkidle")
     pg.wait_for_timeout(1500)
@@ -491,6 +527,7 @@ def run(pg, base: str) -> Results:
     audit_tablist(pg, r)
     audit_live_regions(pg, r)
     audit_deep_link(pg, base, r)
+    audit_rooms_hold_still(pg, base, r)
     audit_dialog_focus(pg, base, r)
     audit_board_columns(pg, base, r)
     audit_rail_contained(pg, base, r)

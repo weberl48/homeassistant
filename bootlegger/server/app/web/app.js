@@ -12,6 +12,24 @@ const POS_ORDER = ["QB", "RB", "WR", "TE", "K", "DEF"];
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/* THE STILLNESS RULE (DESIGN.md, Motion): "the 1 Hz poll patches never
+   re-fire anything." Every room here repaints by replacing innerHTML, and
+   every replaced element replays its room-in entry animation — so a room that
+   redraws on unchanged data flashes on its own poll interval. This Week did it
+   every 1500ms and read as THE BEAT blinking; the others do it more slowly and
+   were no more correct for it.
+
+   changed(key, data) is the whole fix: a room draws when it has something new
+   to say and holds still when it does not. Returns true (and remembers) only
+   when the payload differs from the last one drawn. */
+const _drawn = new Map();
+function changed(key, data, alsoWhenEmpty) {
+  const sig = JSON.stringify(data);
+  if (_drawn.get(key) === sig && !alsoWhenEmpty) return false;
+  _drawn.set(key, sig);
+  return true;
+}
+
 /* THE LIVE-REGION RULE: a live region may only announce when its MEANING
    changes. The board repaints at 1 Hz during a draft, and renderClock used to
    assign textContent unconditionally — which, inside an aria-live="polite"
@@ -50,6 +68,8 @@ const state = {
   tab: localStorage.getItem("bootlegger.tab") || "board",
   board: null, week: null, health: null,
   lastSync: null, wireDown: false, pickFeedStale: false,
+  weekSig: null,            // last rendered week card — see pollWeek
+  beatSig: null,            // last rendered wire items — see loadBeat
   rowIndex: new Map(),      // player id -> row element
   builtPickCount: -1,
   approving: false,
@@ -789,6 +809,8 @@ function lineupTable(title, rows, total, marks, news) {
 
 function renderWeek(card) {
   const wrap = $("#week-layout");
+  // The DOM is about to be replaced, so the beat's own guard is stale.
+  state.beatSig = null;
   if (!card.ready) {
     // Pre-draft this room has no lineup to show, but the beat is already
     // running and is exactly what a manager wants in August.
@@ -963,8 +985,16 @@ function renderBeat(feed) {
 }
 
 async function loadBeat() {
-  try { renderBeat(await fetchJSON("/api/wire?limit=30")); wireOK(); }
-  catch { wireFail(); }
+  try {
+    const feed = await fetchJSON("/api/wire?limit=30");
+    // Same rule one level down: an unchanged wire must not repaint the sheet.
+    const sig = JSON.stringify(feed.items || []);
+    if (sig !== state.beatSig || !$("#beat-feed")?.childElementCount) {
+      renderBeat(feed);
+      state.beatSig = sig;
+    }
+    wireOK();
+  } catch { wireFail(); }
 }
 
 /* ------------------------------ the matchup ------------------------------
@@ -1079,7 +1109,17 @@ function lineupBlock(card) {
 async function pollWeek() {
   try {
     const card = await fetchJSON("/api/week/current");
-    if (!state.approving) renderWeek(card);
+    // DESIGN.md's motion rule: "the 1 Hz poll patches never re-fire anything."
+    // The Board honours it by patching rows in place; This Week rebuilt its
+    // whole innerHTML every 1500ms, so .sheet's room-in entry animation
+    // replayed on identical data — measured at five rebuilds in seven seconds
+    // with a byte-identical payload, which reads as THE BEAT flashing. A room
+    // with nothing new to say should say nothing.
+    const sig = JSON.stringify(card);
+    if (!state.approving && sig !== state.weekSig) {
+      renderWeek(card);
+      state.weekSig = sig;
+    }
     state.week = card;
     wireOK();
   } catch { wireFail(); }
@@ -1089,6 +1129,7 @@ async function pollWeek() {
 async function loadWaivers() {
   try {
     const data = await fetchJSON("/api/waivers");
+    if (!changed("waivers", data, !$("#waivers-body")?.childElementCount)) { wireOK(); return; }
     const nextUp = (t) => {
       // The bid traps first: a target who can't help the week you bought him.
       if (t.bye_now) return `<span class="confirm-flag">${icon.flag}ON BYE NOW</span>`;
@@ -1186,6 +1227,7 @@ async function loadLeague() {
       fetchJSON("/api/league/overview"),
       fetchJSON("/api/league/rosters"),
     ]);
+    if (!changed("league", [ov, rost], !$("#league-body")?.childElementCount)) { wireOK(); return; }
     const depth = new Map(rost.rosters.map((r) => [r.roster_id, r.players]));
     const me = ov.seats.find((s) => s.mine);
     const myNeed = new Set(me ? me.need : []);
@@ -1329,6 +1371,7 @@ function sideList(ps) {
 async function loadParlor() {
   try {
     const data = await fetchJSON("/api/trades/suggest");
+    if (!changed("parlor", data, !$("#parlor-body")?.childElementCount)) { wireOK(); return; }
     const considered = data.considered
       ? `<p class="room-note considered">${data.considered} packages found;
          ${data.trades.length} worth reading. The rest were the same deal with different
@@ -1465,6 +1508,7 @@ async function loadLedger() {
   try {
     const [rules, audit] = await Promise.all([
       fetchJSON("/api/rules"), fetchJSON("/api/audit")]);
+    if (!changed("ledger", [rules, audit], !$("#rules-body")?.childElementCount)) { wireOK(); return; }
     $("#rules-body").innerHTML = rules.map((r) => `
       <div class="rule-row">
         <span class="rule-name">${esc(r.name.replaceAll("_", " "))}</span>
@@ -1760,6 +1804,10 @@ async function boot() {
     if (state.tab === "waivers") loadWaivers();
     if (state.tab === "ledger") loadLedger();
     if (state.tab === "board") loadSlip();   // picked strikethroughs + pilot state
+    // The beat used to refresh only as a side effect of This Week rebuilding
+    // itself. Now that the room holds still on unchanged data, the wire needs
+    // its own clock — and 15s is already far faster than the server polls it.
+    if (state.tab === "week") loadBeat();
   }, 15000);
   setInterval(() => {
     if (state.tab === "parlor") loadParlor();  // full-league scan — slower cadence
