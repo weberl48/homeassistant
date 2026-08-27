@@ -965,7 +965,12 @@ function renderBeat(feed) {
     : feed.missed_total
       ? `<p class="beat-health is-bad">${feed.missed_total} item${feed.missed_total === 1 ? "" : "s"}
          went past while the board was not looking. The feed only ever holds five.</p>`
-      : `<p class="beat-health">${esc(feed.source)} · checked ${esc(beatAgo(feed.last_ok) || "just now")}.</p>`;
+      : (feed.down || []).length
+        ? `<p class="beat-health is-bad">${feed.down.map((d) => esc(d.toUpperCase())).join(", ")}
+           ${feed.down.length === 1 ? "is" : "are"} not answering — the rest of the wire is running.
+           Checked ${esc(beatAgo(feed.last_ok) || "just now")}.</p>`
+        : `<p class="beat-health">${esc(feed.source)} · checked ${esc(beatAgo(feed.last_ok) || "just now")}${
+             feed.in_season === false ? " · preseason: game-day absences are exhibitions and read as notes" : ""}.</p>`;
   const rows = items.map((n) => `
     <li class="beat-item beat-${esc(n.severity)} aud-${esc(n.audience)}">
       <span class="beat-grade">${esc(SEV_LABEL[n.severity] || "NOTE")}</span>
@@ -974,6 +979,10 @@ function renderBeat(feed) {
           — ${esc(n.headline)}${n.ailment ? ` <i>(${esc(n.ailment)})</i>` : ""}</p>
         ${n.body ? `<p class="beat-detail">${esc(n.body)}</p>` : ""}
         <p class="beat-meta">${esc(beatAgo(n.published_at))}
+          ${n.source ? `<span class="beat-src">${esc(n.source)}</span>` : ""}
+          ${(n.also || []).length
+            ? `<span class="beat-src beat-also" title="The same story, filed independently">+ ${n.also.map(esc).join(", ")}</span>`
+            : ""}
           ${n.audience === "mine" ? '<span class="beat-tag is-mine">yours</span>'
             : n.audience === "league" ? '<span class="beat-tag">in the league</span>'
             : '<span class="beat-tag">on the street</span>'}

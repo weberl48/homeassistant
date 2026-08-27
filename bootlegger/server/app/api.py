@@ -195,6 +195,15 @@ app = FastAPI(title="Bootlegger", lifespan=lifespan)
 EXPECTED_SOURCES = ("sleeper", "espn", "fantasypros", "cbs", "fftoday", "draftsharks")
 
 
+def _json_meta(conn, key):
+    """A meta value that should be JSON, or {} — a malformed row must not take
+    the health endpoint down with it."""
+    try:
+        return json.loads(db.meta_get(conn, key) or "{}")
+    except (ValueError, TypeError):
+        return {}
+
+
 @app.get("/health")
 def health():
     conn = get_conn()
@@ -227,6 +236,11 @@ def health():
             "fail_streak": int(db.meta_get(conn, "wire_fail_streak") or 0),
             "missed_total": int(db.meta_get(conn, "wire_gap_total") or 0),
             "items": conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"],
+            # Per feed, by name. The wire runs five newsrooms now; "the wire is
+            # up" would be true with four of them dead, and that is exactly the
+            # silent degradation this house forbids.
+            "sources": _json_meta(conn, "wire_sources"),
+            "in_season": db.meta_get(conn, "wire_in_season") != "0",
         },
         # Per source, measured against ITS OWN best delivery. A scrape whose
         # page changed usually still parses, just into a fraction of the rows —

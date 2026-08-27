@@ -490,6 +490,17 @@ ROTOWIRE_RSS = "https://www.rotowire.com/rss/news.php?sport=NFL"
 # Secondary, team-level and breaking: 30 items, no player tagging. Used to
 # corroborate and to keep something on the wire when RotoWire is down.
 PFT_RSS = "https://profootballtalk.nbcsports.com/feed/"
+# The rest of the wire. None of these tag the player — engines/wire.scan_name
+# does that join — but between them they carry roughly 140 items a poll against
+# RotoWire's five, and they are the difference between a feed that can prove it
+# missed nothing and one that has enough on it to be worth proving.
+# Verified responding 2026-08-26; nfl.com/feeds/rss/news 404s and is not here.
+GENERAL_RSS = {
+    "pft": PFT_RSS,
+    "espn": "https://www.espn.com/espn/rss/nfl/news",
+    "cbs": "https://www.cbssports.com/rss/headlines/nfl/",
+    "yahoo": "https://sports.yahoo.com/nfl/rss.xml",
+}
 # RotoWire stamps pubDate in US Pacific with a 12-hour clock — not RFC 822, so
 # email.utils can't read it.
 ROTOWIRE_TZ = ZoneInfo("America/Los_Angeles")
@@ -558,10 +569,20 @@ def fetch_rotowire_news(timeout: float = 20.0) -> list[dict[str, Any]]:
     return out
 
 
-def fetch_pft_news(timeout: float = 25.0) -> list[dict[str, Any]]:
-    """Pro Football Talk's feed — team-level and breaking, no player tagging.
-    Rows: {guid, title, body, link, published_at}."""
-    r = httpx.get(PFT_RSS, timeout=timeout, follow_redirects=True,
+def fetch_general_news(source: str, timeout: float = 25.0) -> list[dict[str, Any]]:
+    """One untagged NFL feed, normalized. Rows: {guid, title, body, link,
+    published_at}.
+
+    Every feed here is somebody else's newsroom writing for readers, not for a
+    parser: no player ids, no monotonic sequence, no guarantee about ordering.
+    The caller supplies the player join (engines/wire.scan_name) and must not
+    expect the gap proof RotoWire's ids allow — claiming it for a feed that
+    cannot support it would be worse than not having it.
+    """
+    url = GENERAL_RSS.get(source)
+    if not url:
+        raise ValueError(f"unknown wire source {source!r}")
+    r = httpx.get(url, timeout=timeout, follow_redirects=True,
                   headers={"User-Agent": FP_UA})
     r.raise_for_status()
     out = []
@@ -572,11 +593,19 @@ def fetch_pft_news(timeout: float = 25.0) -> list[dict[str, Any]]:
                 timespec="seconds") if pub else None
         except (TypeError, ValueError):
             when = None
+        title = item.get("title", "")
+        if not title:
+            continue
         out.append({
-            "guid": item.get("guid") or item.get("link", ""),
-            "title": item.get("title", ""),
+            "guid": item.get("guid") or item.get("link", "") or title,
+            "title": title,
             "body": re.sub(r"\s+", " ", item.get("description", ""))[:400],
             "link": item.get("link", ""),
             "published_at": when,
         })
     return out
+
+
+def fetch_pft_news(timeout: float = 25.0) -> list[dict[str, Any]]:
+    """Kept as a named entry point; PFT is one of GENERAL_RSS now."""
+    return fetch_general_news("pft", timeout=timeout)

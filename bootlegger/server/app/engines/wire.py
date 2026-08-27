@@ -50,6 +50,12 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
         r"|inactive (for|sunday|monday|thursday)|injured reserve|placed on ir\b"
         r"|season-ending|out for the (season|year)|carted off|suspended"
         r"|physically unable|reserve/pup|non-football injury|undergo(es|ing)? surgery"
+        # A torn ligament is the most severe thing this feed ever carries and it
+        # graded INFO: DEPARTURE knew about it, the grader did not, so "Torn ACL
+        # ends his season" reached the board as a footnote. The word "torn" is
+        # doing all the work — a desk that writes it is not hedging.
+        r"|torn (acl|achilles|pcl|mcl|patellar)|tears? (his |an |the )?(acl|achilles|pcl)"
+        r"|ruptured achilles|out for the year"
         r"|to miss|sidelined|waived|released|cut by)\b", re.I)),
     ("doubtful", re.compile(r"\bdoubtful\b", re.I)),
     ("questionable", re.compile(r"\b(questionable|game-time decision|true toss-?up)\b", re.I)),
@@ -111,20 +117,72 @@ def escalatable(body: str) -> str:
 _BODY_GRADES = {"out", "doubtful", "questionable"}
 
 
-def severity(headline: str, body: str = "") -> str:
-    """The grade for one wire item."""
+# What still matters in August. Before the season starts, a man "not playing
+# Friday" is missing an exhibition and is not a fantasy event — but a man on
+# injured reserve, suspended, or under the knife absolutely is, and August is
+# exactly when you most need to hear it. So the out-of-season downgrade applies
+# to mere game-absence and never to these.
+_PRESEASON_MATERIAL = re.compile(
+    # Stems, not whole words: "suspend\b" never matches "suspended", which is
+    # the only form anyone writes. Verified against known positives by
+    # tests/test_wire_seasonal.py — a pattern that cannot fire is
+    # indistinguishable from one that found nothing.
+    r"\b(injured reserve|placed on ir|season-ending|out for the (season|year)"
+    r"|torn (acl|achilles|pcl)|suspend\w*|waiv\w*|releas\w*|cut by"
+    r"|physically unable|reserve/pup|non-football injury|surger\w*"
+    r"|carted off|to miss \d|multiple (weeks|months)"
+    r"|out (indefinitely|multiple))", re.I)
+
+
+def preseason_material(headline: str, body: str = "") -> bool:
+    """True when an out-of-season item is still a fantasy event."""
+    return bool(_PRESEASON_MATERIAL.search(f"{headline} {body}"))
+
+
+def severity(headline: str, body: str = "", in_season: bool = True) -> str:
+    """The grade for one wire item.
+
+    The preseason discount applies to the HEADLINE too, which it did not until
+    the wire went multi-source. RotoWire's desk writes fantasy status; the
+    newsrooms now on the wire write football news, and in August that is full
+    of "won't play Friday" about exhibition games. Two live items on the first
+    multi-source poll — Bo Nix "probably won't play Friday" and a preseason
+    finale note — graded OUT, which at five sources is thirty times the
+    false-alarm volume the single feed produced.
+
+    A headline that is ENTIRELY a preseason clause has nothing left to grade
+    and reads as info; one that carries a real ruling alongside a preseason
+    mention keeps the ruling.
+    """
+    scannable_head = escalatable(headline or "") or ""
     for grade, pattern in _RULES:
-        if pattern.search(headline or ""):
-            return grade
+        if pattern.search(scannable_head):
+            return _seasonal(grade, headline, body, in_season)
     # A headline about being ready is the desk's verdict; nothing under it
     # outranks that.
     if _READY_HEADLINE.search(headline or ""):
         return "info"
     scannable = escalatable(body)
-    for grade, pattern in _RULES:
-        if grade in _BODY_GRADES and pattern.search(scannable):
-            return grade
-    return "info"
+    grade = "info"
+    for g, pattern in _RULES:
+        if g in _BODY_GRADES and pattern.search(scannable):
+            grade = g
+            break
+    return _seasonal(grade, headline, body, in_season)
+
+
+def _seasonal(grade: str, headline: str, body: str, in_season: bool) -> str:
+    """Out of season, missing a game is missing an exhibition.
+
+    "Won't play Friday" is only preseason news because it is August — the text
+    alone cannot say so, and the first multi-source poll graded exactly that as
+    OUT. The calendar is context the board already has, so it supplies it
+    rather than asking a regex to infer it. An IR placement or a surgery keeps
+    its grade whatever the month.
+    """
+    if in_season or grade not in ALARM:
+        return grade
+    return grade if preseason_material(headline, body) else "info"
 
 
 def ailment(body: str) -> str | None:
@@ -183,6 +241,73 @@ def match(name: str, index: dict[str, list[dict[str, Any]]],
             return rostered[0]["sleeper_id"]
         pool = rostered or pool
     return pool[0]["sleeper_id"] if len(pool) == 1 else None
+
+
+# ---------------------------------------------------------------------------
+# Finding the player in an untagged headline
+# ---------------------------------------------------------------------------
+# RotoWire tags every item with the player it is about. Nobody else does: ESPN,
+# CBS, Yahoo and PFT write "Mike Evans expects to play Week 1" and leave the
+# join to the reader. Those four are 141 of the 146 items a poll now sees, so
+# without this scanner the extra coverage would be unusable — a feed of stories
+# nobody's roster can be matched against.
+#
+# The rule is the same one `match()` already follows: refuse rather than guess.
+# A wrong join here pushes "your starter is out" about the wrong man, which
+# costs more trust than a missing chip.
+
+# Full names only. A single token would match "Josh" against two Josh Allens
+# and "Brown" against a dozen men — and the failure would be silent, because a
+# plausible wrong match looks exactly like a right one.
+_MIN_NAME_TOKENS = 2
+# Longest normalized player name worth scanning for, in tokens ("amonra st
+# brown" is three; a fourth covers the long ones without scanning sentences).
+_MAX_NAME_TOKENS = 4
+
+# Words that are also surnames. A headline is not a roster, and these appear in
+# football prose constantly — "Bills Rally", "Chiefs Land", "Giants Sign".
+_STOP_STARTS = frozenset({
+    "the", "a", "an", "his", "her", "their", "this", "that", "one", "two",
+    "no", "new", "report", "sources", "week", "sunday", "monday", "thursday",
+})
+
+
+def _tokens(text: str) -> list[str]:
+    return [t for t in normalize_name(text).split(" ") if t]
+
+
+def scan_name(text: str, index: dict[str, list[dict[str, Any]]],
+              prefer_ids: set[str] | None = None) -> tuple[str | None, str | None]:
+    """The one player an untagged headline is about, or (None, None).
+
+    Returns (sleeper_id, matched_name). Longest match wins, because "Brian
+    Thomas Jr." must not resolve as "Brian Thomas" if both exist. A headline
+    naming TWO rostered players is refused outright: "Team trades X for Y" is
+    about both, and picking one is a coin flip dressed as a fact.
+    """
+    toks = _tokens(text)
+    if len(toks) < _MIN_NAME_TOKENS:
+        return None, None
+    hits: dict[str, str] = {}
+    n = len(toks)
+    for size in range(_MAX_NAME_TOKENS, _MIN_NAME_TOKENS - 1, -1):
+        for i in range(n - size + 1):
+            if toks[i] in _STOP_STARTS:
+                continue
+            phrase = " ".join(toks[i:i + size])
+            rows = index.get(phrase)
+            if not rows:
+                continue
+            pid = match(phrase, index, prefer_ids)
+            if pid and pid not in hits:
+                # A longer match subsumes a shorter one that overlaps it.
+                if any(phrase in seen or seen in phrase for seen in hits.values()):
+                    continue
+                hits[pid] = phrase
+    if len(hits) != 1:
+        return None, None
+    pid, phrase = next(iter(hits.items()))
+    return pid, phrase
 
 
 # ---------------------------------------------------------------------------

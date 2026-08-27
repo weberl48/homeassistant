@@ -699,6 +699,15 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
    it is a READING and not a status — the same argument the odds meter makes.
    Never red: a bad matchup is not a failure state. */
 .slate-none { color: var(--marigold); }
+/* The byline. Five newsrooms on one sheet, so every line says whose it is —
+   and a story three desks filed independently says that too, because
+   corroboration is evidence rather than noise. */
+.beat-src {
+  font-family: var(--font-ledger); font-size: .66rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--paper-faint);
+  border: 1px solid var(--paper-rule); border-radius: 3px; padding: 1px 5px;
+}
+.beat-also { border-style: dashed; }
 /* The road ahead: a tight four-column read, not a full-width table. */
 .sos-table { width: min(100%, 34rem); }
 .sos-table td, .sos-table th { padding-block: 7px; }

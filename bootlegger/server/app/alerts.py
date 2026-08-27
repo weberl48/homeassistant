@@ -199,20 +199,75 @@ def feed(conn: sqlite3.Connection, limit: int = 40) -> dict:
         "pos": r["pos"], "team": r["team"], "headline": r["headline"],
         "body": r["body"], "link": r["link"], "severity": r["severity"],
         "ailment": r["ailment"], "departure": bool(r["departure"]),
-        "published_at": r["published_at"],
+        "published_at": r["published_at"], "source": r["source"],
         "audience": audience(r["player_id"], mine, league),
     } for r in rows]
+    items = corroborate(items)
     try:
         last_gap = json.loads(db.meta_get(conn, "wire_last_gap") or "null")
     except ValueError:
         last_gap = None
+    try:
+        health = json.loads(db.meta_get(conn, "wire_sources") or "{}")
+    except ValueError:
+        health = {}
+    live = sorted(k for k, v in health.items() if v.get("ok"))
+    down = sorted(k for k, v in health.items() if not v.get("ok"))
     return {
         "items": items,
         "last_ok": db.meta_get(conn, "wire_last_ok"),
         "missed_total": int(db.meta_get(conn, "wire_gap_total") or 0),
         "last_gap": last_gap,
-        "source": "RotoWire",
+        # Named, not counted. "4 of 5 feeds" tells you something is wrong;
+        # "CBS is down" tells you what, and this house prefers the second.
+        "sources": health,
+        "live": live,
+        "down": down,
+        "source": ", ".join(s.upper() for s in live) or "RotoWire",
+        "in_season": db.meta_get(conn, "wire_in_season") != "0",
     }
+
+
+# ---------------------------------------------------------------------------
+# One story, five newsrooms
+# ---------------------------------------------------------------------------
+# Five feeds carry roughly 146 items a poll and they cover the same league, so
+# the same news arrives repeatedly — "Mike Evans expects to play Week 1" from
+# Yahoo, CBS and ESPN is one fact, not three. A feed that prints it three times
+# is worse than one that prints it once: it buries the other two stories that
+# scrolled off, and it reads as three separate developments.
+#
+# Corroboration rather than deletion. The duplicates are EVIDENCE — three desks
+# reporting the same thing is a firmer fact than one — so they collapse into a
+# single row that names who else has it.
+
+def corroborate(items: list[dict]) -> list[dict]:
+    """Collapse the same story from several desks into one row.
+
+    Two items are the same story when they are about the same MATCHED player
+    and carry the same grade on the same day. Unmatched items are never merged:
+    without a player id the only thing they share is prose, and merging on
+    prose alone would silently hide genuinely different news.
+    """
+    out: list[dict] = []
+    seen: dict[tuple, dict] = {}
+    for it in items:
+        pid = it.get("player_id")
+        if not pid:
+            out.append(it)
+            continue
+        day = (it.get("published_at") or "")[:10]
+        key = (pid, it["severity"], day)
+        first = seen.get(key)
+        if first is None:
+            it["also"] = []
+            seen[key] = it
+            out.append(it)
+            continue
+        src = it.get("source")
+        if src and src != first.get("source") and src not in first["also"]:
+            first["also"].append(src)
+    return out
 
 
 def for_players(conn: sqlite3.Connection, player_ids: list[str],

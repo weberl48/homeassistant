@@ -8,10 +8,11 @@ import json
 import sqlite3
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 
 import httpx
 
-from . import db
+from . import db, sources
 from .config import settings
 from .engines import calibration as cal
 from .engines import consensus as cx
@@ -312,6 +313,26 @@ def etl_injuries(conn: sqlite3.Connection) -> dict:
 # The wire
 # ---------------------------------------------------------------------------
 
+def _in_season(conn: sqlite3.Connection) -> bool:
+    """Has a regular-season game actually kicked off yet?
+
+    The wire grader needs this: before Week 1, "won't play Friday" is about an
+    exhibition. Read from the schedule rather than the calendar, because the
+    schedule is the thing that knows — and a board with no schedule loaded
+    assumes IN season, since the expensive mistake is going quiet during the
+    year, not being chatty in August.
+    """
+    row = conn.execute(
+        "SELECT MIN(kickoff_utc) k FROM nfl_games WHERE season=? AND week=1 "
+        "AND kickoff_utc IS NOT NULL", (settings.season,)).fetchone()
+    if not row or not row["k"]:
+        return True
+    try:
+        return datetime.fromisoformat(row["k"]) <= datetime.now(timezone.utc)
+    except ValueError:
+        return True
+
+
 def _rostered_ids(conn: sqlite3.Connection) -> set[str]:
     """Every player any seat in this league holds — the disambiguation prior
     for name collisions, and the reason a wire item is 'league' not 'street'."""
@@ -334,32 +355,72 @@ def etl_news(conn: sqlite3.Connection) -> dict:
     goes to meta where /health and the board can show it — a wire that quietly
     skips a Sunday scratch is exactly the silent failure this house forbids.
     """
-    items = fetch_rotowire_news()
     now = db.utcnow()
-    if not items:
-        db.meta_set(conn, "wire_last_ok", now)
-        return {"fetched": 0, "new": 0, "gap": 0}
-
-    last_seq = db.meta_get(conn, "wire_last_seq")
-    seqs = [i["seq"] for i in items if i["seq"] is not None]
-    gap = wire_engine.gap_since(int(last_seq) if last_seq else None, seqs)
-
     players = [dict(r) for r in conn.execute(
         "SELECT sleeper_id, name, pos, team FROM players")]
     index = wire_engine.build_index(players)
     prefer = _rostered_ids(conn)
 
-    rows = []
-    for it in items:
-        sev = wire_engine.severity(it["headline"], it["body"])
-        rows.append((
-            it["guid"], it["seq"], "rotowire",
-            wire_engine.match(it["name"], index, prefer),
-            it["name"], it["headline"], it["body"], it["link"],
-            sev, wire_engine.ailment(it["body"]),
-            1 if wire_engine.is_departure(it["headline"], it["body"]) else 0,
-            it["published_at"], now,
-        ))
+    in_season = _in_season(conn)
+    rows: list[tuple] = []
+    health: dict[str, dict] = {}
+    gap = 0
+    seqs: list[int] = []
+
+    # RotoWire first, and separately, because it is the only feed that can
+    # PROVE it missed something: five items, monotonic ids. The others carry
+    # far more news and no such guarantee, so the gap number stays a RotoWire
+    # property rather than becoming a claim the rest cannot support.
+    try:
+        items = fetch_rotowire_news()
+        seqs = [i["seq"] for i in items if i["seq"] is not None]
+        last_seq = db.meta_get(conn, "wire_last_seq")
+        gap = wire_engine.gap_since(int(last_seq) if last_seq else None, seqs)
+        for it in items:
+            rows.append((
+                it["guid"], it["seq"], "rotowire",
+                wire_engine.match(it["name"], index, prefer),
+                it["name"], it["headline"], it["body"], it["link"],
+                wire_engine.severity(it["headline"], it["body"], in_season),
+                wire_engine.ailment(it["body"]),
+                1 if wire_engine.is_departure(it["headline"], it["body"]) else 0,
+                it["published_at"], now,
+            ))
+        health["rotowire"] = {"ok": True, "items": len(items), "at": now}
+    except Exception as exc:                       # noqa: BLE001 — reported, never raised
+        # A feed that dies degrades to a VISIBLE hole in coverage, never to a
+        # poll that quietly returns fewer sources than it did yesterday.
+        health["rotowire"] = {"ok": False, "error": type(exc).__name__, "at": now}
+
+    # The rest of the wire. Each is independent: one 500 costs its own items
+    # and nothing else, and says so by name.
+    for source in sources.GENERAL_RSS:
+        try:
+            items = sources.fetch_general_news(source)
+            matched = 0
+            for it in items:
+                pid, phrase = wire_engine.scan_name(it["title"], index, prefer)
+                if pid:
+                    matched += 1
+                rows.append((
+                    it["guid"], None, source, pid,
+                    phrase or it["title"][:80], it["title"], it["body"], it["link"],
+                    wire_engine.severity(it["title"], it["body"], in_season),
+                    wire_engine.ailment(it["body"]),
+                    1 if wire_engine.is_departure(it["title"], it["body"]) else 0,
+                    it["published_at"], now,
+                ))
+            health[source] = {"ok": True, "items": len(items),
+                              "matched": matched, "at": now}
+        except Exception as exc:                   # noqa: BLE001
+            health[source] = {"ok": False, "error": type(exc).__name__, "at": now}
+
+    db.meta_set(conn, "wire_sources", json.dumps(health))
+    db.meta_set(conn, "wire_in_season", "1" if in_season else "0")
+    live = [k for k, v in health.items() if v.get("ok")]
+    if not rows:
+        db.meta_set(conn, "wire_last_ok", now)
+        return {"fetched": 0, "new": 0, "gap": 0, "sources": health}
     before = conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"]
     # INSERT OR IGNORE, never REPLACE: re-polling must not reset pushed_at and
     # re-alarm on an item the owner has already been told about.
@@ -388,7 +449,9 @@ def etl_news(conn: sqlite3.Connection) -> dict:
         db.meta_set(conn, "wire_gap_total", str(total))
         db.meta_set(conn, "wire_last_gap", json.dumps({"n": gap, "at": now}))
     unmatched = sum(1 for r in rows if r[3] is None)
-    return {"fetched": len(items), "new": added, "gap": gap, "unmatched": unmatched}
+    return {"fetched": len(rows), "new": added, "gap": gap,
+            "unmatched": unmatched, "sources": health,
+            "live_sources": len(live), "of": len(health)}
 
 
 
