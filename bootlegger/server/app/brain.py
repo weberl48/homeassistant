@@ -1209,9 +1209,15 @@ def what_would_it_take(conn: sqlite3.Connection, target_id: str,
     # not worth PROPOSING if it wildly exceeds it — overpaying by half is how
     # you win a trade and lose a season.
     singles = [[i] for i in mine]
+    # THE WHOLE SHELF, not its top eight. `mine` is sorted worth-descending, so
+    # slicing to 8 cut off exactly the cheap throw-ins a two-man package needs
+    # — measured on the demo world, the one pair that cleared every filter for
+    # one target was index 2 plus index 10, and the panel wrongly answered
+    # "nothing you own gets him". A 15-man roster is 105 pairs; the filters
+    # below discard almost all of them long before the optimizer runs.
     pairs = [[mine[i], mine[j]]
-             for i in range(min(len(mine), 8))
-             for j in range(i + 1, min(len(mine), 8))]
+             for i in range(len(mine))
+             for j in range(i + 1, len(mine))]
     # A sweetener from their side: him plus a spare of theirs, for a bigger
     # piece of mine. This is the shape that unlocks a stud when nothing I own
     # matches him one-for-one.
@@ -1338,10 +1344,18 @@ class _TradeDesk:
         # knowing before you send the offer.
         self.sos: dict[str, float] = {}
         try:
-            read = schedule_strength(conn)
+            # FROM THIS WEEK ON. At the default from_week=1 this averaged every
+            # already-played week's closing line and sold a season-to-date
+            # review as a look-ahead — it can render the opposite sign of the
+            # schedule you are actually buying. A club implied 32 through a
+            # played week 1-9 and 15.5 in the two weeks left reads +6.2 looking
+            # back and -5.8 looking forward, and only one of those is a reason
+            # to make the trade.
+            wk = int(db.meta_get(conn, "current_week") or 1)
+            read = schedule_strength(conn, from_week=max(1, wk))
             self.sos = {t["team"]: t["vs_league"] for t in read["teams"]
                         if t["vs_league"] is not None}
-        except sqlite3.Error:
+        except (sqlite3.Error, ValueError, TypeError):
             self.sos = {}
 
     def worth(self, pid: str) -> float:

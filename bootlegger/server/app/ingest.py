@@ -419,8 +419,18 @@ def etl_news(conn: sqlite3.Connection) -> dict:
     db.meta_set(conn, "wire_in_season", "1" if in_season else "0")
     live = [k for k, v in health.items() if v.get("ok")]
     if not rows:
-        db.meta_set(conn, "wire_last_ok", now)
-        return {"fetched": 0, "new": 0, "gap": 0, "sources": health}
+        # A quiet wire and a DEAD wire are not the same event, and only one of
+        # them is allowed to advance the freshness clock. Stamping wire_last_ok
+        # unconditionally here meant a poll in which all five feeds raised
+        # reported as a successful poll: /health showed a current timestamp and
+        # a zero fail streak while nothing had been fetched at all.
+        if live:
+            db.meta_set(conn, "wire_last_ok", now)
+            return {"fetched": 0, "new": 0, "gap": 0, "sources": health,
+                    "live_sources": len(live), "of": len(health)}
+        raise RuntimeError(
+            "every wire source failed: "
+            + ", ".join(f"{k} ({v.get('error')})" for k, v in sorted(health.items())))
     before = conn.execute("SELECT COUNT(*) c FROM news").fetchone()["c"]
     # INSERT OR IGNORE, never REPLACE: re-polling must not reset pushed_at and
     # re-alarm on an item the owner has already been told about.

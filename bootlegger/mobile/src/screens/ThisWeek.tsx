@@ -36,6 +36,23 @@ export default function ThisWeek() {
 
   if (!card) return <Text style={s.loading}>FETCHING THE LINEUP…</Text>;
 
+  // The ready:false payload carries {week, ready, note} and NO lineup arrays —
+  // pre-draft, or before the league seats you. Guarding only on `!card` let it
+  // through to card.actual.map and white-screened the app on the one state a
+  // new user sees first. The web board has always rendered card.note here;
+  // this is the same answer in the same words.
+  if (!card.ready) {
+    return (
+      <ScrollView style={{ backgroundColor: T.ground }}
+        contentContainerStyle={{ padding: 18, paddingBottom: 48 }}>
+        <Text style={s.title}>This Week</Text>
+        <Text style={s.rationale}>
+          {card.note ?? "No roster on file yet."}
+        </Text>
+      </ScrollView>
+    );
+  }
+
   const rec = card.rec;
   const canAct = rec && ["proposed", "notified", "snoozed"].includes(rec.state);
 

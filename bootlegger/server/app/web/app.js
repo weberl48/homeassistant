@@ -838,7 +838,7 @@ function renderWeek(card) {
       state.celebratedRec = rec.rec_id;
     }
     wrap.innerHTML = `
-      ${matchupBlock({...card.matchup, slate: card.slate})}
+      ${matchupBlock(card.matchup, card.slate)}
       <div class="allgood"><span class="lampdot"></span>
         <div><p><strong>Lineup optimal.</strong> ${verifiedLine}Projected
         ${card.actual_total.toFixed(1)} for week ${card.week} — the room is satisfied.${stamp}</p></div>
@@ -895,7 +895,7 @@ function renderWeek(card) {
       ${rec ? stepper(recState) : ""}
       ${actions}
     </div>
-    ${matchupBlock({...card.matchup, slate: card.slate})}
+    ${matchupBlock(card.matchup, card.slate)}
     ${lineupBlock(card)}
     ${beatPanel()}`;
   loadBeat();
@@ -1019,8 +1019,15 @@ function probMeter(p) {
     <span class="prob-num">${pct}%</span></div>`;
 }
 
-function matchupBlock(m) {
+/* `slate` arrives as a SEPARATE argument, not spread into the matchup. It used
+   to be `{...card.matchup, slate}` — and {...null} is {}, which is truthy, so a
+   week with no published pairings sailed past this guard and threw on
+   m.my_proj.toFixed(1) before innerHTML was ever assigned. That blanks This
+   Week entirely, and the state that triggers it is "drafted, pairings not out
+   yet" — i.e. draft night. */
+function matchupBlock(m, slate) {
   if (!m) return "";
+  m = {...m, slate};
   const lead = m.margin >= 0 ? "up" : "down";
   const alt = m.alt;
   const altRows = alt ? alt.rows.filter((r) => r.swap_in).map((r) =>

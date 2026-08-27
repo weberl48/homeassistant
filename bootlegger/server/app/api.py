@@ -572,7 +572,13 @@ def poll_wire():
     conn = get_conn()
     from . import ingest
     week = int(db.meta_get(conn, "current_week") or 1)
-    out = ingest.etl_news(conn)
+    try:
+        out = ingest.etl_news(conn)
+    except Exception as exc:                       # noqa: BLE001
+        # etl_news raises only when EVERY feed failed. That is a real outage
+        # and the button must say so — 503 with the reason, not a stack trace,
+        # and not a 200 that would let the board paint a healthy wire.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     out["alerts"] = alerts.scan(conn, week=week)
     return out
 

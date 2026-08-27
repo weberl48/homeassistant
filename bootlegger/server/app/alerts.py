@@ -117,10 +117,31 @@ def scan(conn: sqlite3.Connection, week: int | None = None) -> dict:
     notice: list[sqlite3.Row] = []
     window: list[sqlite3.Row] = []
     seen: list[str] = []
+    # ONE STORY, ONE PUSH. Five newsrooms carry the same ruling, so five rows
+    # with five distinct guids reach here for one fact — and every existing
+    # dedupe (pushed_at, seen_at) passes each of them, because each really is
+    # a different item. Measured before this guard: a starter ruled out
+    # produced FOUR identical DND pushes and burned MAX_PUSHES, so the pass's
+    # genuinely different news was stamped seen and never sent at all.
+    #
+    # The display path has collapsed these since the wire went multi-source
+    # (corroborate, below); the push path had not, which is the more expensive
+    # of the two places to get it wrong. Same key: same player, same grade,
+    # same day. Every duplicate is still marked seen, so nothing lingers.
+    pushed_story: set[tuple] = set()
+
+    def first_of_its_story(r: sqlite3.Row) -> bool:
+        key = (r["player_id"], r["severity"], (r["published_at"] or "")[:10])
+        if key in pushed_story:
+            return False
+        pushed_story.add(key)
+        return True
 
     for r in rows:
         who = audience(r["player_id"], mine, league)
         seen.append(r["guid"])
+        if not first_of_its_story(r):
+            continue                    # a second desk on a story already queued
         if who == "mine":
             # A man on the bench going Out changes nothing about Sunday; the
             # alarm is for someone the optimizer is currently starting.
