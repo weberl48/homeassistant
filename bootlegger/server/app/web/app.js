@@ -1263,7 +1263,9 @@ async function loadLeague() {
         <thead><tr><th>Seat</th>${LEAGUE_POS.map((p) =>
         `<th class="gcol">${p === "DEF" ? "D/ST" : p}</th>`).join("")}</tr></thead>
         <tbody>${grid}</tbody>
-      </table>`;
+      </table>
+      <div id="sos-block"></div>`;
+    loadSos();
 
     $("#league-body").querySelectorAll(".seat-row").forEach((row) => {
       const toggle = () => {
@@ -1280,6 +1282,42 @@ async function loadLeague() {
     });
     wireOK();
   } catch { wireFail(); }
+}
+
+/* Strength of schedule, as far as the market has priced it. Deliberately the
+   last thing on The League and deliberately advisory: two weeks of betting
+   lines is not a season, and a number shaped like one would be the more
+   dangerous half of the truth. The coverage sits beside every row for the
+   same reason. */
+async function loadSos() {
+  const el = $("#sos-block");
+  if (!el) return;
+  try {
+    const d = await fetchJSON("/api/schedule/strength");
+    if (!d.priced) {
+      el.innerHTML = `<h3 class="grid-title">The road ahead</h3>
+        <p class="room-note slate-none">No game this season carries a betting
+        line yet — the schedule read opens as books post them.</p>`;
+      return;
+    }
+    const rows = d.teams.filter((t) => t.weeks > 0);
+    const cell = (t) => {
+      const v = t.vs_league;
+      const cls = v > 1 ? "g-p" : v < -1 ? "g-n" : "";
+      return `<tr><td class="gname">${esc(t.team)}</td>
+        <td class="num"><span class="${cls}">${v > 0 ? "+" : ""}${v.toFixed(1)}</span></td>
+        <td class="num street">${t.mean_implied.toFixed(1)}</td>
+        <td class="street">${esc(t.covered)}</td></tr>`;
+    };
+    el.innerHTML = `<h3 class="grid-title">The road ahead</h3>
+      <p class="room-note">Each club's priced games against the league's
+      ${d.league_mean} implied average. ${esc(d.advisory)}</p>
+      <div class="scroller"><table class="wtable sos-table">
+        <thead><tr><th>Club</th><th style="text-align:right">vs league</th>
+        <th style="text-align:right">implied</th><th>priced</th></tr></thead>
+        <tbody>${rows.map(cell).join("")}</tbody></table></div>
+      <p class="optimal-note">${d.priced} of ${d.total} club-weeks priced.</p>`;
+  } catch { /* the wire indicator owns the failure */ }
 }
 
 /* --------------------------------- parlor --------------------------------- */

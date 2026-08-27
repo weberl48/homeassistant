@@ -53,6 +53,7 @@ GETS = [
     "/api/trades/suggest",
     "/api/league/rosters",
     "/api/draft/grades",
+    "/api/schedule/strength",
 ]
 
 

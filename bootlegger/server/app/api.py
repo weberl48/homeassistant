@@ -514,6 +514,13 @@ class PracticeBody(BaseModel):
     url: str
 
 
+@app.get("/api/schedule/strength")
+def get_schedule_strength(from_week: int = 1):
+    """Strength of schedule as the market has priced it so far — advisory,
+    and explicit about how much of the season that actually is."""
+    return brain.schedule_strength(get_conn(), from_week=from_week)
+
+
 @app.get("/api/draft/grades")
 def get_draft_grades():
     """The Report Card — every seat graded on the league's curve once the

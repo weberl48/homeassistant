@@ -699,6 +699,9 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
    it is a READING and not a status — the same argument the odds meter makes.
    Never red: a bad matchup is not a failure state. */
 .slate-none { color: var(--marigold); }
+/* The road ahead: a tight four-column read, not a full-width table. */
+.sos-table { width: min(100%, 34rem); }
+.sos-table td, .sos-table th { padding-block: 7px; }
 .envmark {
   display: block; font-family: var(--font-ledger); font-size: .64rem;
   letter-spacing: .02em; margin-top: 1px; font-weight: 700;

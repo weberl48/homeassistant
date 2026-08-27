@@ -1049,6 +1049,48 @@ def _starting_slots(conn: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
+def schedule_strength(conn: sqlite3.Connection, from_week: int = 1) -> dict:
+    """Every club's PRICED schedule, and how much of a schedule that is.
+
+    Market-implied only, which makes this honest and thin at the same time.
+    Books post a week or two out, so most of the season has no line and this
+    read covers whatever they have got to. That coverage is the headline
+    alongside the number: "+2.1 over three games" and "+2.1 over fourteen" are
+    different claims, and a season-shaped number built from two weeks would be
+    the more dangerous of the two.
+
+    It does NOT move any price. A waiver bid or a trade value swung by two
+    weeks of betting lines would be fitting noise — the schedule shows up as
+    context on the row and stays out of the arithmetic until there is enough
+    of it to mean something. Same posture engines/advisories.py takes with
+    position pressure.
+    """
+    rows = conn.execute(
+        "SELECT team, week, implied_total FROM nfl_games "
+        "WHERE season=? AND week>=? ORDER BY team, week",
+        (settings.season, from_week)).fetchall()
+    by_team: dict[str, dict[int, float | None]] = {}
+    for r in rows:
+        by_team.setdefault(r["team"], {})[r["week"]] = r["implied_total"]
+
+    priced = [v for weeks in by_team.values() for v in weeks.values() if v is not None]
+    league_mean, mean_note = env_engine.slate_mean(priced)
+    reads = [env_engine.schedule_read(t, w, league_mean).as_dict()
+             for t, w in sorted(by_team.items())]
+    reads.sort(key=lambda r: -(r["vs_league"] if r["vs_league"] is not None else -99))
+    total_games = sum(len(w) for w in by_team.values())
+    return {
+        "teams": reads,
+        "league_mean": round(league_mean, 1),
+        "note": mean_note,
+        "priced": len(priced),
+        "total": total_games,
+        "advisory": ("Market-implied and display-only — it does not move a bid "
+                     "or a trade value. Books post a week or two out, so this "
+                     "covers what they have priced, not a season."),
+    }
+
+
 def league_overview(conn: sqlite3.Connection) -> dict:
     """Every seat scouted on one screen: what it can actually start, how each
     of its rooms sits against the field, and the season it played.
