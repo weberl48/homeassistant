@@ -1331,6 +1331,18 @@ class _TradeDesk:
         self.mkt_scale = max([(r["redraft_value"] or 0.0)
                               for r in self.vals.values()] or [1.0]) or 1.0
         self._worth: dict[str, float] = {}
+        # The market's read on each club's priced games, for context on a
+        # trade card. It moves no price — see schedule_strength() for why two
+        # weeks of betting lines must not value a season asset — but "the man
+        # you are buying has the softest priced run in the league" is worth
+        # knowing before you send the offer.
+        self.sos: dict[str, float] = {}
+        try:
+            read = schedule_strength(conn)
+            self.sos = {t["team"]: t["vs_league"] for t in read["teams"]
+                        if t["vs_league"] is not None}
+        except sqlite3.Error:
+            self.sos = {}
 
     def worth(self, pid: str) -> float:
         """Half projection, half market, both normalized — the currency both
@@ -1355,11 +1367,13 @@ class _TradeDesk:
         return optimize(self.projs(ids), self.rp)
 
     def row(self, pid: str) -> dict:
+        team = self.players[pid]["team"]
         return {"player_id": pid, "name": self.players[pid]["name"],
-                "pos": self.players[pid]["pos"],
+                "pos": self.players[pid]["pos"], "team": team,
                 "vbd": (self.cons[pid]["vbd"] or 0.0) if pid in self.cons else 0.0,
                 "market_value": ((self.vals[pid]["redraft_value"] or 0.0)
-                                 if pid in self.vals else 0.0)}
+                                 if pid in self.vals else 0.0),
+                "sos": self.sos.get(team or "")}
 
 
 def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
@@ -1445,8 +1459,12 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
                 "score": round(score, 2),
                 "partner": r["owner"] or f"roster {r['roster_id']}",
                 "partner_roster_id": r["roster_id"],
-                "give": [{"id": p, "name": players[p]["name"], "pos": players[p]["pos"]} for p in give],
-                "receive": [{"id": p, "name": players[p]["name"], "pos": players[p]["pos"]} for p in get],
+                # Through desk.row so a man carries the same fields — club and
+                # schedule read included — wherever the Parlor draws him. The
+                # suggester used to build a thinner dict of its own, which is
+                # how the schedule chip reached the ask panel and not these.
+                "give": [{"id": p, **desk.row(p)} for p in give],
+                "receive": [{"id": p, **desk.row(p)} for p in get],
                 # Flat id lists so the shortlist can reason about packages
                 # without re-deriving them from the display rows.
                 "give_ids": list(give),

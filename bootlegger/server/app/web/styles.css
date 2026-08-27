@@ -699,6 +699,16 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
    it is a READING and not a status — the same argument the odds meter makes.
    Never red: a bad matchup is not a failure state. */
 .slate-none { color: var(--marigold); }
+.sos-chip {
+  font-family: var(--font-ledger); font-size: .62rem; letter-spacing: .02em;
+  border: 1px solid var(--line-soft); border-radius: 3px; padding: 0 4px;
+  vertical-align: 1px;
+}
+/* Royal and dim, never lamp/oxblood: a schedule read is a READING, and the
+   house does not let status colours moonlight as data. */
+.sos-up { color: var(--brass-bright); }
+.sos-down { color: var(--ink-faint); }
+
 .ask-search { position: relative; margin: 10px 0 14px; max-width: 26rem; }
 .ask-search input {
   width: 100%; min-height: 44px; padding: 10px 12px;

@@ -1373,8 +1373,9 @@ async function loadSos() {
 
 /* --------------------------------- parlor --------------------------------- */
 function sideList(ps) {
-  return ps.map((p) =>
-    `<span class="pos pos-${posOf(p)}">${posOf(p)}</span> ${esc(p.name)}`).join(" · ");
+  // Same renderer the ask panel uses, so a man looks the same wherever the
+  // Parlor shows him — including the schedule chip.
+  return ps.map(dealPlayer).join(" · ");
 }
 
 async function loadParlor() {
@@ -1707,6 +1708,23 @@ $("#ask-results")?.addEventListener("click", async (e) => {
   } catch { wireFail(); }
 });
 
+/* A man on a trade card, with the market's read on his priced games beside
+   him. Context only — the schedule moves no value here (schedule_strength()
+   explains why two weeks of lines must not price a season asset) — but "the
+   man you are buying has the softest run in the league" belongs on the card
+   rather than three clicks away. Silent when his club has no priced games or
+   sits at the league average, because a chip on everybody is a chip on
+   nobody. */
+function dealPlayer(x) {
+  const pos = x.pos === "DST" ? "DEF" : x.pos;
+  const s = x.sos;
+  const chip = (s != null && Math.abs(s) >= 1.5)
+    ? ` <span class="sos-chip ${s > 0 ? "sos-up" : "sos-down"}"
+        title="This club's priced games run ${s > 0 ? "above" : "below"} the league's implied average — context, not value">${s > 0 ? "+" : ""}${s.toFixed(1)} sched</span>`
+    : "";
+  return `<span class="pos pos-${esc(pos)}">${esc(pos)}</span> ${esc(x.name)}${chip}`;
+}
+
 function renderAsk(d) {
   const el = $("#ask-body");
   if (!el) return;
@@ -1717,9 +1735,7 @@ function renderAsk(d) {
     el.innerHTML = `${head}<p class="room-note slate-none">${esc(d.note)}</p>`;
     return;
   }
-  const side = (ps) => ps.map((x) =>
-    `<span class="pos pos-${x.pos === "DST" ? "DEF" : esc(x.pos)}">${x.pos === "DST" ? "DEF" : esc(x.pos)}</span> ${esc(x.name)}`)
-    .join(" <span class='deal-plus'>·</span> ");
+  const side = (ps) => ps.map(dealPlayer).join(" <span class='deal-plus'>·</span> ");
   el.innerHTML = `${head}
     <p class="room-note">${esc(d.note)}</p>
     ${d.offers.map((o, i) => `
