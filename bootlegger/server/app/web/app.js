@@ -740,6 +740,20 @@ function gameChip(r) {
   return `<span class="team">${esc(r.opp)} ${esc(kickoffShort(r.kickoff_utc))}${esc(imp)}</span>${lock}${wx}`;
 }
 
+/* The market's read on the game a man is standing in. Shown as a delta on the
+   projection rather than as a raw implied total, because the reader's question
+   is "why is this number what it is", not "what is Buffalo's team total". A
+   spot the books have not priced shows nothing at all — silence is the honest
+   rendering of an average expectation, and a 0% chip on two thirds of the
+   roster would be noise. */
+function envMark(r) {
+  const e = r.env;
+  if (!e || !e.known || Math.abs(e.pct) < 1) return "";
+  const cls = e.pct > 0 ? "env-up" : "env-down";
+  return `<span class="envmark ${cls}" title="${esc(e.reason)}">`
+    + `${e.pct > 0 ? "+" : ""}${e.pct.toFixed(0)}%</span>`;
+}
+
 function lineupTable(title, rows, total, marks, news) {
   const tr = rows.map((r) => {
     const mark = marks.get(r.id) || "";
@@ -754,7 +768,7 @@ function lineupTable(title, rows, total, marks, news) {
         <span class="team">${esc(r.team ?? "")}</span> ${hurt}
         <div class="row-context"><span class="pos pos-${posOf(r)}">${posOf(r)}</span>
           ${gameChip(r)} ${beat}</div></td>
-      <td class="proj">${r.proj.toFixed(1)}</td></tr>`;
+      <td class="proj">${r.proj.toFixed(1)}${envMark(r)}</td></tr>`;
   }).join("");
   return `<div class="lineup"><h3>${title}<span class="total">${total.toFixed(1)}</span></h3>
     <table><tbody>${tr}</tbody></table></div>`;
@@ -789,7 +803,7 @@ function renderWeek(card) {
       state.celebratedRec = rec.rec_id;
     }
     wrap.innerHTML = `
-      ${matchupBlock(card.matchup)}
+      ${matchupBlock({...card.matchup, slate: card.slate})}
       <div class="allgood"><span class="lampdot"></span>
         <div><p><strong>Lineup optimal.</strong> ${verifiedLine}Projected
         ${card.actual_total.toFixed(1)} for week ${card.week} — the room is satisfied.${stamp}</p></div>
@@ -846,7 +860,7 @@ function renderWeek(card) {
       ${rec ? stepper(recState) : ""}
       ${actions}
     </div>
-    ${matchupBlock(card.matchup)}
+    ${matchupBlock({...card.matchup, slate: card.slate})}
     ${lineupBlock(card)}
     ${beatPanel()}`;
   loadBeat();
@@ -983,8 +997,26 @@ function matchupBlock(m) {
         ${Math.abs(m.margin).toFixed(1)} on the projections · your range
         ${m.bands.floor}–${m.bands.ceiling} · his number is ${esc(m.opp_basis)} ·
         spread ±${m.sigma}, ${esc(m.sigma_note)}.</p>
+      ${slateLine(m.slate)}
       ${altBlock}
     </div>`;
+}
+
+/* Whether the market has anything to say about this week at all. A board that
+   applied no adjustment because nothing was priced must not look identical to
+   one where every game happened to be average — most of a season sits at
+   "nothing priced", and that is a fact about the board, not a blank. */
+function slateLine(sl) {
+  if (!sl || !sl.teams) return "";
+  if (!sl.priced) {
+    return `<p class="matchup-meta slate-none">No game on this slate carries a
+      betting line yet — every man is being read as an average spot.</p>`;
+  }
+  const part = sl.priced < sl.teams
+    ? ` The other ${sl.teams - sl.priced} are unpriced and read as average.` : "";
+  return `<p class="matchup-meta">Matchups priced from the market on
+    <b>${sl.priced}</b> of ${sl.teams} clubs, averaging ${sl.mean} implied
+    (${esc(sl.note)}).${part}</p>`;
 }
 
 /* The beat rides along on This Week in every state, including pre-draft —

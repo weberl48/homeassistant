@@ -21,6 +21,7 @@ from .config import (DEMO_ROSTER_POSITIONS, MATERIALITY_PTS,
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import advisories
 from .engines import draft as draft_engine
+from .engines import environment as env_engine
 from .engines import grades as grades_engine
 from .engines import matchup as matchup_engine
 from .engines import room as room_engine
@@ -579,16 +580,6 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
     starters = json.loads(roster["starters_json"])
     rp = roster_positions(conn)
     bands = week_bands(conn, ids)
-    pool = [
-        PlayerProj(pid, players[pid]["pos"], projs.get(pid, 0.0),
-                   name=players[pid]["name"],
-                   injury_status=players[pid]["injury_status"],
-                   on_bye=players[pid]["bye"] == week,
-                   floor=bands.get(pid, (None, None))[0],
-                   ceiling=bands.get(pid, (None, None))[1])
-        for pid in ids if pid in players
-    ]
-    d = diff_lineup(pool, starters, rp)
 
     # Game context for every roster team, one query: opponent, kickoff, and
     # any weather concern. `locked` = kickoff already passed (Sleeper locks
@@ -598,9 +589,48 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
         (settings.season, week))}
     now_utc = datetime.now(timezone.utc)
 
+    # THE GAME EACH MAN IS STANDING IN. Until now every projection here was
+    # matchup-blind: a receiver whose team is implied for 30 and one implied
+    # for 16 carried the same number. The market's implied team total is the
+    # correction, damped and capped — see engines/environment.py for why it is
+    # half-strength and why an unpriced game is an AVERAGE game, never a
+    # penalty. The adjustment happens BEFORE the optimizer runs, because a
+    # lineup chosen on unadjusted numbers is the thing being fixed.
+    slate_mean, mean_note = env_engine.slate_mean(
+        [g["implied_total"] for g in games.values()])
+    envs = {t: env_engine.for_team(t, g["implied_total"], slate_mean, mean_note)
+            for t, g in games.items()}
+
+    def env_of(team: str | None):
+        return envs.get(team or "") or env_engine.for_team(
+            team, None, slate_mean, mean_note)
+
+    adj_proj = {}
+    for pid in ids:
+        if pid not in players:
+            continue
+        raw = projs.get(pid, 0.0)
+        adj_proj[pid] = env_engine.apply(raw, env_of(players[pid]["team"]))
+
+    pool = [
+        PlayerProj(pid, players[pid]["pos"], adj_proj.get(pid, 0.0),
+                   name=players[pid]["name"],
+                   injury_status=players[pid]["injury_status"],
+                   on_bye=players[pid]["bye"] == week,
+                   floor=bands.get(pid, (None, None))[0],
+                   ceiling=bands.get(pid, (None, None))[1])
+        for pid in ids if pid in players
+    ]
+    d = diff_lineup(pool, starters, rp)
+
     def describe(pid: str) -> dict:
         p = players[pid]
-        raw = round(projs.get(pid, 0.0), 1)
+        # `raw` is the number the lineup was actually built on — the
+        # environment-adjusted one — so a row always reconciles with the
+        # totals beside it. The unadjusted figure rides along as proj_base so
+        # the card can show its work.
+        base = round(projs.get(pid, 0.0), 1)
+        raw = round(adj_proj.get(pid, projs.get(pid, 0.0)), 1)
         zeroed = (p["injury_status"] or "") in INactive or p["bye"] == week
         g = games.get(p["team"])
         kickoff = g["kickoff_utc"] if g else None
@@ -613,6 +643,10 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
                 "opp": (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None,
                 "kickoff_utc": kickoff, "locked": locked,
                 "imp": g["implied_total"] if g else None,
+                # The board shows its work: what the projection was before the
+                # game it is being played in was priced in, and by how much.
+                "proj_base": base,
+                "env": env_of(p["team"]).as_dict(),
                 "practice": p["practice_status"],
                 "wx": schedule.weather_flags(g)}
 
@@ -694,6 +728,16 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
         "rec": dict(open_rec) if open_rec else None,
         # Who you're playing, and what that does to the right lineup.
         "matchup": week_matchup(conn, week, pool, rp, d),
+        # How much of this week the market has actually priced. A card that
+        # silently applies no adjustment looks identical to one where every
+        # game happens to be average, and this house does not allow the two to
+        # be confused. Most of a season sits at 0 priced, and says so.
+        "slate": {
+            "priced": sum(1 for g in games.values() if g["implied_total"] is not None),
+            "teams": len(games),
+            "mean": round(slate_mean, 1),
+            "note": mean_note,
+        },
         # The wire's freshest word on anyone in this room.
         "news": alerts.for_players(
             conn, [r["id"] for r in actual_rows + bench_rows]),
@@ -836,9 +880,22 @@ def rationale_for_swaps(conn: sqlite3.Connection, card: dict) -> str:
         if s["out"]["bye"]:
             why.append(f"{s['out']['name']} is on bye")
         why.append(f"{s['in']['name']} projects {s['gain']:+.1f} pts in the {s['slot']} slot")
-        if s["in"].get("opp"):
-            why[-1] += f" ({s['in']['opp']})"
+        opp = s["in"].get("opp")
+        if opp:
+            # "(LAR)" beside a Chargers quarterback reads as his club. The
+            # away marker is already in the string; the home case needs the
+            # word or the line is ambiguous.
+            why[-1] += f" ({opp})" if opp.startswith("@") else f" (vs {opp})"
         parts.append("; ".join(why) + ".")
+        # When the market is WHY this swap exists, say so — a reader who sees
+        # a smaller projection winning deserves the reason on the card rather
+        # than in a tooltip.
+        env_in = (s["in"].get("env") or {}).get("pct") or 0
+        env_out = (s["out"].get("env") or {}).get("pct") or 0
+        if abs(env_in - env_out) >= 5:
+            parts.append(
+                f"The market likes the spot: {s['in']['name']}'s game is worth "
+                f"{env_in:+.0f}% against {s['out']['name']}'s {env_out:+.0f}%.")
         if s.get("risk"):
             # str.capitalize() would lowercase every player name in the tail
             parts.append(s["risk"][0].upper() + s["risk"][1:] + ".")

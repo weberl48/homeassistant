@@ -678,7 +678,7 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
   /* the royal key: white 700-weight text sits on the darker mid-stop
      (5.2:1 measured); the press edge is the deep royal */
   font-weight: 700;
-  background: linear-gradient(180deg, var(--brass), var(--brass-deep) 45%, #2451b8);
+  background: var(--brass-deep) linear-gradient(180deg, var(--brass), var(--brass-deep) 45%, #2451b8);
   color: var(--ink); border: 2px solid #0a1c44;
   box-shadow: 0 3px 0 #0a1c44, 0 6px 18px rgba(91,140,255,.3);
 }
@@ -694,6 +694,17 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
   border-right-color: transparent; border-radius: 50%; vertical-align: -2px; margin-right: 7px;
   animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* The environment delta rides beside the projection it moved. Royal, because
+   it is a READING and not a status — the same argument the odds meter makes.
+   Never red: a bad matchup is not a failure state. */
+.slate-none { color: var(--marigold); }
+.envmark {
+  display: block; font-family: var(--font-ledger); font-size: .64rem;
+  letter-spacing: .02em; margin-top: 1px; font-weight: 700;
+}
+.env-up { color: var(--brass-bright); }
+.env-down { color: var(--ink-faint); }
 
 .lineup-tables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 /* Nothing to compare against — the one table takes the reading width, and the

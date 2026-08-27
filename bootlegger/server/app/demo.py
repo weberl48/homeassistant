@@ -235,10 +235,57 @@ def seed(conn: sqlite3.Connection, force: bool = False) -> bool:
     _seed_rosters(conn, ordered)
     _boost_street(conn)
     _seed_faab_history(conn)
+    _seed_slate(conn)
     _seed_wire(conn)
     _reset_draft(conn)
     db.meta_set(conn, "demo_seeded", "1")
     return True
+
+
+def _seed_slate(conn: sqlite3.Connection) -> None:
+    """A week-1 slate with betting lines.
+
+    The demo carried no nfl_games rows at all, which meant the whole schedule
+    layer — kickoffs, weather flags, locked slots, and now the market-implied
+    game environment — was invisible in the one mode this house rehearses in.
+    A surface that cannot be rehearsed locally is a surface nobody has checked,
+    and PRODUCT.md commits to the opposite.
+
+    Deliberately partial: four clubs are left UNPRICED so the "no line posted
+    yet" path renders on a real board instead of only in a unit test. That is
+    the state most of a real season is actually in.
+    """
+    teams = sorted({r["team"] for r in conn.execute(
+        "SELECT DISTINCT team FROM players WHERE team IS NOT NULL")})
+    if not teams:
+        return
+    rng = _rng("slate", "week1")
+    unpriced = set(teams[:4])
+    rows = []
+    # Pair clubs off so every game has two sides that share one total.
+    for i in range(0, len(teams) - 1, 2):
+        home, away = teams[i], teams[i + 1]
+        total = round(rng.uniform(38.0, 52.0), 1)
+        spread = round(rng.uniform(-9.5, 9.5), 1)      # positive = home favored
+        for team, opp, is_home, sp in ((home, away, 1, spread), (away, home, 0, -spread)):
+            priced = team not in unpriced and opp not in unpriced
+            rows.append((
+                settings.season, 1, team, opp, is_home,
+                "2026-09-13T17:00:00+00:00", "outdoors", f"{team} Field", 0,
+                sp if priced else None,
+                total if priced else None,
+                round((total + sp) / 2, 1) if priced else None,
+            ))
+    conn.executemany(
+        "INSERT INTO nfl_games(season,week,team,opponent,is_home,kickoff_utc,roof,"
+        "stadium,neutral_site,spread,total_line,implied_total) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(season,week,team) DO UPDATE SET "
+        "opponent=excluded.opponent,is_home=excluded.is_home,"
+        "kickoff_utc=excluded.kickoff_utc,spread=excluded.spread,"
+        "total_line=excluded.total_line,implied_total=excluded.implied_total",
+        rows)
+    conn.commit()
 
 
 def _boost_street(conn: sqlite3.Connection) -> None:
