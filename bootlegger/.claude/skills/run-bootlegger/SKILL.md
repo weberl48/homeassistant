@@ -67,11 +67,11 @@ C:\Python314\python.exe .claude\skills\run-bootlegger\driver.py flow   <outdir>
 
 | Command | What it proves | Verified output |
 |---|---|---|
-| `api` | all 13 GETs the UI needs return 200 | `OK: 13 endpoints healthy` |
+| `api` | all 14 GETs the UI needs return 200 | `OK: 14 endpoints healthy` |
 | `check` | page paints, no JS errors | `title 'BOOTLEGGER' · 6 tabs · 6 cols · 182 rows · js errors none` |
 | `shots` | all six tabs render; PNG each | `OK: all tabs rendered` |
 | `flow` | approve → executed → verified, via real button click | `OK: rec reached verified` |
-| `audit` | the A++ gate — 13 checks a screenshot cannot make | `OK: all 13 audit checks passed` |
+| `audit` | the A++ gate — 17 checks a screenshot cannot make | `OK: all 17 audit checks passed` |
 
 `audit` (in `audit.py`, next to the driver) is the one that catches what
 review by eye does not: live regions announcing on an idle poll, a tablist
@@ -93,7 +93,7 @@ approve button on your real league.
 $env:BOOTLEGGER_BASE = "http://192.168.1.160:8484"
 ```
 
-Verified against the live deploy: `13 endpoints healthy`, `6 tabs · 647 player
+Verified against the live deploy: `14 endpoints healthy`, `6 tabs · 647 player
 rows · js errors none`. Pre-draft, The League correctly reads every seat 0.0 /
 `–` under a "Records open Week 1." note — empty rosters, not a broken page. **Look at the PNGs** — `check` passing only means the shell
 resolved and the board painted rows.
@@ -118,7 +118,40 @@ cd server
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-`77 passed in 67.00s`. (The README says 25 — that count is stale.)
+`260 passed` (2026-08-27). Counts in this file go stale fast — re-run rather
+than trust one that looks old.
+
+## Rehearse the draft pilot
+
+`server/tools/pilot_rehearsal.py` drives the REAL `hands.draft_pilot` process
+against a simulated live snake draft, in dry run, and prints every pick it
+would have made and where the choice came from. Safe by construction: a
+throwaway DB in a temp dir, a demo server on an ephemeral port,
+`HANDS_DRY_RUN` forced on, no Sleeper contact.
+
+```powershell
+cd server
+.\.venv\Scripts\python.exe tools\pilot_rehearsal.py --rounds 3   # a quick look
+.\.venv\Scripts\python.exe tools\pilot_rehearsal.py             # full 15 rounds
+```
+
+Nine checks; exits nonzero on any failure. **Expect one failure on this
+machine** and it is a true one:
+
+```
+[FAIL] the browser stack would actually come up — playwright is not installed
+```
+
+Playwright is deliberately kept out of the server venv (see Prerequisites), so
+that check is telling you *this host cannot fly the pilot* — run
+`playwright install chromium` on whichever host will. It exists because a dry
+run returns before the lazy Playwright import, so a clean rehearsal otherwise
+says nothing about whether the browser would come up at all, and the three
+ways bringup dies are reached only AFTER arming.
+
+What it does NOT prove: the browser half. Dry run opens no page, so the
+Sleeper locators are not exercised. A live-room rehearsal is still owed before
+the pilot flies for real.
 
 ## Reset the demo
 

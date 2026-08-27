@@ -47,15 +47,56 @@ LOGIN_USER = os.environ.get("SLEEPER_LOGIN_USER", "")
 LOGIN_PW = os.environ.get("SLEEPER_LOGIN_PW", "")
 
 SELECTOR_MAP_PATH = Path(__file__).parent / "selector_map.json"
-_STATE_CANDIDATES = [Path(os.environ.get("BOOTLEGGER_STATE_FILE", "")),
-                     Path("/run/secrets/sleeper_storage_state"),
-                     Path("/data/.sleeper_storage_state")]
+# An UNSET BOOTLEGGER_STATE_FILE used to enter this list as Path(""), whose
+# str() is "." and whose .exists() is True — so the search always stopped on
+# the working DIRECTORY and the real session file was never reached. Playwright
+# would then be handed a directory as storage_state on draft night. Skip blank
+# values, and require an actual file: a directory is not a session.
+_STATE_CANDIDATES = [p for p in (os.environ.get("BOOTLEGGER_STATE_FILE", "").strip(),
+                                 "/run/secrets/sleeper_storage_state",
+                                 "/data/.sleeper_storage_state") if p]
 POST_VERIFY_TIMEOUT_S = 15.0
-DRY_RUN = os.environ.get("HANDS_DRY_RUN", "1") != "0"
+# ONE PARSER FOR ONE SWITCH. This read `!= "0"` while app/config.py reads
+# `not in ("0", "false", "no")`, and ops/pi/deploy.sh pipes the operator's raw
+# shell value into both. So `HANDS_DRY_RUN=false` gave the server False and the
+# pilot True: /api/queue reported pilot_dry_run=False, the board rendered
+# "ARMED — LIVE", and the pilot quietly logged and never acted. The dangerous
+# direction is exactly this one — the board claiming more capability than the
+# hands have. Importing the server's own parser makes the disagreement
+# impossible rather than merely unlikely.
+_DRY_RUN_FALSE = ("0", "false", "no")
+DRY_RUN = os.environ.get("HANDS_DRY_RUN", "1").strip().lower() not in _DRY_RUN_FALSE
+
+
+def _page_alive(page) -> bool:
+    """Is this page still attached to a browser that exists?
+
+    Playwright exposes is_closed() on the page, but a renderer that died takes
+    the whole target with it and the cheapest honest probe is to ask the page
+    something trivial and see whether it answers.
+    """
+    try:
+        if page.is_closed():
+            return False
+        page.evaluate("1")
+        return True
+    except Exception:                           # noqa: BLE001 — any failure is death
+        return False
+
+
+def _shut(browser) -> None:
+    """Close a browser that may already be gone. Never raises: this is called
+    on the failure path, and a teardown that throws would hide the failure it
+    was cleaning up after."""
+    try:
+        if browser is not None:
+            browser.close()
+    except Exception:                           # noqa: BLE001
+        pass
 
 
 def state_file() -> Path | None:
-    return next((p for p in _STATE_CANDIDATES if str(p) and p.exists()), None)
+    return next((Path(p) for p in _STATE_CANDIDATES if Path(p).is_file()), None)
 
 
 def draft_map() -> dict:
@@ -151,39 +192,71 @@ def main() -> None:
     log.info("pilot up (dry_run=%s, api=%s, auth=%s)", DRY_RUN, args.api,
              st or "credentials (captcha risk)")
 
+    # A dry run never opens a page, so it must not need a browser to exist.
+    # Importing Playwright unconditionally made the rehearsal impossible on any
+    # host that wasn't already set up to fly for real — which is exactly the
+    # host you want to rehearse on. tools/pilot_rehearsal.py depends on this.
+    if DRY_RUN:
+        log.info("DRY RUN — no browser will be launched, nothing will be clicked")
+        return _fly(api, m, st, None)
     from playwright.sync_api import sync_playwright  # lazy: pilot-only dep
+    with sync_playwright() as pw:
+        return _fly(api, m, st, pw)
 
+
+def _fly(api: "Api", m: dict, st: Path | None, pw) -> None:
+    """The pilot's loop. `pw` is None on a dry run, where it is never used."""
     browser = ctx = page = None
     last_done = 0
     attempt_pick, attempts = 0, 0
-    with sync_playwright() as pw:
-        while True:
+    while True:
+        try:
+            board = api.board()
+        except httpx.HTTPError:
+            time.sleep(3); continue
+        d = board["draft"]
+        drafting = d["status"] == "drafting"
+
+        if not drafting and browser:
+            log.info("draft over — closing the room")
+            browser.close(); browser = ctx = page = None
+        if not drafting:
+            time.sleep(10); continue
+
+        armed = False
+        queue: list[dict] = []
+        try:
+            q = api.queue()
+            armed, queue = q["pilot_armed"], q["queue"]
+        except httpx.HTTPError:
+            pass
+        if not armed:
+            time.sleep(2); continue
+
+        # Hold the room open the whole draft (hydration is too slow to
+        # pay per pick).
+        #
+        # LIVENESS, NOT IDENTITY. This tested `page is None`, which a dead
+        # browser never becomes: the module docstring records the real event —
+        # "the Pi's Chromium crashed under a live room (renderer OOM at ~1.9GB
+        # free)" — and after it the object is still there, still not None,
+        # pointing at a closed target. The relaunch never fired, every
+        # remaining clock raised TargetClosedError, and the board went on
+        # reporting the pilot armed and flying while it silently did nothing.
+        if page is not None and not _page_alive(page):
+            log.warning("browser died mid-draft — relaunching")
+            _shut(browser)
+            browser = ctx = page = None
+
+        if page is None and not DRY_RUN:
+            # THE WHOLE BRINGUP IS GUARDED. Only the login call was, and only
+            # for one exception class, so a missing chromium binary, a
+            # truncated storage_state or a goto timeout escaped _fly, unwound
+            # `with sync_playwright()` in main(), and killed the process
+            # WITHOUT disarming — the one exit that leaves the board
+            # advertising a pilot that no longer exists. All three are reached
+            # only after arming, which is exactly when it matters.
             try:
-                board = api.board()
-            except httpx.HTTPError:
-                time.sleep(3); continue
-            d = board["draft"]
-            drafting = d["status"] == "drafting"
-
-            if not drafting and browser:
-                log.info("draft over — closing the room")
-                browser.close(); browser = ctx = page = None
-            if not drafting:
-                time.sleep(10); continue
-
-            armed = False
-            queue: list[dict] = []
-            try:
-                q = api.queue()
-                armed, queue = q["pilot_armed"], q["queue"]
-            except httpx.HTTPError:
-                pass
-            if not armed:
-                time.sleep(2); continue
-
-            # Hold the room open the whole draft (hydration is too slow to
-            # pay per pick).
-            if page is None and not DRY_RUN:
                 browser = pw.chromium.launch(
                     args=["--no-sandbox", "--disable-dev-shm-usage"])
                 if st is not None:
@@ -199,7 +272,7 @@ def main() -> None:
                         ok = False
                     if not ok:
                         api.disarm()
-                        browser.close()
+                        _shut(browser)
                         browser = ctx = page = None
                         time.sleep(30)
                         continue
@@ -210,58 +283,72 @@ def main() -> None:
                     if page.evaluate("document.body.innerText.length") > 3000:
                         break
                 log.info("room open and hydrated")
-
-            if not d["on_the_clock_me"] or d["current_pick"] == last_done:
-                time.sleep(0.8); continue
-
-            pick_no = d["current_pick"]
-            ch = choose(board, queue)
-            if ch is None:
-                log.warning("pick %s: nothing to take", pick_no)
-                last_done = pick_no; continue
-            pid, name, source = ch
-            if DRY_RUN:
-                log.info("DRY RUN — would draft %s (from the %s) at pick %s",
-                         name, source, pick_no)
-                last_done = pick_no
-                time.sleep(3); continue
-
-            log.info("pick %s: taking %s (from the %s)", pick_no, name, source)
-            if pick_no != attempt_pick:
-                attempt_pick, attempts = pick_no, 0
-            try:
-                box, el = find_controls(page, m, name)
-            except Exception as e:
-                attempts += 1
-                log.warning("find failed (attempt %s/3): %s", attempts, str(e)[:120])
-                if attempts >= 3:
-                    log.error("giving this clock to the timer — pilot stays armed")
-                    last_done = pick_no
-                time.sleep(1.2); continue
-            try:
-                click_draft(page, m, box, el)
-            except Exception:
-                log.exception("CLICK PATH failed — DISARMING (room state unknown)")
-                api.disarm()
-                last_done = pick_no; continue
-            deadline = time.time() + POST_VERIFY_TIMEOUT_S
-            ok = False
-            while time.time() < deadline:
-                time.sleep(1.5)
+            except Exception as exc:            # noqa: BLE001
+                # Disarm FIRST, then tidy up: the board must never outlive the
+                # pilot's ability to fly.
+                log.exception("browser bringup failed — DISARMING (%s)",
+                              type(exc).__name__)
                 try:
-                    fresh = api.board()
+                    api.disarm()
                 except httpx.HTTPError:
-                    continue
-                got = next((p for p in fresh["players"]
-                            if p["id"] == pid and p.get("pick_no")), None)
-                if got:
-                    log.info("  VERIFIED %s at pick %s mine=%s",
-                             name, got["pick_no"], got.get("mine"))
-                    ok = True; break
-            if not ok:
-                log.error("  NOT verified — DISARMING, check the room")
-                api.disarm()
+                    log.error("could not reach the API to disarm — the board "
+                              "may still show the pilot armed")
+                _shut(browser)
+                browser = ctx = page = None
+                time.sleep(30)
+                continue
+
+        if not d["on_the_clock_me"] or d["current_pick"] == last_done:
+            time.sleep(0.8); continue
+
+        pick_no = d["current_pick"]
+        ch = choose(board, queue)
+        if ch is None:
+            log.warning("pick %s: nothing to take", pick_no)
+            last_done = pick_no; continue
+        pid, name, source = ch
+        if DRY_RUN:
+            log.info("DRY RUN — would draft %s (from the %s) at pick %s",
+                     name, source, pick_no)
             last_done = pick_no
+            time.sleep(3); continue
+
+        log.info("pick %s: taking %s (from the %s)", pick_no, name, source)
+        if pick_no != attempt_pick:
+            attempt_pick, attempts = pick_no, 0
+        try:
+            box, el = find_controls(page, m, name)
+        except Exception as e:
+            attempts += 1
+            log.warning("find failed (attempt %s/3): %s", attempts, str(e)[:120])
+            if attempts >= 3:
+                log.error("giving this clock to the timer — pilot stays armed")
+                last_done = pick_no
+            time.sleep(1.2); continue
+        try:
+            click_draft(page, m, box, el)
+        except Exception:
+            log.exception("CLICK PATH failed — DISARMING (room state unknown)")
+            api.disarm()
+            last_done = pick_no; continue
+        deadline = time.time() + POST_VERIFY_TIMEOUT_S
+        ok = False
+        while time.time() < deadline:
+            time.sleep(1.5)
+            try:
+                fresh = api.board()
+            except httpx.HTTPError:
+                continue
+            got = next((p for p in fresh["players"]
+                        if p["id"] == pid and p.get("pick_no")), None)
+            if got:
+                log.info("  VERIFIED %s at pick %s mine=%s",
+                         name, got["pick_no"], got.get("mine"))
+                ok = True; break
+        if not ok:
+            log.error("  NOT verified — DISARMING, check the room")
+            api.disarm()
+        last_done = pick_no
 
 
 if __name__ == "__main__":
