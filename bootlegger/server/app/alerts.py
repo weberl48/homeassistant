@@ -82,11 +82,31 @@ def pending(conn: sqlite3.Connection, max_age_h: float = MAX_AGE_H) -> list[sqli
     Gated on `seen_at`, not `pushed_at`: most items are somebody else's man and
     are deliberately passed over, and stamping those as "pushed" would both
     make the ledger lie and freeze their grade against a later re-read.
+
+    Two corrections, both of which made this quieter than it looks.
+
+    THE LATCH. seen_at alone made this one-way. ingest.etl_news re-grades an
+    item in place while `pushed_at IS NULL` — that is the whole point of the
+    re-grade, since the classifier keeps improving — but a rival's man who
+    arrived "Questionable" was stamped seen on the pass that passed him over,
+    so when the same guid came back as "Placed on injured reserve" the row WAS
+    corrected in the database and could never be considered again. The news
+    that opens a job never reached the phone. An item is pending again when its
+    grade has moved since it was last judged, which is exactly when it is news.
+
+    THE CLOCK. published_at is written as ISO-8601 ('...T01:00:00+00:00') and
+    SQLite's datetime() returns a space-separated string, so a plain string
+    comparison diverges at byte 10 ('T' 0x54 against ' ' 0x20) and the window
+    stopped being an hours window at all — measured: 13h, 18h and 24h all
+    passed a 12-hour guard. Comparing on a normalized form makes the window the
+    length it claims to be.
     """
     return conn.execute(
-        "SELECT * FROM news WHERE seen_at IS NULL AND player_id IS NOT NULL "
+        "SELECT * FROM news WHERE player_id IS NOT NULL "
         "AND severity <> 'info' "
-        "AND (published_at IS NULL OR published_at >= datetime('now', ?)) "
+        "AND (seen_at IS NULL OR seen_severity IS NULL OR seen_severity <> severity) "
+        "AND (published_at IS NULL "
+        "     OR REPLACE(SUBSTR(published_at, 1, 19), 'T', ' ') >= datetime('now', ?)) "
         "ORDER BY published_at DESC",
         (f"-{max_age_h} hours",),
     ).fetchall()
@@ -94,13 +114,24 @@ def pending(conn: sqlite3.Connection, max_age_h: float = MAX_AGE_H) -> list[sqli
 
 def _mark(conn: sqlite3.Connection, guids: list[str], pushed: bool = False) -> None:
     """Record that the filter has judged these items — and, separately, whether
-    a notification actually went out for them."""
+    a notification actually went out for them.
+
+    seen_severity records WHAT was judged, not merely that something was. The
+    grade is re-derived on every poll while an item sits unpushed (the
+    classifier keeps improving), so without it a passed-over item that later
+    turns into real news is invisible to pending() forever.
+    """
     if not guids:
         return
-    col = "pushed_at=?, seen_at=?" if pushed else "seen_at=?"
     now = db.utcnow()
-    args = [((now, now, g) if pushed else (now, g)) for g in guids]
-    conn.executemany(f"UPDATE news SET {col} WHERE guid=?", args)
+    if pushed:
+        conn.executemany(
+            "UPDATE news SET pushed_at=?, seen_at=?, seen_severity=severity "
+            "WHERE guid=?", [(now, now, g) for g in guids])
+    else:
+        conn.executemany(
+            "UPDATE news SET seen_at=?, seen_severity=severity WHERE guid=?",
+            [(now, g) for g in guids])
     conn.commit()
 
 

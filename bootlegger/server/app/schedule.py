@@ -7,7 +7,7 @@ season loop — never on the request path."""
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import db
@@ -93,6 +93,41 @@ def etl_schedule(conn: sqlite3.Connection, season: int) -> int:
     )
     conn.commit()
     return len(games)
+
+
+# A game is not evidence until it has been played. Sleeper's matchup payload
+# reports points continuously — 0.0 before kickoff, partial totals during — and
+# the ETL persisted them as REALIZED scores with no completeness gate at all.
+# Two things then read those rows as though the week were final: the win
+# probability's own spread (brain._matchup_sigma) and the source calibration
+# (engines/calibration.score_sources). Measured: twelve in-progress rows of
+# (0 - 110) mixed into real N(0,27) residuals reported sigma 39.4 instead of
+# 27, which is the number the floor/ceiling strategy keys off.
+#
+# Filtering at READ time rather than stamping a flag at write time means a week
+# becomes usable on its own the moment it finishes, with no backfill.
+FINAL_AFTER_H = 4.0     # a 1pm kickoff is over by 5; Monday night clears Tuesday
+
+
+def completed_weeks(conn: sqlite3.Connection, season: int,
+                    after_h: float = FINAL_AFTER_H) -> set[int]:
+    """Weeks whose LAST kickoff is far enough behind us to call them played.
+
+    The last kickoff, not the first: a week with a Monday nighter is not over
+    on Sunday evening, and half its rosters would otherwise be scored as though
+    they had put up whatever they had at that moment.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=after_h)
+    out: set[int] = set()
+    for r in conn.execute(
+            "SELECT week, MAX(kickoff_utc) last_ko FROM nfl_games "
+            "WHERE season=? AND kickoff_utc IS NOT NULL GROUP BY week", (season,)):
+        try:
+            if datetime.fromisoformat(r["last_ko"]) <= cutoff:
+                out.add(int(r["week"]))
+        except (ValueError, TypeError):
+            continue
+    return out
 
 
 def bye_weeks(conn: sqlite3.Connection, season: int) -> dict[str, int]:

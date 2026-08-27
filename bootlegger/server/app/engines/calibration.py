@@ -56,7 +56,8 @@ class SourceScore:
 
 
 def score_sources(conn: sqlite3.Connection, season: int,
-                  relevant_pts: float = RELEVANT_PTS) -> list[SourceScore]:
+                  relevant_pts: float = RELEVANT_PTS,
+                  weeks: set[int] | None = None) -> list[SourceScore]:
     """Mean absolute error per source over every scored player-week on the books.
 
     Relevance is judged by the ACTUAL score or the projection, whichever is
@@ -64,13 +65,28 @@ def score_sources(conn: sqlite3.Connection, season: int,
     for the miss, and one that projected 24 for a man who scored 2 must be
     charged too. Filtering on the projection alone would forgive the first;
     filtering on the actual alone would forgive the second.
+
+    `weeks` restricts scoring to weeks that are actually FINISHED. Sleeper
+    reports points continuously — 0.0 before kickoff, partial totals during —
+    and the nightly persists them, so without this every source is charged for
+    "missing" a projection against a game that has not been played. The caller
+    supplies the set (schedule.completed_weeks); None means score everything,
+    which is what the unit tests want and what a caller with no schedule
+    loaded has to fall back to.
     """
+    where = "p.week > 0 AND (a.pts >= ? OR p.pts >= ?)"
+    args: list = [season, relevant_pts, relevant_pts]
+    if weeks is not None:
+        if not weeks:
+            return []
+        where += f" AND p.week IN ({','.join('?' * len(weeks))})"
+        args += sorted(weeks)
     rows = conn.execute(
         "SELECT p.source, COUNT(*) n, AVG(ABS(p.pts - a.pts)) mae "
         "FROM projections p JOIN player_week_actuals a "
         "  ON a.player_id = p.player_id AND a.week = p.week AND a.season = ? "
-        "WHERE p.week > 0 AND (a.pts >= ? OR p.pts >= ?) "
-        "GROUP BY p.source", (season, relevant_pts, relevant_pts)).fetchall()
+        f"WHERE {where} "
+        "GROUP BY p.source", tuple(args)).fetchall()
     return [SourceScore(r["source"], r["n"], r["mae"]) for r in rows if r["mae"] is not None]
 
 

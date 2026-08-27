@@ -751,10 +751,23 @@ MIN_STRATEGY_SWING = 0.02
 
 def _matchup_sigma(conn: sqlite3.Connection) -> tuple[float, str]:
     """This league's own scoring spread, measured from every roster-week where
-    both a projection and a realized score exist."""
+    both a projection and a realized score exist AND the week is actually over.
+
+    The completeness gate is the load-bearing part. Sleeper reports points
+    continuously — 0.0 before kickoff, partial totals during — and the ETL
+    persists them every nightly, so the current week was landing in here as a
+    realized score. Twelve in-progress rows of (0 - 110) mixed into real
+    N(0,27) residuals measure sigma 39.4 instead of 27, and sigma is exactly
+    what decides whether the week gets the floor lineup or the ceiling one.
+    """
+    done = schedule.completed_weeks(conn, settings.season)
+    if not done:
+        return matchup_engine.sigma_from_history([])
+    marks = ",".join("?" * len(done))
     residuals = [r["points_for"] - r["proj_for"] for r in conn.execute(
-        "SELECT points_for, proj_for FROM matchups "
-        "WHERE points_for IS NOT NULL AND proj_for IS NOT NULL AND proj_for > 0")]
+        f"SELECT points_for, proj_for FROM matchups "
+        f"WHERE points_for IS NOT NULL AND proj_for IS NOT NULL AND proj_for > 0 "
+        f"AND week IN ({marks})", tuple(sorted(done)))]
     return matchup_engine.sigma_from_history(residuals)
 
 

@@ -71,8 +71,14 @@ def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
     weight_note = "equal weight (draft-season projections)"
     if week > 0:
         sources = sorted({r["source"] for r in rows})
+        # Only finished weeks earn or cost a source its weight — an unplayed
+        # game scores every projection as a total miss. See
+        # schedule.completed_weeks.
+        from .schedule import completed_weeks
         wmap, weight_note = cal.weights(
-            cal.score_sources(conn, settings.season), sources)
+            cal.score_sources(conn, settings.season,
+                              weeks=completed_weeks(conn, settings.season)),
+            sources)
     calibrated = bool(wmap) and any(
         abs(w - 1.0 / len(wmap)) > 1e-6 for w in wmap.values())
     db.meta_set(conn, f"consensus_weights_w{week}",
@@ -84,8 +90,14 @@ def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
     for pid, vals in by_player.items():
         # The robust mean stays the fallback for thin coverage: with two or
         # three sources, weighting is noise dressed as precision.
+        #
+        # TRIM, THEN WEIGHT. Calibration silently removed the outlier
+        # protection: weighted_mean has no trimming, and it took over at n>=4,
+        # exactly where the trimmed mean was the only thing working. A weight
+        # says how accurate a source usually is; trimming says how wrong this
+        # one number looks against its peers today. See consensus.trim_extremes.
         if calibrated and len(vals) >= 4:
-            rb = cal.weighted_mean(by_source[pid], wmap)
+            rb = cal.weighted_mean(cx.trim_extremes(by_source[pid]), wmap)
         else:
             rb = cx.robust_mean(vals)
         robust[pid] = rb
@@ -1024,15 +1036,26 @@ def main() -> None:
                         # Backstop for the clear/poll race: a cycle already in
                         # flight for the OLD target can re-upsert rows the API
                         # just deleted, leaving a ghost draft that contests the
-                        # newest-draft rule. On every switch, sweep anything
-                        # that is neither the new target nor the league draft.
-                        conn.execute(
-                            "DELETE FROM draft_picks WHERE draft_id NOT IN (?,?)",
-                            (target, draft_id))
-                        conn.execute(
-                            "DELETE FROM drafts WHERE draft_id NOT IN (?,?)",
-                            (target, draft_id))
-                        conn.commit()
+                        # newest-draft rule.
+                        #
+                        # Sweep EXACTLY the room we are leaving, never "anything
+                        # that is not the new target". etl_draft_history writes
+                        # this league's past drafts into these same tables and
+                        # deliberately skips the current league, so every
+                        # historical draft_id matched the old NOT IN (...) and a
+                        # single Scrimmage toggle silently destroyed the only
+                        # evidence engines/room.py has for how this room drafts
+                        # — evidence that cannot be re-derived, because Sleeper
+                        # keeps no historical ADP.
+                        #
+                        # The ghost is always the previous target and nothing
+                        # else, so naming it is both sufficient and safe.
+                        if last_target not in (target, draft_id):
+                            conn.execute("DELETE FROM draft_picks WHERE draft_id=?",
+                                         (last_target,))
+                            conn.execute("DELETE FROM drafts WHERE draft_id=?",
+                                         (last_target,))
+                            conn.commit()
                     last_target = target
                 full = cycle % 10 == 0 or status is None
                 n = etl_draft_picks(client, conn, target, full=full)

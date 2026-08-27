@@ -190,7 +190,8 @@ CREATE TABLE IF NOT EXISTS news(
     departure INTEGER NOT NULL DEFAULT 0,
     published_at TEXT,
     fetched_at TEXT NOT NULL,
-    pushed_at TEXT
+    pushed_at TEXT,
+    seen_severity TEXT              -- grade at last judgement; see alerts.pending()
 );
 -- What every player ACTUALLY scored, under this league's own scoring, read
 -- from Sleeper's matchup payload. This is the yardstick the projection sources
@@ -233,6 +234,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
                  "ALTER TABLE nfl_games ADD COLUMN implied_total REAL",
                  "ALTER TABLE players ADD COLUMN practice_status TEXT",
                  "ALTER TABLE players ADD COLUMN report_status TEXT",
+                 # WHAT grade an item carried when the alert filter last judged
+                 # it. seen_at alone was a one-way latch: a rival's man passed
+                 # over as "Questionable" could be re-graded to "on injured
+                 # reserve" in place and never be considered again. See
+                 # alerts.pending().
+                 "ALTER TABLE news ADD COLUMN seen_severity TEXT",
                  # Season record, carried in Sleeper's roster.settings block.
                  "ALTER TABLE rosters ADD COLUMN wins INTEGER NOT NULL DEFAULT 0",
                  "ALTER TABLE rosters ADD COLUMN losses INTEGER NOT NULL DEFAULT 0",
