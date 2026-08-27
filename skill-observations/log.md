@@ -267,3 +267,21 @@ once against a known-positive sample and assert a non-empty match, in the same
 step that writes it. Parsing is not evidence; matching is.
 **Principle:** A rule that cannot fire is indistinguishable from a rule that
 found nothing. Only a known-positive sample tells them apart.
+
+### Observation 20: /code-review's diff scope silently became a whole day's work
+**Status:** OPEN
+**Date:** 2026-08-27
+**Session context:** Ran `/code-review` at max effort on the bootlegger branch. Phase 0's `git diff @{upstream}...HEAD` resolved to 19 unpushed commits — 7,600 insertions across 52 files — because origin had simply not been pushed since morning, not because a PR of that size existed.
+**Skill:** code-review
+**Issue:** Phase 0 assumes `@{upstream}...HEAD` is a PR-sized change. On a long-lived local branch it silently expands to everything since the last push. Ten finder angles at 8 candidates each were then spread thin over a diff ~20x the intended size, and the ≤15-finding cap forced real correctness bugs to compete with cleanup findings from files nobody had asked about. Nothing in the skill measures the scope before fanning out.
+**Suggested improvement:** In Phase 0, after computing the range, print `--shortstat` and the commit count. If the diff exceeds a threshold (say >1,500 changed lines or >10 commits), state the measured scope in one line and either (a) ask which subset to review, or (b) default to the newest commit(s) plus the working tree and say so explicitly. Also: `git status --porcelain` lists UNTRACKED files that `git diff HEAD` does not show — Phase 0 should name them as in-scope, since a brand-new file is often the riskiest thing in the change set (it was here).
+**Principle:** A review that does not measure its own scope before fanning out spends its budget uniformly on a non-uniform diff.
+
+### Observation 21: A passing gate is not a substitute for a fresh adversarial read
+**Status:** OPEN
+**Date:** 2026-08-27
+**Session context:** Declared News and Trades "complete" on the strength of 245 green tests and 17 green audit checks, all verified against the live box. A `/code-review max` run immediately afterwards confirmed fifteen bugs, six of them introduced by that same day's work — including a null-spread that blanked This Week on exactly the state draft night produces, and a push path that sent four identical DND alarms for one story.
+**Skill:** New skill candidate: `review-before-declaring-done` — or an addition to `verification-before-completion`, which currently asks for evidence that the work runs, not for evidence that it is right.
+**Issue:** Every gate in that suite was written by the same person who wrote the code, immediately after fixing a defect. So the gates encode the failure modes already imagined and are structurally blind to the rest — three of this session's defects were only reachable on the live board, and none of the six regressions touched an existing assertion. "Tests pass" and "the gate is green" were both true and neither was evidence of correctness.
+**Suggested improvement:** Before declaring a milestone complete, run an adversarial review of the day's diff — not the whole branch. Treat the completion claim as the trigger, the way a challenged finding triggers stress-test-findings. The cost is one review; the alternative here was shipping a draft-night crash.
+**Principle:** A gate proves you did not break what you thought of. Only a reader who did not write the code can tell you what you did not think of.
