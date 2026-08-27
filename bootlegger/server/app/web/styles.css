@@ -699,6 +699,16 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
    it is a READING and not a status — the same argument the odds meter makes.
    Never red: a bad matchup is not a failure state. */
 .slate-none { color: var(--marigold); }
+.ask-search { position: relative; margin: 10px 0 14px; max-width: 26rem; }
+.ask-search input {
+  width: 100%; min-height: 44px; padding: 10px 12px;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 6px;
+  font: 400 .95rem var(--font-ui);
+}
+.ask-search input:focus-visible { outline: 2px dashed var(--brass); outline-offset: 1px; }
+.ask-head { font-size: 1.05rem; margin-bottom: 6px; }
+.ask-offer { margin-bottom: 12px; }
 /* The byline. Five newsrooms on one sheet, so every line says whose it is —
    and a story three desks filed independently says that too, because
    corroboration is evidence rather than noise. */

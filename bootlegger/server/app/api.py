@@ -528,6 +528,14 @@ class PracticeBody(BaseModel):
     url: str
 
 
+@app.get("/api/trades/for/{player_id}")
+def get_trade_for(player_id: str, limit: int = 6):
+    """What would it take to get one named player — the question a manager
+    actually asks out loud. Every package returned leaves the other seat
+    better off, cheapest first."""
+    return brain.what_would_it_take(get_conn(), player_id, limit=limit)
+
+
 @app.get("/api/schedule/strength")
 def get_schedule_strength(from_week: int = 1):
     """Strength of schedule as the market has priced it so far — advisory,

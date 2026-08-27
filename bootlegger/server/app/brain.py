@@ -1164,6 +1164,204 @@ def league_overview(conn: sqlite3.Connection) -> dict:
             "note": None if played else "Records open Week 1."}
 
 
+def what_would_it_take(conn: sqlite3.Connection, target_id: str,
+                       limit: int = 6) -> dict:
+    """Packages that would plausibly get you one named player.
+
+    The suggester answers "what deals exist in this room". This answers the
+    question a manager actually asks out loud — "what would it take to get
+    HIM" — which no amount of scanning surfaces, because the deal you want is
+    rarely the deal that scores highest across every seat.
+
+    The filters are the other side's, not yours. A package only appears if the
+    seat holding him ENDS UP BETTER: they lose their man and must get enough
+    back that their own optimal lineup improves. Anything else is a wish, and
+    a list of wishes is what makes a trade tool ignorable.
+    """
+    desk = _TradeDesk(conn)
+    if not desk.my_ids:
+        return {"target": None, "offers": [], "note": "The parlor opens once rosters exist."}
+    if target_id not in desk.players:
+        return {"target": None, "offers": [], "note": "No such player on the books."}
+
+    holder = None
+    for r in conn.execute("SELECT * FROM rosters"):
+        if target_id in json.loads(r["players_json"] or "[]"):
+            holder = r
+            break
+    if holder is None:
+        return {"target": desk.row(target_id), "offers": [],
+                "note": "Nobody rosters him — he is a waiver add, not a trade."}
+    if desk.my and holder["roster_id"] == desk.my["roster_id"]:
+        return {"target": desk.row(target_id), "offers": [],
+                "note": "He is already yours."}
+
+    their_ids = json.loads(holder["players_json"] or "[]")
+    base_mine = desk.best(desk.my_ids)
+    base_theirs = desk.best(their_ids)
+    target_worth = desk.worth(target_id)
+
+    # What I can offer: anything that is not a man I would refuse to lose.
+    # Sorted by worth so the cheapest sufficient package is found first.
+    mine = sorted((i for i in desk.my_ids if i in desk.players),
+                  key=desk.worth, reverse=True)
+    # A package is not worth enumerating if it cannot approach his value, and
+    # not worth PROPOSING if it wildly exceeds it — overpaying by half is how
+    # you win a trade and lose a season.
+    singles = [[i] for i in mine]
+    pairs = [[mine[i], mine[j]]
+             for i in range(min(len(mine), 8))
+             for j in range(i + 1, min(len(mine), 8))]
+    # A sweetener from their side: him plus a spare of theirs, for a bigger
+    # piece of mine. This is the shape that unlocks a stud when nothing I own
+    # matches him one-for-one.
+    their_spares = sorted(
+        (i for i in their_ids if i in desk.players and i != target_id
+         and i not in base_theirs.starter_ids),
+        key=desk.worth, reverse=True)[:3]
+
+    offers = []
+    seen: set[tuple] = set()
+
+    def consider(give: list[str], get: list[str]) -> None:
+        key = (frozenset(give), frozenset(get))
+        if key in seen:
+            return
+        seen.add(key)
+        ca = trades_engine.consolidated([desk.worth(x) for x in give])
+        cb = trades_engine.consolidated([desk.worth(x) for x in get])
+        if max(ca, cb) <= 0 or abs(cb - ca) > 0.45 * max(ca, cb):
+            return
+        my_gain = desk.best([i for i in desk.my_ids if i not in give] + get).total - base_mine.total
+        their_gain = desk.best([i for i in their_ids if i not in get] + give).total - base_theirs.total
+        # THEIR filter, applied honestly: a seat that ends up worse says no,
+        # and a package they decline is not an offer, it is a daydream.
+        if their_gain < 0.5:
+            return
+        # ...and MINE. A deal that gets the man but leaves my starting lineup
+        # no better is a trade I won, on paper, for nothing.
+        if my_gain < 1.0:
+            return
+        detail = trades_engine.analyze(
+            [desk.row(x) for x in give], [desk.row(x) for x in get],
+            vbd_scale=desk.vbd_scale, market_scale=desk.mkt_scale)
+        volume = sum(abs((desk.vals[x]["redraft_value"] or 0.0))
+                     if x in desk.vals else 0.0 for x in give + get)
+        cost = sum(desk.worth(x) for x in give)
+        offers.append({
+            # CHEAPEST acceptable first. Ranking by their_gain — which is what
+            # this did on its first run — rewards overpaying: it put "give up
+            # Nacua and Kelce, hand that seat +146 season points" at the top of
+            # a list whose entire question is what the man costs. The floor of
+            # what they will take is the answer; the margin above it is
+            # information, not a target.
+            # CHEAPEST BAND first, then what it does for you. Ranking by
+            # their_gain — which this did on its first run — rewards
+            # overpaying: it put "give up Nacua and Kelce, hand that seat +146
+            # season points" at the top of a list whose entire question is what
+            # the man costs. But strict cost ordering is false precision too:
+            # 75.4 and 75.0 are the same price, and between them the package
+            # that helps your lineup more is plainly the better ask. So cost is
+            # quantized to a 5-point band and my_gain breaks ties inside it —
+            # the band is wide enough that no realistic gain can jump one.
+            "score": round(-(round(cost / 5.0) * 5.0) + 0.02 * my_gain, 3),
+            "cost": round(cost, 1),
+            "partner": holder["owner"] or f"roster {holder['roster_id']}",
+            "partner_roster_id": holder["roster_id"],
+            "give_ids": give, "receive_ids": get,
+            "give": [desk.row(x) for x in give],
+            "receive": [desk.row(x) for x in get],
+            "my_gain": round(my_gain, 1),
+            "their_gain": round(their_gain, 1),
+            "vbd_edge": detail["vbd_edge"],
+            "market_edge": detail["market_edge"],
+            "summary": detail["summary"],
+            "verdict": trades_engine.value_verdict(
+                my_gain, detail["vbd_edge"], detail["market_edge"],
+                len(give), len(get), market_volume=volume),
+        })
+
+    for g in singles:
+        consider(g, [target_id])
+    for g in pairs:
+        consider(g, [target_id])
+    for spare in their_spares:
+        for g in pairs:
+            consider(g, [target_id, spare])
+
+    offers.sort(key=lambda o: -o["score"])
+    kept = trades_engine.shortlist(offers, limit=limit)
+    return {
+        "target": desk.row(target_id),
+        "target_name": desk.players[target_id]["name"],
+        "holder": holder["owner"] or f"roster {holder['roster_id']}",
+        "offers": kept,
+        "considered": len(offers),
+        "note": ("Every package here leaves the other seat better off than it "
+                 "started — that is the filter. Cheapest first, ties broken by "
+                 "what it does for your lineup: the answer is what he costs, "
+                 "not the most you could bear to pay.")
+        if kept else
+        ("Nothing you own gets him without leaving that seat worse off. "
+         "He is either their cornerstone or your shelf is the wrong shape."),
+    }
+
+
+class _TradeDesk:
+    """The valuation every trade tool shares.
+
+    Two tools price trades — the suggester that scans the room for deals, and
+    the counter-offer generator that answers "what would it take for HIM".
+    They have to agree about what a player is worth or the Parlor tells two
+    stories about one roster, so the worth curve, the ROS projections, the
+    lineup optimizer and the row shape live here once.
+    """
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+        self.rp = roster_positions(conn)
+        self.players = _players_index(conn)
+        self.cons = {r["player_id"]: r for r in
+                     conn.execute("SELECT * FROM consensus WHERE week=0")}
+        self.vals = {r["player_id"]: r for r in
+                     conn.execute("SELECT * FROM player_values")}
+        self.my = my_roster_row(conn)
+        self.my_ids = json.loads(self.my["players_json"]) if self.my else []
+        self.vbd_scale = max([(r["vbd"] or 0.0) for r in self.cons.values()] or [1.0]) or 1.0
+        self.mkt_scale = max([(r["redraft_value"] or 0.0)
+                              for r in self.vals.values()] or [1.0]) or 1.0
+        self._worth: dict[str, float] = {}
+
+    def worth(self, pid: str) -> float:
+        """Half projection, half market, both normalized — the currency both
+        tools trade in."""
+        if pid not in self._worth:
+            v = (self.cons[pid]["vbd"] or 0.0) if pid in self.cons else 0.0
+            m = (self.vals[pid]["redraft_value"] or 0.0) if pid in self.vals else 0.0
+            self._worth[pid] = (50.0 * max(0.0, v) / self.vbd_scale
+                                + 50.0 * max(0.0, m) / self.mkt_scale)
+        return self._worth[pid]
+
+    def projs(self, ids: list[str]) -> list[PlayerProj]:
+        # ROS math: a one-week Out tag must not zero a season asset.
+        return [PlayerProj(pid, self.players[pid]["pos"],
+                           ((self.cons[pid]["pts_robust"] or 0.0)
+                            if pid in self.cons else 0.0),
+                           self.players[pid]["name"],
+                           ros_status(self.players[pid]["injury_status"]))
+                for pid in ids if pid in self.players]
+
+    def best(self, ids: list[str]):
+        return optimize(self.projs(ids), self.rp)
+
+    def row(self, pid: str) -> dict:
+        return {"player_id": pid, "name": self.players[pid]["name"],
+                "pos": self.players[pid]["pos"],
+                "vbd": (self.cons[pid]["vbd"] or 0.0) if pid in self.cons else 0.0,
+                "market_value": ((self.vals[pid]["redraft_value"] or 0.0)
+                                 if pid in self.vals else 0.0)}
+
+
 def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
     """Scan every opposing roster for deals that help BOTH starting lineups —
     mutual benefit is what actually gets accepted (the trade-finder lesson
@@ -1171,42 +1369,13 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
     each side's best bench pieces and weakest starters, in 1-for-1 and
     consolidation (2-for-1) shapes, package-checked with the KTC-school
     curve, then graded by both sides' optimal-lineup deltas."""
-    rp = roster_positions(conn)
-    players = _players_index(conn)
-    cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
-    vals = {r["player_id"]: r for r in conn.execute("SELECT * FROM player_values")}
-    my = my_roster_row(conn)
-    my_ids = json.loads(my["players_json"]) if my else []
-    if not my_ids:
+    desk = _TradeDesk(conn)
+    if not desk.my_ids:
         return {"trades": [], "note": "The parlor opens once rosters exist."}
-
-    vbd_scale = max([(r["vbd"] or 0.0) for r in cons.values()] or [1.0]) or 1.0
-    mkt_scale = max([(r["redraft_value"] or 0.0) for r in vals.values()] or [1.0]) or 1.0
-
-    _worth: dict[str, float] = {}
-
-    def worth(pid: str) -> float:
-        if pid not in _worth:
-            v = (cons[pid]["vbd"] or 0.0) if pid in cons else 0.0
-            m = (vals[pid]["redraft_value"] or 0.0) if pid in vals else 0.0
-            _worth[pid] = 50.0 * max(0.0, v) / vbd_scale + 50.0 * max(0.0, m) / mkt_scale
-        return _worth[pid]
-
-    def projs(ids: list[str]) -> list[PlayerProj]:
-        # ROS math: a one-week Out tag must not zero a season asset
-        return [PlayerProj(pid, players[pid]["pos"],
-                           ((cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0),
-                           players[pid]["name"], ros_status(players[pid]["injury_status"]))
-                for pid in ids if pid in players]
-
-    def best(ids: list[str]):
-        return optimize(projs(ids), rp)
-
-    def row(pid: str) -> dict:
-        return {"player_id": pid, "name": players[pid]["name"], "pos": players[pid]["pos"],
-                "vbd": (cons[pid]["vbd"] or 0.0) if pid in cons else 0.0,
-                "market_value": (vals[pid]["redraft_value"] or 0.0) if pid in vals else 0.0}
-
+    rp, players = desk.rp, desk.players
+    vbd_scale, mkt_scale = desk.vbd_scale, desk.mkt_scale
+    worth, best, row = desk.worth, desk.best, desk.row
+    my, my_ids = desk.my, desk.my_ids
     base_mine = best(my_ids)
     proposals: dict[tuple, dict] = {}
 
@@ -1295,7 +1464,7 @@ def suggest_trades(conn: sqlite3.Connection, limit: int = 8) -> dict:
     # engines/trades.shortlist for the three filters and why each exists.
     top = trades_engine.shortlist(list(proposals.values()), limit=limit)
     for t in top:
-        volume = sum(abs((vals[p]["redraft_value"] or 0.0)) if p in vals else 0.0
+        volume = sum(abs((desk.vals[p]["redraft_value"] or 0.0)) if p in desk.vals else 0.0
                      for p in t["give_ids"] + t["receive_ids"])
         t["verdict"] = trades_engine.value_verdict(
             t["my_gain"], t["vbd_edge"], t["market_edge"],

@@ -1677,6 +1677,67 @@ $("#slip-list").addEventListener("click", (e) => {
   saveSlip().catch(() => wireFail());
 });
 
+/* --------------------------- what would it take --------------------------- */
+let _askTimer = null;
+$("#ask-input")?.addEventListener("input", (e) => {
+  clearTimeout(_askTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { $("#ask-results").hidden = true; return; }
+  _askTimer = setTimeout(async () => {
+    try {
+      const rs = await fetchJSON(`/api/players/search?q=${encodeURIComponent(q)}`);
+      $("#ask-results").innerHTML = rs.length ? rs.map((r) => `
+        <button type="button" data-id="${esc(r.id)}">
+          <span class="pos pos-${r.pos === "DST" ? "DEF" : esc(r.pos)}">${r.pos === "DST" ? "DEF" : esc(r.pos)}</span>
+          ${esc(r.name)} <span class="team">${esc(r.team ?? "")}</span></button>`).join("")
+        : `<p class="muted">nobody by that name</p>`;
+      $("#ask-results").hidden = false;
+    } catch { /* search is a convenience */ }
+  }, 250);
+});
+
+$("#ask-results")?.addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-id]");
+  if (!b) return;
+  $("#ask-results").hidden = true;
+  $("#ask-input").value = "";
+  $("#ask-body").innerHTML = `<p class="muted">Working out what he costs…</p>`;
+  try {
+    renderAsk(await fetchJSON(`/api/trades/for/${encodeURIComponent(b.dataset.id)}`));
+  } catch { wireFail(); }
+});
+
+function renderAsk(d) {
+  const el = $("#ask-body");
+  if (!el) return;
+  const head = d.target
+    ? `<p class="ask-head"><b>${esc(d.target_name || d.target.name)}</b>
+       ${d.holder ? `· held by <b>${esc(d.holder)}</b>` : ""}</p>` : "";
+  if (!d.offers || !d.offers.length) {
+    el.innerHTML = `${head}<p class="room-note slate-none">${esc(d.note)}</p>`;
+    return;
+  }
+  const side = (ps) => ps.map((x) =>
+    `<span class="pos pos-${x.pos === "DST" ? "DEF" : esc(x.pos)}">${x.pos === "DST" ? "DEF" : esc(x.pos)}</span> ${esc(x.name)}`)
+    .join(" <span class='deal-plus'>·</span> ");
+  el.innerHTML = `${head}
+    <p class="room-note">${esc(d.note)}</p>
+    ${d.offers.map((o, i) => `
+      <div class="deal ask-offer">
+        <div class="deal-head">
+          <span class="deal-partner">${i === 0 ? "cheapest that works" : `option ${i + 1}`}</span>
+          <span class="deal-gains"><b>${o.my_gain > 0 ? "+" : ""}${o.my_gain}</b> you ·
+            <b>${o.their_gain > 0 ? "+" : ""}${o.their_gain}</b> them</span>
+        </div>
+        <div class="deal-line"><span class="deal-side">send</span> ${side(o.give)}</div>
+        <div class="deal-line"><span class="deal-side">get</span> ${side(o.receive)}</div>
+        ${o.verdict ? `<p class="deal-verdict lvl-${esc(o.verdict.level)}">${esc(o.verdict.line)}</p>` : ""}
+        <p class="deal-note">${esc(o.summary)}</p>
+      </div>`).join("")}
+    <p class="optimal-note">${d.considered} package${d.considered === 1 ? "" : "s"}
+    cleared both sides' filters.</p>`;
+}
+
 let _slipTimer = null;
 $("#slip-search").addEventListener("input", (e) => {
   clearTimeout(_slipTimer);

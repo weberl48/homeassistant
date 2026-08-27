@@ -223,6 +223,21 @@ provenance.
       you make the offer.</p>
       <div id="parlor-body"><p class="muted">Working the room…</p></div>
 
+      <!-- The question a manager asks out loud, which no amount of scanning
+           the room surfaces: the deal you WANT is rarely the deal that scores
+           highest across every seat. -->
+      <div class="checker" id="the-ask">
+        <h3 class="checker-title">What would it take</h3>
+        <p class="room-note">Name a man on somebody else's shelf and the room
+        works out what gets him.</p>
+        <div class="ask-search">
+          <input id="ask-input" type="text" spellcheck="false"
+            placeholder="who do you want…" aria-label="Search for a player to trade for">
+          <div id="ask-results" class="slip-results" hidden></div>
+        </div>
+        <div id="ask-body"></div>
+      </div>
+
       <div class="checker" id="deal-checker" hidden>
         <h3 class="checker-title">The back table</h3>
         <p class="room-note">Got your own deal in mind? Pick a partner, tap the
