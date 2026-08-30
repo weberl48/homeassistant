@@ -518,6 +518,93 @@ def audit_width_system(r: Results) -> None:
 
 # ---------------------------------------------------------------------------
 
+def audit_mid_draft(pg, base: str, r: Results) -> None:
+    """Draft night is a board mid-snake, and this gate had never seen one.
+
+    The demo resets to pick 1 and creeps forward on a timer, so every audit run
+    ever made read the same board: round one, going out, seat one on the clock,
+    not a name crossed off. That is the one shape draft night is NOT. The
+    reversal on even rounds, the clockplate naming an owner instead of a slot,
+    the seating strip tracking the clock — all of it was written for tonight
+    and had rendered only in the state where none of it does anything.
+
+    So: drive the sim into round two and assert the DOM against the payload.
+    Nothing here hardcodes the league's shape; the point is that what the board
+    SHOWS matches what the server SAID, in a state nobody had looked at.
+
+    Demo only — the endpoint refuses elsewhere, and a live run reports skipped
+    rather than failing, because fast-forwarding a real draft is not a thing.
+    """
+    d0 = pg.request.get(f"{base}/api/draft/board").json().get("draft", {})
+    teams = int(d0.get("teams") or 12)
+    if not pg.request.post(f"{base}/api/draft/advance?to={teams + 6}").ok:
+        r.ok("mid-draft board rehearsed", "skipped — not a demo instance")
+        return
+
+    # Step past our own seat if the snake lands on it. Being on the clock is a
+    # different clockplate branch, and the one worth rehearsing is the other:
+    # the branch that has to turn a slot number into somebody's name.
+    d, order = {}, []
+    for step in range(3):
+        d = pg.request.get(f"{base}/api/draft/board").json().get("draft", {})
+        order = d.get("order") or []
+        live = next((o for o in order if o.get("on_clock")), None)
+        if not live or not live.get("mine"):
+            break
+        pg.request.post(f"{base}/api/draft/advance?to={teams + 7 + step}")
+    rnd, status = d.get("round"), d.get("status")
+    # If this did not actually reach a reversed round, the rehearsal rehearsed
+    # nothing — say so loudly rather than passing on an unexercised path.
+    r.check(status == "drafting" and rnd and rnd % 2 == 0 and order,
+            "the rehearsal reaches a reversed round",
+            f"status={status} round={rnd} seats={len(order)}")
+    if not (order and rnd):
+        return
+
+    back = status == "drafting" and rnd % 2 == 0
+    want_first = (order[-1] if back else order[0])["slot"]
+    want_live = [o["slot"] for o in order if o.get("on_clock")]
+    want_mine = [o["slot"] for o in order if o.get("mine")]
+    live_seat = next((o for o in order if o.get("on_clock")), None)
+
+    pg.set_viewport_size({"width": 1440, "height": 1000})
+    pg.goto(f"{base}#board", wait_until="networkidle")
+    pg.wait_for_timeout(1500)
+    got = pg.evaluate("""() => {
+      const no = (el) => Number(el.querySelector('.seat-no').textContent.trim());
+      const seats = [...document.querySelectorAll('#draft-order .seat')];
+      const txt = (s) => (document.querySelector(s)?.textContent || '').trim();
+      return {
+        n: seats.length,
+        first: seats.length ? no(seats[0]) : null,
+        live: seats.filter(s => s.classList.contains('is-live')).map(no),
+        mine: seats.filter(s => s.classList.contains('is-mine')).map(no),
+        dir: txt('.order-dir'),
+        sub: txt('#clock-sub'),
+        wide: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    }""")
+
+    r.check(got["n"] == len(order), "the strip seats every team mid-draft",
+            f"{got['n']} of {len(order)}")
+    r.check(got["first"] == want_first, "the strip reverses on an even round",
+            f"leads with seat {got['first']}, snake says {want_first}")
+    r.check(got["live"] == want_live, "one seat is lit, and it is the one picking",
+            f"lit {got['live']}, payload says {want_live}")
+    r.check(got["mine"] == want_mine, "your seat is marked exactly once",
+            f"{got['mine']} vs {want_mine}")
+    r.check("coming back" in got["dir"],
+            "the strip says which way the round runs", got["dir"])
+    if live_seat and not live_seat.get("mine"):
+        # The whole reason the seating plan is ingested: a slot number is
+        # something you decode under a 60-second timer, a name is not.
+        r.check(live_seat["owner"] in got["sub"] and "slot " not in got["sub"],
+                "the clockplate names who is picking", got["sub"])
+    r.check(not got["wide"], "nothing scrolls sideways mid-draft")
+
+    pg.request.post(f"{base}/api/draft/reset")
+
+
 def run(pg, base: str) -> Results:
     r = Results()
     audit_token_drift(r)
@@ -535,6 +622,10 @@ def run(pg, base: str) -> Results:
     audit_no_sideways(pg, base, r)
     audit_targets(pg, base, r)
     audit_contrast(pg, base, r)
+    # Last: it drives the sim forward, so everything above reads the board in
+    # the state it has always been audited in, and this one reads the state
+    # that actually ships tonight. It resets the sim behind itself.
+    audit_mid_draft(pg, base, r)
     return r
 
 

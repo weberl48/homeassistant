@@ -54,6 +54,21 @@ CURVE_DEPTH = 12
 MIN_PICKS_PER_POS = 3
 # Hard cap on the correction, in picks. One round.
 MAX_OFFSET = 12.0
+# Confidence bar for SAYING a tendency out loud, as offset over spread.
+#
+# The numbers need no such bar, and deliberately do not have one: widen_sigma
+# folds the room's draft-to-draft spread into the survival curve in quadrature,
+# so a position this room is erratic about already gets a FLATTER curve rather
+# than a confident shift. That is the honest treatment of a noisy habit, and it
+# is available to arithmetic.
+#
+# Prose cannot flatten. A sentence either claims the habit or stays quiet, so
+# the words need a bar the math does not. Below this ratio the past drafts
+# disagree by too much of the effect's own width to assert it in English — and
+# the failure mode of asserting it anyway ("you can wait longer than the sheet
+# says") is losing a man you waited on, which is the one error draft night
+# cannot give back.
+MIN_SIGNAL = 2.0
 
 _POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
 
@@ -178,12 +193,20 @@ def widen_sigma(sigma: float, pos: str, tend: dict[str, Tendency]) -> float:
     return (sigma ** 2 + t.spread ** 2) ** 0.5
 
 
-def read_out(tend: dict[str, Tendency], min_offset: float = 3.0) -> list[str]:
+def read_out(tend: dict[str, Tendency], min_offset: float = 3.0,
+             min_signal: float = MIN_SIGNAL) -> list[str]:
     """What the room does, in words, for the shelf. Silent when the room drafts
-    to the market — which is the honest answer most of the time."""
+    to the market — which is the honest answer most of the time — and silent
+    about a position the room is not CONSISTENT about, however wide the gap.
+    Sorting by size alone puts the least reliable number first whenever the
+    room is erratic, which is the opposite of what the shelf is for."""
     lines = []
     for t in sorted(tend.values(), key=lambda t: -abs(t.offset)):
         if abs(t.offset) < min_offset:
+            continue
+        # spread == 0 is perfect agreement, not absent evidence: MIN_DRAFTS
+        # guarantees at least two drafts stand behind every tendency here.
+        if t.spread > 0 and abs(t.offset) / t.spread < min_signal:
             continue
         if t.offset > 0:
             lines.append(f"This room takes {t.pos}s about {t.offset:.0f} picks "

@@ -656,6 +656,50 @@ def record_pick(conn: sqlite3.Connection, pick_no: int, player_id: str) -> None:
     conn.commit()
 
 
+# How long a fast-forward holds the sim still afterwards. The rehearsal has to
+# read a board that is not moving under it: the demo's own poller ticks every
+# few seconds, and a check that reloads, counts seats, then asserts would race
+# a pick that landed in between.
+FF_HOLD_SECONDS = 30.0
+
+
+def fast_forward(conn: sqlite3.Connection, to_pick: int, suggest_for_me) -> int:
+    """Drive the simulated draft to `to_pick` with no clock, and hold it there.
+
+    The demo resets to pick 1 and creeps forward on a timer, so every audit run
+    the gate has ever made has seen the same board: round one, going out, seat
+    one on the clock, no column yet emptied. That is the one shape draft night
+    is NOT — the snake never reverses in round one, nobody has been crossed
+    off, and the clockplate has never had to name anyone. Those paths ship
+    tonight having never rendered. This exists so they can be rehearsed.
+    """
+    total = settings.teams * settings.rounds
+    to_pick = max(1, min(int(to_pick), total + 1))
+    # Land ON the requested pick, wherever the sim happens to be. A demo DB
+    # survives restarts, so by the time a gate asks for round two the sim has
+    # usually run the board out to 180 and "advance" would be a silent no-op —
+    # which reads exactly like a passing rehearsal of nothing.
+    if current_pick_no(conn) > to_pick:
+        _reset_draft(conn)
+    made = 0
+    while current_pick_no(conn) < to_pick:
+        pick_no = current_pick_no(conn)
+        slot = slot_for_pick(pick_no)
+        pid = (suggest_for_me() if slot == settings.my_roster_id
+               else _sim_pick_for_slot(conn, slot, pick_no))
+        if pid is None:            # pool exhausted under the sim's constraints
+            break
+        record_pick(conn, pick_no, pid)
+        made += 1
+    # Same heartbeat the live poller writes, so the board does not banner a
+    # stale wire the moment it lands on the fast-forwarded state.
+    conn.execute("UPDATE drafts SET updated_at=? WHERE draft_id=?",
+                 (db.utcnow(), DEMO_DRAFT_ID))
+    db.meta_set(conn, "demo_draft_next_tick", str(time.time() + FF_HOLD_SECONDS))
+    conn.commit()
+    return made
+
+
 def tick(conn: sqlite3.Connection, suggest_for_me) -> bool:
     """Advance the simulated draft when its clock has elapsed. `suggest_for_me`
     is a callable returning my best pick's player_id (the brain drafts my team

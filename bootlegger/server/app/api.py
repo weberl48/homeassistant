@@ -317,6 +317,19 @@ def draft_reset():
     return {"ok": True}
 
 
+@app.post("/api/draft/advance", dependencies=MUTATES)
+def draft_advance(to: int = 0):
+    """Fast-forward the simulated draft, for rehearsing a mid-draft board.
+
+    Demo only, and deliberately so: the live board's picks belong to Sleeper.
+    """
+    if settings.mode != "demo":
+        raise HTTPException(400, "advance exists only in demo mode")
+    conn = get_conn()
+    made = demo.fast_forward(conn, to, lambda: brain.suggest_my_pick(conn))
+    return {"ok": True, "made": made, "pick": demo.current_pick_no(conn)}
+
+
 @app.get("/api/week/current")
 def week_card_current():
     """The week the season clock says it is — every client should poll this,
