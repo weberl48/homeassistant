@@ -71,12 +71,26 @@ DRY_RUN = os.environ.get("HANDS_DRY_RUN", "1").strip().lower() not in _DRY_RUN_F
 def _page_alive(page) -> bool:
     """Is this page still attached to a browser that exists?
 
-    Playwright exposes is_closed() on the page, but a renderer that died takes
-    the whole target with it and the cheapest honest probe is to ask the page
-    something trivial and see whether it answers.
+    Cheap non-blocking checks FIRST, and they are the ones that catch the
+    failure this exists for: a renderer that dies closes its target and, on an
+    OOM kill, usually takes the connection with it. Both answers are local —
+    neither round-trips to the page.
+
+    The evaluate() is a last resort and is the part I am least sure of. It
+    catches a page that is nominally open but wedged, and Playwright's Python
+    API gives evaluate no timeout of its own — so on a renderer that is hung
+    rather than dead it can block, and blocking here costs a pick. It runs only
+    after the cheap checks have said "probably alive", which bounds how often
+    that can happen, and it is deliberately the last thing tried rather than
+    the first. If a hung-but-connected renderer ever shows up in a real draft,
+    this is the line to replace with a threaded probe.
     """
     try:
         if page.is_closed():
+            return False
+        ctx = getattr(page, "context", None)
+        browser = getattr(ctx, "browser", None) if ctx else None
+        if browser is not None and not browser.is_connected():
             return False
         page.evaluate("1")
         return True
