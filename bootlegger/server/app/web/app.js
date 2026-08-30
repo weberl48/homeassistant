@@ -68,6 +68,7 @@ const state = {
   tab: localStorage.getItem("bootlegger.tab") || "board",
   board: null, week: null, health: null,
   lastSync: null, wireDown: false, pickFeedStale: false,
+  orderSig: null,           // last rendered seating plan — see renderOrder
   weekSig: null,            // last rendered week card — see pollWeek
   beatSig: null,            // last rendered wire items — see loadBeat
   rowIndex: new Map(),      // player id -> row element
@@ -258,6 +259,50 @@ function posOf(p) { return p.pos === "DST" ? "DEF" : p.pos; }
 
 function fmtSurv(s) { return `${Math.round(s * 100)}%`; }
 
+/* Sleeper stamps start_time in epoch MILLISECONDS. */
+function untilStart(ms) {
+  const secs = Math.round((Number(ms) - Date.now()) / 1000);
+  if (!Number.isFinite(secs)) return "";
+  if (secs <= 0) return "starting now";
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+  if (h >= 1) return `starts in ${h}h ${m}m`;
+  if (m >= 1) return `starts in ${m}m`;
+  return `starts in ${secs}s`;
+}
+
+/* THE ROOM, IN PICK ORDER. Twelve seats along the top of the board: who is on
+   the clock, where you sit, and who is between you and your next turn. Drawn
+   only when Sleeper has published the order — an invented seating plan would
+   be worse than none. Rebuilt only when the seating or the clock actually
+   changes, per the stillness rule. */
+function renderOrder(d) {
+  const el = $("#draft-order");
+  if (!el) return;
+  const order = d.order || [];
+  if (!order.length) { el.hidden = true; return; }
+  const sig = JSON.stringify([order.map((o) => [o.slot, o.owner, o.on_clock, o.mine]),
+                              d.status, d.round]);
+  if (sig === state.orderSig) return;
+  state.orderSig = sig;
+  el.hidden = false;
+  // Snake: odd rounds run 1→N, even rounds run back. Showing the row in the
+  // direction it is actually moving is the whole point of a draft board.
+  const back = d.status === "drafting" && d.round % 2 === 0;
+  const seats = back ? [...order].reverse() : order;
+  el.innerHTML = `
+    <div class="order-head">
+      <span class="order-title">The room</span>
+      <span class="order-dir">${d.status === "drafting"
+        ? `round ${d.round} ${back ? "coming back" : "going out"}` : "pick order"}</span>
+    </div>
+    <ol class="order-strip">${seats.map((o) => `
+      <li class="seat${o.mine ? " is-mine" : ""}${o.on_clock ? " is-live" : ""}"
+          title="${esc(o.owner)}${o.mine ? " — you" : ""}${o.on_clock ? " · on the clock" : ""}">
+        <span class="seat-no">${o.slot}</span>
+        <span class="seat-who">${esc(o.owner)}</span>
+      </li>`).join("")}</ol>`;
+}
+
 /* Significant figures, not fixed ones. A VBD of 166.3 against 166 is a
    distinction nobody drafts on, while 4.6 against 5 is — and the tenth on the
    big numbers is exactly what pushed the widest rows past their column on the
@@ -402,6 +447,7 @@ function renderBoard(board) {
   }
 
   renderClock(board.draft);
+  renderOrder(board.draft);
   renderCall(board);
   renderShelf(board);
   renderShelfFindings(board.shelf);
@@ -423,7 +469,14 @@ function renderClock(d) {
   plate.classList.toggle("is-mine", !!d.on_the_clock_me);
   if (d.status === "pre_draft") {
     setLive($("#clock-line"), "AWAITING KICKOFF");
-    setLive($("#clock-sub"), "the draft hasn't started — the board warms up");
+    // A countdown is the one thing worth knowing before it starts, and the
+    // seat you drew is the second. Both come from Sleeper.
+    const seat = d.my_slot ? `you're in seat ${d.my_slot} of ${d.teams}` : "";
+    const first = (d.my_picks || [])[0];
+    const at = first ? ` · first pick #${first}` : "";
+    setLive($("#clock-sub"), d.starts_at
+      ? `${untilStart(d.starts_at)} — ${seat}${at}`
+      : `${seat}${at}` || "the draft hasn't started — the board warms up");
     return;
   }
   if (d.status === "complete") {
@@ -436,9 +489,16 @@ function renderClock(d) {
       ? `the room likes ${pick.name}` : "the room is thinking");
   } else {
     setLive($("#clock-line"), `PICK ${d.current_pick} OF ${d.total_picks} · ROUND ${d.round}`);
+    // WHO, not which slot. "slot 10 on the clock" is a number you have to
+    // decode under a 60-second timer; a name tells you whether the man ahead
+    // of you takes backs.
+    const seat = (d.order || []).find((o) => o.on_clock);
+    const who = seat ? seat.owner : `slot ${d.on_clock_slot}`;
+    const away = d.my_next_pick ? d.my_next_pick - d.current_pick : null;
     setLive($("#clock-sub"), d.my_next_pick
-      ? `slot ${d.on_clock_slot} on the clock · you pick at #${d.my_next_pick}`
-      : "no picks left for you");
+      ? `${who} on the clock · you pick at #${d.my_next_pick}`
+        + (away > 0 ? ` (${away} away)` : "")
+      : `${who} on the clock · no picks left for you`);
   }
 }
 

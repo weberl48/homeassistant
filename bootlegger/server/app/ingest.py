@@ -847,6 +847,14 @@ def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: s
         order = d.get("draft_order") or {}
         if settings.user_id and settings.user_id in order:
             dsettings = {**dsettings, "slot": order[settings.user_id]}
+        # The room's seating plan. slot_to_roster_id is what turns "slot 10 on
+        # the clock" into a name — a slot number tells you nothing on draft
+        # night, and knowing WHO is picking is half of reading the room.
+        # start_time is Sleeper's own kickoff in epoch ms.
+        if d.get("slot_to_roster_id"):
+            dsettings = {**dsettings, "slot_to_roster_id": d["slot_to_roster_id"]}
+        if d.get("start_time"):
+            dsettings = {**dsettings, "start_time": d["start_time"]}
         conn.execute(
             "INSERT INTO drafts(draft_id,status,settings_json,updated_at) VALUES(?,?,?,?) "
             "ON CONFLICT(draft_id) DO UPDATE SET status=excluded.status,"

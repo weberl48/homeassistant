@@ -217,6 +217,38 @@ def room_tendencies(conn: sqlite3.Connection) -> dict[str, room_engine.Tendency]
     return room_engine.tendencies(curves, room_engine.market_curve(adp_rows))
 
 
+def draft_order_rows(conn: sqlite3.Connection, dsettings: dict, teams: int,
+                     on_clock_slot: int | None, my_slot: int) -> list[dict]:
+    """The twelve seats in pick order, named.
+
+    Sleeper publishes slot_to_roster_id once the order is set; before that this
+    returns nothing rather than inventing an order, because a seating plan the
+    room has not agreed on is worse than no seating plan. Owners come from the
+    rosters table, so a seat whose roster has not synced yet reads as its slot
+    number instead of a wrong name.
+    """
+    mapping = dsettings.get("slot_to_roster_id") or {}
+    if not mapping:
+        return []
+    owners = {r["roster_id"]: (r["owner"] or f"roster {r['roster_id']}")
+              for r in conn.execute("SELECT roster_id, owner FROM rosters")}
+    out = []
+    for slot in range(1, teams + 1):
+        rid = mapping.get(str(slot), mapping.get(slot))
+        try:
+            rid = int(rid) if rid is not None else None
+        except (TypeError, ValueError):
+            rid = None
+        out.append({
+            "slot": slot,
+            "roster_id": rid,
+            "owner": owners.get(rid) or f"slot {slot}",
+            "mine": slot == my_slot,
+            "on_clock": on_clock_slot is not None and slot == on_clock_slot,
+        })
+    return out
+
+
 def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     """Everything the Draft Board surface needs, in one payload."""
     # Newest draft wins: a league reset creates a second draft row, and an
@@ -474,6 +506,15 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             "on_clock_slot": on_clock_slot,
             "on_the_clock_me": on_clock_slot == my_slot,
             "my_slot": my_slot, "my_next_pick": my_next,
+            # THE ROOM'S SEATING PLAN. "slot 10 on the clock" tells you
+            # nothing on draft night; a name tells you whether the man ahead
+            # of you takes running backs. Every seat, in pick order, with the
+            # one on the clock marked and yours flagged.
+            "order": draft_order_rows(conn, dsettings, teams, on_clock_slot, my_slot),
+            # Every pick number this seat owns, so the wait between turns is a
+            # fact on the screen rather than arithmetic done under a clock.
+            "my_picks": draft_engine.snake_pick_numbers(my_slot, teams, rounds),
+            "starts_at": dsettings.get("start_time"),
             # heartbeat: the poller refreshes this every cycle; the frontend
             # banners when it goes stale during a live draft
             "synced_at": drow["updated_at"] if drow else None,

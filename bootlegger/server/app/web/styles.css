@@ -448,6 +448,62 @@ main { position: relative; z-index: 1; max-width: var(--w-field); margin: 0 auto
    leave two dead cells — about a third of a 1440px viewport showing nothing.
    Three columns fills exactly twice over, and a genuinely wide screen gets all
    six on one line. */
+/* ============================ THE ROOM ============================
+   Twelve seats along the top of the board. The one on the clock burns royal;
+   yours keeps the same is-mine treatment the player rows use, so "where am I"
+   is answered by the same visual language everywhere. Scrolls inside itself on
+   a phone rather than widening the page. */
+.draft-order {
+  border: 1px solid var(--line-soft); border-radius: 10px;
+  background: var(--panel) linear-gradient(180deg, var(--panel-2), var(--panel));
+  padding: 9px 12px 11px; margin-bottom: 14px;
+}
+.order-head {
+  display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px;
+}
+.order-title {
+  font: 700 .7rem/1 var(--font-ui); letter-spacing: .2em;
+  text-transform: uppercase; color: var(--ink-dim);
+}
+.order-dir {
+  margin-left: auto; font-family: var(--font-ledger); font-size: .68rem;
+  color: var(--ink-faint); letter-spacing: .04em;
+}
+.order-strip {
+  list-style: none; display: flex; gap: 6px; overflow-x: auto;
+  scrollbar-width: thin; scrollbar-color: var(--brass) transparent;
+  padding-bottom: 2px;
+}
+.seat {
+  flex: 1 1 0; min-width: 84px;
+  display: flex; align-items: baseline; gap: 6px;
+  border: 1px solid var(--line-soft); border-radius: 6px;
+  padding: 6px 8px; background: rgba(236, 242, 255, .03);
+}
+.seat-no {
+  font-family: var(--font-ledger); font-size: .72rem; color: var(--ink-faint);
+  flex: none;
+}
+.seat-who {
+  font-size: .8rem; color: var(--ink-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Yours: the same royal wash the board gives your own picked rows. */
+.seat.is-mine {
+  background: linear-gradient(90deg, rgba(91,140,255,.18), rgba(91,140,255,.04));
+  border-color: var(--brass-deep);
+}
+.seat.is-mine .seat-who { color: var(--ink); font-weight: 600; }
+/* On the clock: the loudest thing in the strip, and never red — being on the
+   clock is a state, not trouble. */
+.seat.is-live {
+  border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass) inset;
+}
+.seat.is-live .seat-no, .seat.is-live .seat-who {
+  color: var(--brass-bright); font-weight: 700;
+}
+@media (max-width: 900px) { .seat { min-width: 96px; } }
+
 /* THE FOUR THAT DECIDE.
    A player row needs ~190px before its own second line starts compressing
    (measured: .l2 scrollWidth 189 against a 188px column at 1920). At 1440 —

@@ -573,7 +573,14 @@ def _reset_draft(conn: sqlite3.Connection) -> None:
         "INSERT OR REPLACE INTO drafts(draft_id,status,settings_json,updated_at) VALUES(?,?,?,?)",
         (DEMO_DRAFT_ID, "drafting",
          json.dumps({"teams": settings.teams, "rounds": settings.rounds,
-                     "slot": settings.my_roster_id}), db.utcnow()),
+                     "slot": settings.my_roster_id,
+                     # The seating plan, so the room strip is rehearsable
+                     # locally. Live, Sleeper supplies this once the order is
+                     # drawn; a surface that only exists against the real
+                     # league is a surface nobody has looked at.
+                     "slot_to_roster_id": {str(i): i for i in
+                                           range(1, settings.teams + 1)}}),
+         db.utcnow()),
     )
     db.meta_set(conn, "demo_draft_next_tick", str(time.time() + 2.0))
     conn.commit()
