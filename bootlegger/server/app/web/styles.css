@@ -1681,3 +1681,14 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
    NEWS saying so rather than the injury report, and on draft night the two
    disagree for hours at a time. That gap is what this chip exists to show. */
 .wire-flag { color: var(--marigold); }
+
+/* The fallback link inside a hold notice. It is the ONLY way to act when the
+   hands miss or sit in dry run, so it is a control in every sense that
+   matters — and it measured 22px, half the tap target this project commits
+   to. It rendered only once live data produced a hold, which is why a gate
+   that had passed eighteen checks all day caught it the moment the season's
+   first matchups landed. Inline-block so the padding actually applies. */
+.holds a {
+  display: inline-block; min-height: 44px; line-height: 44px;
+  padding: 0 2px; text-underline-offset: 3px;
+}
