@@ -232,7 +232,7 @@ def test_priors_stay_short_enough_to_read_on_the_clock():
 def test_starting_slots_counts_dedicated_and_flex_separately():
     slots = advisories.starting_slots(DEMO_ROSTER_POSITIONS)
     assert slots["RB"] == 2 and slots["WR"] == 2 and slots["QB"] == 1
-    assert slots["FLEX"] == 1
+    assert slots["FLEX"] == 2
     assert "BN" not in slots
 
 

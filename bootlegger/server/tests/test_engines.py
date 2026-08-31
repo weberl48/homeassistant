@@ -91,10 +91,20 @@ def test_need_multiplier():
     rp = DEMO_ROSTER_POSITIONS
     assert draft.roster_need_multiplier("RB", {}, rp) == 1.0
     assert draft.roster_need_multiplier("RB", {"RB": 2}, rp) == 0.85  # flex open
-    assert draft.roster_need_multiplier("RB", {"RB": 3}, rp) == 0.55  # all full
+    # Two flex slots: a third back fills the first, a fourth the second,
+    # and only the fifth is pure bench depth.
+    assert draft.roster_need_multiplier("RB", {"RB": 3}, rp) == 0.85
+    assert draft.roster_need_multiplier("RB", {"RB": 5}, rp) == 0.55  # all full
     assert draft.roster_need_multiplier("K", {}, rp) == 0.25          # not yet
+    # Still not yet: one flex slot is open, and a skill body beats a kicker.
     assert draft.roster_need_multiplier(
-        "K", {"QB": 1, "RB": 3, "WR": 2, "TE": 1}, rp) == 1.0          # now yes
+        "K", {"QB": 1, "RB": 3, "WR": 2, "TE": 1}, rp) == 0.25
+    # Both flexes filled, every skill slot covered -> now the kicker is urgent.
+    assert draft.roster_need_multiplier(
+        "K", {"QB": 1, "RB": 4, "WR": 2, "TE": 1}, rp) == 1.0
+    # ...and a SECOND kicker is dead weight even then.
+    assert draft.roster_need_multiplier(
+        "K", {"QB": 1, "RB": 4, "WR": 2, "TE": 1, "K": 1}, rp) == 0.05
 
 
 # --- lineup ----------------------------------------------------------------
@@ -108,6 +118,12 @@ def _roster():
         PlayerProj("wr3", "WR", 11),
         PlayerProj("te1", "TE", 10), PlayerProj("k1", "K", 8),
         PlayerProj("def1", "DEF", 7),
+        # Bench depth. The demo shape carries TWO flex slots (it matches the
+        # real league), so ten men start and eleven bodies left the optimizer
+        # no choice to make — an injured starter had nobody to be replaced by.
+        # Both sit below rb3/wr3, so the optimal lineup is unchanged and only
+        # the bench gets deeper.
+        PlayerProj("rb4", "RB", 9), PlayerProj("wr4", "WR", 6),
     ]
 
 
@@ -115,8 +131,11 @@ def test_optimizer_uses_flex_for_best_leftover():
     lineup = optimize(_roster(), DEMO_ROSTER_POSITIONS)
     ids = lineup.starter_ids
     assert {"qb1", "rb1", "rb2", "wr1", "wr2", "te1", "k1", "def1"} <= ids
-    assert "rb3" in ids  # rb3 (12) beats wr3 (11) for FLEX
-    assert math.isclose(lineup.total, 20 + 18 + 14 + 17 + 13 + 10 + 12 + 8 + 7)
+    # Two flex slots: rb3 (12) takes the first, wr3 (11) the second, and rb4
+    # (9) is the best man left on the bench.
+    assert "rb3" in ids and "wr3" in ids and "rb4" not in ids
+    assert math.isclose(lineup.total,
+                        20 + 18 + 14 + 17 + 13 + 10 + 12 + 11 + 8 + 7)
 
 
 def test_out_player_is_routed_around():
@@ -127,12 +146,15 @@ def test_out_player_is_routed_around():
 
 
 def test_diff_flags_material_swap():
-    actual = ["qb1", "rb2", "rb3", "wr1", "wr2", "te1", "rb1", "k1", "def1"]
-    # starting rb2/rb3 with rb1 in flex is fine; bench nobody -> optimal identical
+    # Ten starters now: the same eight plus BOTH flex bodies. Starting
+    # rb2/rb3 with rb1 in a flex is still fine -> optimal identical.
+    actual = ["qb1", "rb2", "rb3", "wr1", "wr2", "te1", "rb1", "wr3",
+              "k1", "def1"]
     d = diff_lineup(_roster(), actual, DEMO_ROSTER_POSITIONS)
     assert d.delta == 0.0 and not d.swaps
     # now bench the stud: qb2 starting over qb1
-    actual2 = ["qb2", "rb1", "rb2", "wr1", "wr2", "te1", "rb3", "k1", "def1"]
+    actual2 = ["qb2", "rb1", "rb2", "wr1", "wr2", "te1", "rb3", "wr3",
+               "k1", "def1"]
     d2 = diff_lineup(_roster(), actual2, DEMO_ROSTER_POSITIONS)
     assert d2.delta == 5.0
     assert d2.material

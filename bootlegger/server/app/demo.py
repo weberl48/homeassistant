@@ -109,6 +109,15 @@ FIXTURE: list[tuple[str, str, str]] = [
     ("Younghoe Koo", "K", "ATL"), ("Evan McPherson", "K", "CIN"),
     ("Chase McLaughlin", "K", "TB"), ("Jason Sanders", "K", "MIA"),
     ("Cairo Santos", "K", "CHI"), ("Wil Lutz", "K", "DEN"),
+    # Kickers past the twelfth seat. The real pool carries about thirty-four
+    # for twelve seats, so a kicker is the most replaceable thing in the draft
+    # and waiting costs almost nothing. The demo used to stop at fourteen —
+    # near-exhaustion — which is the OPPOSITE regime, and it is why every
+    # self-play verdict about K/DEF timing taken from this fixture was wrong.
+    ("Matt Gay", "K", "WAS"), ("Jake Moody", "K", "CLE"),
+    ("Joshua Karty", "K", "LAR"), ("Will Reichard", "K", "NYG"),
+    ("Blake Grupe", "K", "NO"), ("Matt Prater", "K", "ARI"),
+    ("Anders Carlson", "K", "NYJ"), ("Greg Zuerlein", "K", "TEN"),
     # --- DEF ---
     ("Ravens D/ST", "DEF", "BAL"), ("Broncos D/ST", "DEF", "DEN"),
     ("Steelers D/ST", "DEF", "PIT"), ("Eagles D/ST", "DEF", "PHI"),
@@ -116,6 +125,11 @@ FIXTURE: list[tuple[str, str, str]] = [
     ("Packers D/ST", "DEF", "GB"), ("Chiefs D/ST", "DEF", "KC"),
     ("Lions D/ST", "DEF", "DET"), ("Seahawks D/ST", "DEF", "SEA"),
     ("49ers D/ST", "DEF", "SF"), ("Jets D/ST", "DEF", "NYJ"),
+    # Twelve defenses for twelve seats was exact exhaustion: the last seat had
+    # no choice at all, and a board that cannot choose cannot be wrong, so the
+    # fixture could never surface a bad DEF decision.
+    ("Bills D/ST", "DEF", "BUF"), ("Cowboys D/ST", "DEF", "DAL"),
+    ("Bengals D/ST", "DEF", "CIN"), ("Chargers D/ST", "DEF", "LAC"),
 ]
 
 # Season-points anchor curves (rank -> full-PPR pts), interpolated linearly.
@@ -124,8 +138,15 @@ CURVES: dict[str, list[tuple[int, float]]] = {
     "RB": [(1, 340), (5, 290), (12, 240), (24, 185), (36, 140), (48, 105)],
     "WR": [(1, 350), (5, 305), (12, 265), (24, 220), (40, 175), (56, 140)],
     "TE": [(1, 250), (3, 200), (6, 165), (12, 130), (20, 100)],
-    "K": [(1, 155), (14, 115)],
-    "DEF": [(1, 130), (12, 88)],
+    # Anchored to the DEEPEST rank in the pool rather than the twelfth, so the
+    # tail is a stated choice instead of a side effect of _interp's -2.0/rank
+    # extrapolation constant. Checked rather than assumed: the extrapolation
+    # was already sane, and these anchors barely move it (DEF identical at
+    # every new rank, K within four points at rank 22). They are here so that
+    # growing the pool again is an edit to a curve someone reads, not a silent
+    # slide down a slope nobody chose.
+    "K": [(1, 155), (14, 115), (22, 103)],
+    "DEF": [(1, 130), (12, 88), (16, 80)],
 }
 
 SOURCES = [("ledger", 6.0), ("wire", 9.0), ("gut", 12.0)]  # name, noise sigma

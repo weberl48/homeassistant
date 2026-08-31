@@ -100,7 +100,13 @@ class Settings:
 
 settings = Settings.from_env()
 
-# Demo league shape: 12-team full-PPR, standard Sleeper roster.
-DEMO_ROSTER_POSITIONS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "K", "DEF",
-                         "BN", "BN", "BN", "BN", "BN", "BN"]
+# Demo league shape: 12-team full-PPR, standard Sleeper roster — and the same
+# shape as the real league this project actually flies against. It was one FLEX
+# against the real two until 2026-08-31, which made every self-play result
+# quietly untrustworthy: a second flex slot is the whole reason a fourth
+# receiver or a second tight end has anywhere to go, so the demo was rehearsing
+# a scarcity regime the live board never sees. Fifteen slots either way, so the
+# pick count and every exhaustion calculation downstream are unchanged.
+DEMO_ROSTER_POSITIONS = ["QB", "RB", "RB", "WR", "WR", "TE", "FLEX", "FLEX",
+                         "K", "DEF", "BN", "BN", "BN", "BN", "BN"]
 DEMO_SCORING = {"rec": 1.0, "pass_td": 4.0, "rush_td": 6.0, "rec_td": 6.0}
