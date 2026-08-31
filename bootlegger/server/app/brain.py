@@ -39,6 +39,18 @@ SUGGESTION_COUNT = 5
 # that refuses to name anybody carrying a knock names nobody in November.
 BENCHED_BY_FLAG = {"DNR", "Sus", "IR", "PUP", "NA", "Out"}
 
+
+def luxury_markdown(score: float) -> float:
+    """Push a luxury pick down the board in the closing rounds.
+
+    Module-level and named so it can be pinned. A bare `score *= 0.05` moves a
+    NEGATIVE score toward zero: a luxury body at -30 became -1.5 and outranked
+    a starving-position candidate sitting at -2, so the markdown promoted
+    exactly what it exists to bury. Late-round pools go negative routinely,
+    which is precisely when this fires.
+    """
+    return score * 0.05 if score > 0 else score
+
 _DRAFT_ID_RE = re.compile(r"(\d{15,20})")
 
 
@@ -438,14 +450,8 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
                 elif slack <= 2:
                     for cand in pool:
                         if cand.player_id in scores:
-                            # Only marked down if the score is positive. A bare
-                            # multiply moves a negative score TOWARD zero, so a
-                            # luxury body at -30 became -1.5 and outranked a
-                            # candidate at a starving position sitting at -2 —
-                            # the markdown promoting exactly what it exists to
-                            # bury. Late-round pools go negative routinely.
-                            s = scores[cand.player_id]
-                            scores[cand.player_id] = s * 0.05 if s > 0 else s
+                            scores[cand.player_id] = luxury_markdown(
+                                scores[cand.player_id])
     for row in board_rows:
         if row["id"] in scores:
             row["score"] = round(scores[row["id"]], 1)
