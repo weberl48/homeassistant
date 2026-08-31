@@ -1036,8 +1036,15 @@ def nightly(conn: sqlite3.Connection) -> dict:
     # starts: after that the forecast is no longer a forecast.
     try:
         from .engines import ledger as ledger_engine
+        # Preseason: one rolling tag, replaced nightly, so it settles on the
+        # freshest view before kickoff — the closest thing to what the draft
+        # was made from. In season: stamped by week, because a single rolling
+        # in-season tag would overwrite itself every night and keep only the
+        # last one, throwing away the series that shows how each source
+        # revised as the year went on.
+        wk = int(db.meta_get(conn, "current_week", "0") or 0)
         tag = (f"preseason-{settings.season}" if not _in_season(conn)
-               else f"inseason-{settings.season}")
+               else f"inseason-{settings.season}-w{wk:02d}")
         out["ledger"] = {"tag": tag,
                          "rows": ledger_engine.snapshot(conn, tag, settings.season)}
     except Exception as e:      # a bookkeeping table must never fail a run
