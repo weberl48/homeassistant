@@ -99,24 +99,54 @@ def test_still_capped_at_three_lines():
 
 
 # ---------------------------------------------------------------------------
-# What must NOT have changed: the math keeps its correction
+# The gate is on the arithmetic too — corrected 2026-08-31
+#
+# This section originally pinned the opposite rule: "suppressing a sentence
+# must never suppress the number behind it", on the reasoning that widen_sigma
+# already handled an inconsistent room. Draft night measured that reasoning
+# and it was wrong. Widening flattens the curve; the shift still moves its
+# CENTRE by the untrusted offset. Defenses got the full -12.0 at a signal of
+# 1.32, the board expected them to slide twelve picks, the best available went
+# eleven picks before the seat that wanted it, and the roster finished last in
+# the league on defense — about 24.6 points, the largest measurable engine
+# cost of the draft. The tests below now pin the corrected rule.
 
 
-def test_silenced_position_still_corrects_adp():
-    """The shelf stops claiming DEFs slide; the board still expects them to.
-    Suppressing a sentence must never suppress the number behind it."""
+def test_erratic_position_does_not_shift_adp():
+    """DEF: offset -12.0 against spread 9.1. Below the bar, so no shift."""
     tend = _live_six()
-    assert "DEF" not in " ".join(room_engine.read_out(tend))
-    assert room_engine.adjust_adp(100.0, "DEF", tend) == 112.0
+    assert room_engine.adjust_adp(100.0, "DEF", tend) == 100.0
 
 
-def test_silenced_position_still_widens_its_curve():
-    """The spread that disqualified the sentence is exactly what flattens
-    the survival curve — the reason the math needed no gate."""
+def test_consistent_position_still_shifts():
+    """QB: 11.5 against 2.6 clears the bar comfortably, so the correction
+    stands. Gating everything would throw away the room read entirely."""
+    tend = _live_six()
+    assert room_engine.adjust_adp(100.0, "QB", tend) == 88.5
+
+
+def test_the_shelf_and_the_math_now_agree():
+    """The rule in one line: a number you would not say out loud is a number
+    you should not draft on. Whatever read_out names, adjust_adp shifts."""
+    tend = _live_six()
+    spoken = {t.pos for t in tend.values()
+              if any(t.pos + "s" in ln for ln in room_engine.read_out(tend))}
+    for pos, t in tend.items():
+        shifted = room_engine.adjust_adp(100.0, pos, tend) != 100.0
+        if shifted:
+            assert pos in spoken, f"{pos} shifts the board but is never said aloud"
+
+
+def test_erratic_position_still_widens_its_curve():
+    """Widening was always the honest treatment of noise and keeps its job:
+    the room is unpredictable at DEF, so the curve stays flat there even
+    though the centre no longer moves."""
     tend = _live_six()
     assert room_engine.widen_sigma(6.0, "DEF", tend) > 10.0
 
 
-def test_spoken_position_keeps_its_correction_too():
-    tend = _live_six()
-    assert room_engine.adjust_adp(100.0, "QB", tend) == 88.5
+def test_a_perfectly_agreed_offset_still_shifts():
+    """spread == 0 is agreement, not absent evidence — the ratio is infinite
+    and must not be read as a divide-by-zero that gates the shift away."""
+    tend = {"QB": room_engine.Tendency("QB", 9.0, 3, 0.0)}
+    assert room_engine.adjust_adp(100.0, "QB", tend) == 91.0

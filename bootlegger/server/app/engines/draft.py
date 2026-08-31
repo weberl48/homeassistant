@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from ..config import (ADP_SIGMA_FALLBACK, ADP_SIGMA_FLOOR, FLEX_ELIGIBLE,
                       SUPER_FLEX_ELIGIBLE)
+from . import vbd
 
 
 def phi(z: float) -> float:
@@ -89,8 +90,12 @@ def roster_need_multiplier(pos: str, my_pos_counts: dict[str, int],
     raw VBD would otherwise outbid late-round RB/WR value."""
     counts = dict(my_pos_counts)
     dedicated = {p: roster_positions.count(p) for p in ("QB", "RB", "WR", "TE", "K", "DEF")}
-    flex_slots = roster_positions.count("FLEX")
-    sflex_slots = roster_positions.count("SUPER_FLEX")
+    # Sleeper writes a flex slot five different ways and this function knew
+    # only two of them, while brain.py's endgame guard counted all five — so
+    # in a league using REC_FLEX or WRRB_FLEX the two disagreed about how many
+    # slots were open. Count them the same way, from the one shared set.
+    flex_slots = sum(1 for s in roster_positions if s in vbd.FLEX_SLOTS)
+    sflex_slots = sum(1 for s in roster_positions if s in vbd.SFLEX_SLOTS)
 
     def unfilled_dedicated(p: str) -> bool:
         return counts.get(p, 0) < dedicated.get(p, 0)
@@ -103,12 +108,18 @@ def roster_need_multiplier(pos: str, my_pos_counts: dict[str, int],
     sflex_open = sflex_used < sflex_slots
 
     if pos in ("K", "DEF"):
-        if skill_starters_open or flex_open:
-            return 0.25
         # A second kicker/defense is dead weight — you start exactly one and
         # never bench-stash them. (The live UI mock drafted THREE defenses
-        # before this clamp.)
-        return 1.0 if unfilled_dedicated(pos) else 0.05
+        # before this clamp.) This test has to come FIRST: it used to sit
+        # behind the starters-open branch, so for as long as any skill or flex
+        # slot was open — which is nearly the whole draft — a second kicker
+        # scored 0.25 rather than 0.05, and brain's `mult <= 0.05` skip never
+        # fired to drop him off the board at all.
+        if not unfilled_dedicated(pos):
+            return 0.05
+        if skill_starters_open or flex_open:
+            return 0.25
+        return 1.0
     if unfilled_dedicated(pos):
         return 1.0
     if pos in FLEX_ELIGIBLE and flex_open:

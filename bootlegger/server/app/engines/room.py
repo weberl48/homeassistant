@@ -180,6 +180,20 @@ def adjust_adp(adp: float, pos: str, tend: dict[str, Tendency]) -> float:
     t = tend.get((pos or "").upper())
     if not t:
         return adp
+    # The same confidence bar the shelf uses for its sentences. This gate was
+    # added to read_out first and deliberately NOT to the arithmetic, on the
+    # reasoning that widen_sigma already folds spread into the curve. That was
+    # half right and it cost a draft: widening flattens the curve, but the
+    # SHIFT still moves its centre by the untrusted number. Defenses measured
+    # -12.0 at a signal of 1.32 — a correction pinned to the cap, from three
+    # drafts that disagreed by nearly its whole width — and the board duly
+    # expected them to slide twelve picks. The best one available went at 142,
+    # eleven picks before the seat that wanted it, and the roster finished
+    # last in the league on defense.
+    #
+    # A number you would not say out loud is a number you should not draft on.
+    if t.spread > 0 and abs(t.offset) / t.spread < MIN_SIGNAL:
+        return adp
     return max(1.0, adp - t.offset)
 
 

@@ -16,7 +16,7 @@ from typing import Any
 # and only touch each other at call time, so the cycle resolves whichever
 # module Python reaches first.
 from . import alerts, db, schedule
-from .config import (DEMO_ROSTER_POSITIONS, MATERIALITY_PTS,
+from .config import (DEMO_ROSTER_POSITIONS, FLEX_ELIGIBLE, MATERIALITY_PTS,
                      RUN_WINDOW_PICKS, settings)
 from .demo import DEMO_DRAFT_ID, slot_for_pick
 from .engines import advisories
@@ -328,7 +328,16 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         hi = min(lo + 1, len(vbd_curve) - 1)
         return vbd_curve[lo] + (vbd_curve[hi] - vbd_curve[lo]) * (i - lo)
 
-    def blended_value(pid: str, vbd: float) -> float:
+    def blended_value(pid: str, vbd: float, pos: str = "") -> float:
+        # Kickers and defenses keep their own number. Their expert ranks land
+        # around 190-200, far out on the flat tail of a curve built from skill
+        # players, so the blend compresses two kickers a whole point of value
+        # apart into a hair's difference — and then orders them by ECR, which
+        # in the 2026 draft ranked the WORSE kicker above the better one at
+        # two separate picks. The blend is there to let the experts arbitrate
+        # between comparable men; at these positions it arbitrates noise.
+        if pos in ("K", "DEF"):
+            return vbd
         r = ecr_rank.get(pid)
         return 0.5 * vbd + 0.5 * _curve_value(r) if r else vbd
 
@@ -375,7 +384,8 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             wait_surv = (draft_engine.survival_prob(eff_adp, eff_sigma, my_after)
                          if my_after else 0.0)
             pools.setdefault(p["pos"], []).append(
-                Candidate(pid, p["pos"], blended_value(pid, c["vbd"] or 0.0), wait_surv))
+                Candidate(pid, p["pos"],
+                          blended_value(pid, c["vbd"] or 0.0, p["pos"]), wait_surv))
         board_rows.append(row)
 
     # Suggestion scores for available players.
@@ -428,7 +438,14 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
                 elif slack <= 2:
                     for cand in pool:
                         if cand.player_id in scores:
-                            scores[cand.player_id] *= 0.05
+                            # Only marked down if the score is positive. A bare
+                            # multiply moves a negative score TOWARD zero, so a
+                            # luxury body at -30 became -1.5 and outranked a
+                            # candidate at a starving position sitting at -2 —
+                            # the markdown promoting exactly what it exists to
+                            # bury. Late-round pools go negative routinely.
+                            s = scores[cand.player_id]
+                            scores[cand.player_id] = s * 0.05 if s > 0 else s
     for row in board_rows:
         if row["id"] in scores:
             row["score"] = round(scores[row["id"]], 1)
@@ -472,6 +489,34 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     suggestions = [
         {**r, "reason": reasons.get(r["id"], "")} for r in shortlist[:SUGGESTION_COUNT]
     ]
+
+    # WHOSE POINTS HE REPLACES.
+    #
+    # VBD measures a man against replacement AT HIS POSITION. Your lineup
+    # measures him against your own bench, and the two stop agreeing the
+    # moment you already own the position. In the 2026 draft the top call was
+    # a second tight end at 193.0 points; the back beside him scored 193.5 and
+    # went undrafted here. Identical points — but the tight end could only
+    # reach a flex slot, displacing a 190-point receiver for a gain of three,
+    # while the back would have taken an empty RB2 off a 178-point starter for
+    # a gain of fifteen. Twelve points, invisible in the score.
+    #
+    # This says so in words and changes no number. Repricing the flex-bound
+    # candidate was tried and refused: measured against a shared ruler the
+    # shift is uniform within the pool and cancels in the regret math (a
+    # provable no-op), and merging the pools promotes backup quarterbacks.
+    if suggestions:
+        top = suggestions[0]
+        if (top["pos"] in FLEX_ELIGIBLE
+                and my_counts.get(top["pos"], 0) >= rp.count(top["pos"])):
+            alt = next((s for s in suggestions[1:]
+                        if abs((s.get("pts") or 0) - (top.get("pts") or 0)) <= 5
+                        and my_counts.get(s["pos"], 0) < rp.count(s["pos"])), None)
+            if alt:
+                top["reason"] = (
+                    f"{top['reason']} Note: he can only reach a flex slot — "
+                    f"{alt['name']} scores within five points and fills your "
+                    f"open {alt['pos']}.")
 
     # The experts' best available — shown on The Call when the room disagrees.
     # Blocked men are out here too: a second voice repeating the first voice's
