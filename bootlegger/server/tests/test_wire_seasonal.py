@@ -68,9 +68,13 @@ def test_preseason_clause_in_a_headline_is_discounted():
 _POSITIVES = {
     "_PRESEASON_MATERIAL": ["Placed on injured reserve", "Undergoes surgery",
                             "Suspended six games", "Carted off in practice",
-                            "Waived by the Jets", "Torn ACL"],
+                            "Waived by the Jets", "Torn ACL",
+                            "Lands on Commissioner's Exempt list",
+                            "NFL places him on paid leave"],
     "DEPARTURE": ["Placed on injured reserve", "Torn ACL", "Released by the club",
-                  "Suspended 6 games"],
+                  "Suspended 6 games", "Suspended indefinitely",
+                  "Placed on the commissioner's exempt list",
+                  "NFL places him on paid leave"],
     "_DISCOUNTED": ["won't play in Friday's preseason game",
                     "intends to be ready for Week 1", "joint practice"],
     "_READY_HEADLINE": ["Intends to be ready", "Expects to play", "Cleared",
@@ -107,3 +111,76 @@ def test_every_severity_grade_is_reachable():
     }
     assert set(wire.SEVERITY_ORDER) <= reachable | {"info"}
     assert "out" in reachable and "practice" in reachable and "role" in reachable
+
+
+# ---------------------------------------------------------------------------
+# The exempt list — the class of news that was ungraded until 2026-08-30
+
+
+# Verbatim from the live `news` table on draft day. Twenty-five items keyed to
+# one first-round back, nine of them saying plainly that he was not going to
+# play, and every one graded INFO — because "exempt list" appeared in no
+# pattern in this file. The board recommended him twice at three times the
+# runner-up score, and only the owner's own reading of the room prevented the
+# pick. These are the strings that must never grade INFO again.
+_EXEMPT_HEADLINES = [
+    "Fantasy football impact of NFL placing Packers RB Josh Jacobs on "
+    "commissioner exempt list",
+    "Josh Jacobs placed on commissioner's exempt list after Packers RB "
+    "charged with two misdemeanors",
+    "NFL places Josh Jacobs on paid leave",
+    "Josh Jacobs placed on NFL’s Commissioner’s Exempt List",
+    "Lands on Commissioner's Exempt list",
+]
+
+
+@pytest.mark.parametrize("headline", _EXEMPT_HEADLINES)
+def test_exempt_list_is_graded_out_in_season(headline):
+    assert wire.severity(headline, in_season=True) == "out"
+
+
+@pytest.mark.parametrize("headline", _EXEMPT_HEADLINES)
+def test_exempt_list_survives_the_preseason_downgrade(headline):
+    """The draft was in August. Grading it `out` is not enough on its own:
+    _seasonal hands any ALARM grade back to INFO out of season unless
+    preseason_material() vouches for it. That second gate is what actually
+    buried this story, so it gets its own test."""
+    assert wire.preseason_material(headline)
+    assert wire.severity(headline, in_season=False) == "out"
+
+
+@pytest.mark.parametrize("headline", _EXEMPT_HEADLINES)
+def test_exempt_list_opens_a_waiver_window(headline):
+    """DEPARTURE is what tells the league someone's man is gone and the body
+    behind him is worth claiming."""
+    assert wire.DEPARTURE.search(headline)
+
+
+def test_indefinite_suspension_is_a_departure():
+    r"""`suspended \d` wanted a game count, so the vaguer and worse news --
+    no end date -- opened no waiver window."""
+    assert wire.DEPARTURE.search("Suspended indefinitely by the league")
+    assert wire.severity("Suspended indefinitely by the league") == "out"
+
+
+def test_a_charge_is_a_flag_not_an_absence():
+    """Men play through charges; the league office decides absences. Flag it,
+    do not claim he is out."""
+    assert wire.severity("Star running back charged with two misdemeanors") == "questionable"
+    assert wire.severity("Receiver arrested early Sunday morning") == "questionable"
+
+
+def test_exempt_list_beats_a_charge_on_order():
+    """One headline carries both. The half that means he is not playing wins."""
+    assert wire.severity(
+        "Josh Jacobs placed on commissioner's exempt list after Packers RB "
+        "charged with two misdemeanors") == "out"
+
+
+def test_game_prose_is_not_a_legal_matter():
+    """The reason the legal patterns are anchored to whole phrases: a bare
+    'charged' or 'legal' grades half the highlights on the wire."""
+    for benign in ("Crowd charged up after the go-ahead score",
+                   "Legal tampering window opens Monday",
+                   "He charged into the end zone untouched"):
+        assert wire.severity(benign) != "questionable", benign

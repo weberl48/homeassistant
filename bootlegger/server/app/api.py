@@ -277,6 +277,11 @@ def _consensus_weights(conn: sqlite3.Connection) -> dict:
 # the web board + overlay costs one rebuild per actual pick, not per request.
 # synced_at is patched fresh every hit — it's the staleness heartbeat and must
 # never be served stale itself. TTL backstops nightly-data refresh.
+#
+# That invariant is no longer exact: the board now carries wire items, and news
+# lands without a pick landing. The 20s TTL is therefore the real bound on how
+# stale a flag can be, not a backstop — which is the right trade at 1 Hz, but
+# it is a bound rather than the "fully determined" the line above claims.
 _board_cache: dict = {"key": None, "board": None, "ts": 0.0}
 
 

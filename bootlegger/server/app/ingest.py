@@ -134,10 +134,16 @@ def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
 # Live-mode ETL (unused in demo; each step degrades independently and loudly)
 # ---------------------------------------------------------------------------
 
-def etl_players(client: SleeperClient, conn: sqlite3.Connection) -> int:
+def etl_players(client: SleeperClient, conn: sqlite3.Connection,
+                force: bool = False) -> int:
+    """`force` bypasses the client's 24h disk cache. The nightly does not need
+    it — the cache is younger than the job — but a draft-day refresh does, and
+    without it the call is a silent no-op that re-writes yesterday's blob.
+    That is precisely how a DNR flag posted at 2:40pm was still missing from
+    this table when the 8:15pm draft began."""
     now = db.utcnow()
     rows = []
-    for pid, p in client.relevant_players().items():
+    for pid, p in client.relevant_players(force=force).items():
         rows.append({
             "sleeper_id": pid,
             "name": p.get("full_name") or f"{p.get('first_name','')} {p.get('last_name','')}".strip() or pid,
@@ -677,6 +683,12 @@ def _name_lookup(conn: sqlite3.Connection) -> dict:
 # is allowed to replace yesterday's data (a misparsed column reads ~20 pts).
 MIN_SOURCE_ROWS = 100
 MIN_WEEKLY_ROWS = 40
+# How often the sheet is re-pulled during a live draft. The poller sleeps 0.6s
+# while drafting, so this is roughly every half hour — often enough that a flag
+# posted mid-draft lands before your next turn in any real room, rare enough
+# that Sleeper's players blob (which they ask you to fetch about once a day) is
+# hit a handful of times per draft rather than continuously.
+REFRESH_EVERY_CYCLES = 3000
 SANE_MEDIAN = (50.0, 500.0)
 SANE_WEEKLY_MEDIAN = (4.0, 40.0)
 
@@ -876,6 +888,49 @@ def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: s
     return len(picks)
 
 
+def refresh_draft_day(client: SleeperClient, conn: sqlite3.Connection,
+                      deep: bool = False) -> dict:
+    """Re-pull the sheet the board reasons over, while a draft is live.
+
+    Until 2026-08-31 nothing refreshed `players` or `adp` outside the nightly.
+    The 2026 draft therefore opened on an eleven-hour-old sheet: a first-round
+    back had been placed on the Commissioner's Exempt List at 2:40pm, Sleeper
+    was carrying the DNR flag by then, and at 8:15pm this database still had
+    him Active and Questionable with a sixteen-game projection. The poller was
+    talking to that same API twice a second all night and never asked about
+    players.
+
+    `deep` additionally rebuilds projections and consensus — right when the
+    draft goes live, where the cost is one slow cycle and the payoff is a
+    sheet that agrees with the world. The periodic call stays shallow: flags
+    and ADP move during a draft, season projections do not.
+
+    Never raises. A wire that cannot refresh must not stop the picks landing.
+    """
+    out: dict = {}
+    try:
+        # force=True or this is a no-op against a 24h disk cache — and a
+        # silent one, which is worse than a loud failure.
+        out["players"] = etl_players(client, conn, force=True)
+        # etl_players nulls every bye by design (the nightly rebuilds them
+        # from the schedule). Skip this and the shelf's bye advisories go
+        # blind the moment a draft-day refresh lands.
+        out["byes"] = backfill_byes(conn, settings.season)
+    except Exception as e:
+        out["players"] = f"failed: {e}"
+    try:
+        out["adp"] = etl_adp(conn)
+    except Exception as e:
+        out["adp"] = f"failed: {e}"
+    if deep:
+        try:
+            out["projections"] = etl_projections(client, conn, week=0)
+            out["consensus"] = compute_consensus(conn, week=0)
+        except Exception as e:
+            out["projections"] = f"failed: {e}"
+    return out
+
+
 def ping_healthchecks(ok: bool = True) -> None:
     """Dead-man switch: every scheduled job pings healthchecks.io (design doc §6)."""
     if not settings.healthchecks_url:
@@ -1069,7 +1124,16 @@ def main() -> None:
                 n = etl_draft_picks(client, conn, target, full=full)
                 row = conn.execute("SELECT status FROM drafts WHERE draft_id=?",
                                    (target,)).fetchone()
-                status = row["status"] if row else None
+                prev_status, status = status, (row["status"] if row else None)
+                # The sheet, refreshed while the room is live. Deep on the
+                # edge into drafting — one slow cycle bought before the first
+                # pick — then shallow every half hour, because flags and ADP
+                # move during a draft and season projections do not.
+                if status == "drafting":
+                    live_edge = prev_status != "drafting"
+                    if live_edge or cycle % REFRESH_EVERY_CYCLES == 0:
+                        got = refresh_draft_day(client, conn, deep=live_edge)
+                        print(f"sheet refresh (deep={live_edge}): {got}", flush=True)
                 print(f"draft={target} picks={n} status={status}", flush=True)
             except Exception as e:
                 print(f"poll error (retrying): {e}", flush=True)

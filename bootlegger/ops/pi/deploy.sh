@@ -44,9 +44,13 @@ docker run -d --name bootlegger-ingest --restart unless-stopped $ENV_COMMON \
   $IMG python -m app.ingest draft-poll
 
 # Nightly ETL loop (players, schedule+weather, ADP, values, ECR, projections)
+# RUN FIRST, then sleep. Sleeping first means a container recreated at 7pm sits
+# on whatever the sheet held that morning until 7pm tomorrow — which is exactly
+# the shape of the 2026 draft, where the board opened eleven hours stale. A
+# deploy should leave the data fresher than it found it, not older.
 # shellcheck disable=SC2086
 docker run -d --name bootlegger-nightly --restart unless-stopped $ENV_COMMON \
-  --entrypoint sh $IMG -c 'while true; do sleep 86400; python -m app.ingest nightly; done'
+  --entrypoint sh $IMG -c 'while true; do python -m app.ingest nightly; sleep 86400; done'
 
 # Hands worker — the consumer of the approval queue. Ships in DRY-RUN unless
 # HANDS_DRY_RUN=0 is exported at deploy time: it drains approved jobs, runs the

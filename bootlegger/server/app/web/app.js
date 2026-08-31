@@ -329,11 +329,18 @@ function playerRow(p) {
   });
   const injury = p.injury
     ? `<span class="hurt">${icon.cross}${esc(p.injury.toUpperCase())}</span>` : "";
+  /* The wire, on the row. A projection is a month old by draft night; a flag
+     is minutes old. The 2026 draft recommended a man twice while nine items
+     on this same feed said he had been put on the exempt list, because the
+     board never asked. WIRE is loud on purpose — it means the sheet in front
+     of you is describing a player the news has already moved past. */
+  const wire = p.news && p.news.severity === "out"
+    ? `<span class="hurt wire-flag" title="${esc(p.news.headline)}">${icon.cross}WIRE</span>` : "";
   el.innerHTML = `
     <div class="l1">
       <span class="stamp" data-stamp>–</span>
       <span class="name" title="${esc(p.name)}">${esc(p.name)}</span>
-      ${injury}
+      ${injury}${wire}
     </div>
     <div class="l2">
       <span class="team">${esc(p.team ?? "")} · bye ${esc(p.bye ?? "–")}</span>

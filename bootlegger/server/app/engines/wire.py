@@ -38,7 +38,13 @@ NOTIFY = {"out", "doubtful", "questionable", "practice", "role"}
 # man behind them.
 DEPARTURE = re.compile(
     r"\b(injured reserve|placed on ir\b|season-ending|out for the (season|year)"
-    r"|torn (acl|achilles|pcl)|suspended \d|waived|released|cut by|traded to"
+    # "suspended \d" wanted a game count, so "suspended indefinitely" — the
+    # worse news — opened no waiver window at all. Stem it and drop the digit.
+    r"|torn (acl|achilles|pcl)|suspen(ded|sion)|waived|released|cut by|traded to"
+    # A man on the exempt list is off the field for an unknown number of weeks
+    # while still on his team's roster: nothing in the injury vocabulary
+    # describes it, and until 2026-08-30 nothing in this file did either.
+    r"|commissioner['’]?s? exempt|exempt list|paid leave|administrative leave"
     r"|physically unable|reserve/pup|non-football injury)\b", re.I)
 
 # Ordered because the first hit wins: "ruled out" must beat the bare word
@@ -48,7 +54,13 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("out", re.compile(
         r"\b(ruled out|won'?t play|will not play|out (for|indefinitely|multiple)"
         r"|inactive (for|sunday|monday|thursday)|injured reserve|placed on ir\b"
-        r"|season-ending|out for the (season|year)|carted off|suspended"
+        r"|season-ending|out for the (season|year)|carted off|suspen(ded|sion)"
+        # The 2026 draft: the wire carried nine headlines putting a first-round
+        # back on the Commissioner's Exempt List and every one graded INFO,
+        # because no table in this file had ever heard of it. The board went on
+        # recommending him at three times the runner-up. A man on the exempt
+        # list is not playing; that is the whole of what a grade has to know.
+        r"|commissioner['’]?s? exempt|exempt list|paid leave|administrative leave"
         r"|physically unable|reserve/pup|non-football injury|undergo(es|ing)? surgery"
         # A torn ligament is the most severe thing this feed ever carries and it
         # graded INFO: DEPARTURE knew about it, the grader did not, so "Torn ACL
@@ -58,7 +70,16 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
         r"|ruptured achilles|out for the year"
         r"|to miss|sidelined|waived|released|cut by)\b", re.I)),
     ("doubtful", re.compile(r"\bdoubtful\b", re.I)),
-    ("questionable", re.compile(r"\b(questionable|game-time decision|true toss-?up)\b", re.I)),
+    # A charge is not an absence. Men play through arrests and charges every
+    # season, and the league office — not the police blotter — decides whether
+    # anyone misses a snap. So legal trouble raises a flag without claiming he
+    # is out; the exempt-list and suspension language above, which DOES mean he
+    # is out, is matched earlier and wins on order. Anchored to whole phrases:
+    # a bare "charged" grades a crowd charged up by a touchdown.
+    ("questionable", re.compile(
+        r"\b(questionable|game-time decision|true toss-?up"
+        r"|arrested|charged with|facing (felony|misdemeanor|domestic)"
+        r"|under investigation|pleads? (guilty|not guilty))\b", re.I)),
     ("practice", re.compile(
         r"\b(did not practice|won'?t practice|not practicing|absent (for|from)"
         r"|limited (in|at|participant|practice)|dnp\b|misses practice"
@@ -129,6 +150,11 @@ _PRESEASON_MATERIAL = re.compile(
     # indistinguishable from one that found nothing.
     r"\b(injured reserve|placed on ir|season-ending|out for the (season|year)"
     r"|torn (acl|achilles|pcl)|suspend\w*|waiv\w*|releas\w*|cut by"
+    # August is exactly when a legal matter lands, and the downgrade to INFO
+    # here is what buried the exempt-list story on draft day: graded `out` by
+    # _RULES, then handed straight back to INFO by _seasonal because this
+    # table had never heard of it either. All three tables or none.
+    r"|commissioner['’]?s? exempt|exempt list|paid leave|administrative leave"
     r"|physically unable|reserve/pup|non-football injury|surger\w*"
     r"|carted off|to miss \d|multiple (weeks|months)"
     r"|out (indefinitely|multiple))", re.I)

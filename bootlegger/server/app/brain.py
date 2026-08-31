@@ -31,6 +31,13 @@ from .engines.draft import Candidate
 from .engines.lineup import INactive, PlayerProj, diff_lineup, optimize, ros_status
 
 SUGGESTION_COUNT = 5
+# Roster flags that mean "he is not taking a snap", as Sleeper writes them.
+# Projections absorb these eventually — a man on IR is already priced at forty
+# points — but the flag moves in minutes and the projection sources rebuild
+# overnight, which is the entire gap the 2026 draft fell through. DOUBTFUL and
+# QUESTIONABLE are deliberately absent: those men play most weeks, and a board
+# that refuses to name anybody carrying a knock names nobody in November.
+BENCHED_BY_FLAG = {"DNR", "Sus", "IR", "PUP", "NA", "Out"}
 
 _DRAFT_ID_RE = re.compile(r"(\d{15,20})")
 
@@ -428,13 +435,50 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
 
     available = [r for r in board_rows if "pick_no" not in r]
     available.sort(key=lambda r: -(r.get("score") if r.get("score") is not None else -999))
+
+    # THE WIRE, ON THE BOARD.
+    #
+    # This join is the whole lesson of the 2026 draft. The news was ingested,
+    # classified, and stored — twenty-five items on one first-round back, nine
+    # of them saying he had been put on the Commissioner's Exempt List — and
+    # get_board never read the table. The engine went on recommending him at
+    # three times the runner-up score for two straight turns, off a projection
+    # built when he was expected to play sixteen games.
+    #
+    # Projections carry injury news eventually; a flag carries it in minutes.
+    # The board must not wait for the slower channel.
+    news = alerts.for_players(conn, [r["id"] for r in available])
+    for row in available:
+        item = news.get(row["id"])
+        if item:
+            row["news"] = {"severity": item["severity"], "headline": item["headline"],
+                           "published_at": item["published_at"]}
+
+    # A man the feed says is not playing is not a suggestion, whatever his
+    # projection still says. This SUPPRESSES rather than reprices: the survival
+    # model that gave a man who lasted to pick 74 a 1.3e-13 chance of lasting
+    # has not earned a news multiplier, and a wrong number moved by a second
+    # wrong number is not an improvement. He keeps his score and his place on
+    # the board; he just stops being told to you.
+    blocked = {
+        r["id"] for r in available
+        if (r.get("injury") or "") in BENCHED_BY_FLAG
+        or (r.get("news") or {}).get("severity") == "out"
+    }
+    # ...unless suppressing leaves nothing to say. In the last two rounds the
+    # pool is thin enough that every man left can be flagged, and a shortlist
+    # of zero is worse advice than a flagged man with his flag showing.
+    shortlist = [r for r in available if r["id"] not in blocked] or available
     suggestions = [
-        {**r, "reason": reasons.get(r["id"], "")} for r in available[:SUGGESTION_COUNT]
+        {**r, "reason": reasons.get(r["id"], "")} for r in shortlist[:SUGGESTION_COUNT]
     ]
 
     # The experts' best available — shown on The Call when the room disagrees.
+    # Blocked men are out here too: a second voice repeating the first voice's
+    # blind spot is worse than no second voice.
     experts_call = None
-    ranked_avail = [(ecr_rank[r["id"]], r) for r in available if r["id"] in ecr_rank]
+    ranked_avail = [(ecr_rank[r["id"]], r) for r in available
+                    if r["id"] in ecr_rank and r["id"] not in blocked]
     if ranked_avail:
         er, erow = min(ranked_avail, key=lambda t: t[0])
         experts_call = {"id": erow["id"], "name": erow["name"],
@@ -518,6 +562,13 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
             # heartbeat: the poller refreshes this every cycle; the frontend
             # banners when it goes stale during a live draft
             "synced_at": drow["updated_at"] if drow else None,
+            # When the SHEET was last pulled, as opposed to when the picks
+            # were. They were eleven hours apart on draft night and nothing
+            # on screen said so: the pick feed's heartbeat was two seconds
+            # old and looked like freshness for the whole board.
+            "sheet_as_of": conn.execute(
+                "SELECT MAX(t) FROM (SELECT MAX(updated_at) t FROM players "
+                "UNION ALL SELECT MAX(updated_at) FROM adp)").fetchone()[0],
         },
         "players": board_rows,
         "suggestions": suggestions,
