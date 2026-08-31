@@ -31,6 +31,32 @@ CREATE TABLE IF NOT EXISTS projections(
     ceiling REAL,
     PRIMARY KEY(player_id, week, source)
 );
+-- Frozen copies of what each source said, at a moment worth remembering.
+--
+-- `projections` is rewritten in place: every nightly DELETEs a source's rows
+-- for a week and re-inserts them, so the table holds only what is believed
+-- TODAY and the system has no memory of any forecast it ever made. On
+-- 2026-08-31 that cost the draft-night numbers outright — six sources'
+-- season-long projections for every man taken, gone inside two nightlies,
+-- with a live disagreement about one backfield left unsettleable.
+--
+-- A season-long projection cannot be scored the week it is made. It can be
+-- scored by October, prorated against what has actually been played, and the
+-- answer is worth having: not for the draft it came from, which is finished,
+-- but for the next one. That is the only reason this table exists — the
+-- evidence takes a season to accumulate, so it has to start accumulating on
+-- the day the forecast is made rather than the day someone wants it.
+CREATE TABLE IF NOT EXISTS projection_ledger(
+    tag TEXT NOT NULL,              -- 'preseason-2026' — the moment, named
+    season INTEGER NOT NULL,
+    player_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    week INTEGER NOT NULL,          -- 0 = season-long, as in `projections`
+    pts REAL NOT NULL,
+    taken_at TEXT NOT NULL,
+    PRIMARY KEY(tag, player_id, source, week)
+);
+CREATE INDEX IF NOT EXISTS ledger_tag ON projection_ledger(tag, source);
 CREATE TABLE IF NOT EXISTS consensus(
     player_id TEXT NOT NULL,
     week INTEGER NOT NULL,

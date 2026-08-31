@@ -22,9 +22,18 @@ has enough weeks to mean anything. Three deliberate conservatisms:
    above a ceiling share, so a source that dies mid-season (and reports its
    last good numbers forever) cannot quietly take over.
 
-None of this changes week 0 — a season-long projection has nothing realized to
-be scored against until the season is over, which is exactly when it stops
-mattering. Draft-day math keeps the equal-weight robust mean.
+None of this changes week 0. Draft-day math keeps the equal-weight robust mean,
+and that is still right for the draft in front of you: a season-long projection
+has nothing realized to score against on the day it is used.
+
+The line that used to follow — "which is exactly when it stops mattering" — was
+wrong, and the 2026 draft is what showed it. A season-long projection stops
+mattering for THAT draft. It is exactly what the NEXT one needs: six sources
+went into that board with equal votes, two independent graders then called the
+resulting backfield the league's worst while a third called the same picks
+highlights, and nobody could settle it because the projections had already been
+overwritten. Evidence that takes a season to accumulate has to start
+accumulating the day the forecast is made. See engines/ledger.py.
 """
 from __future__ import annotations
 

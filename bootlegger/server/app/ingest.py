@@ -1025,6 +1025,24 @@ def nightly(conn: sqlite3.Connection) -> dict:
         except Exception as e:  # scrapes break; the consensus must not
             out[label] = f"failed: {e}"
     out["consensus"] = compute_consensus(conn, week=0)
+
+    # Freeze what the sources said, before tomorrow's run overwrites it.
+    #
+    # `projections` is rewritten in place every night, so this project has
+    # never been able to answer which source was right last season — the
+    # question that would most improve a draft. The 2026 draft's own numbers
+    # were gone within two nightlies. The ledger keeps one snapshot per tag,
+    # replaced on re-run, and the preseason tag stops moving once the season
+    # starts: after that the forecast is no longer a forecast.
+    try:
+        from .engines import ledger as ledger_engine
+        tag = (f"preseason-{settings.season}" if not _in_season(conn)
+               else f"inseason-{settings.season}")
+        out["ledger"] = {"tag": tag,
+                         "rows": ledger_engine.snapshot(conn, tag, settings.season)}
+    except Exception as e:      # a bookkeeping table must never fail a run
+        out["ledger"] = f"failed: {e}"
+
     # In-season: weekly projections feed the Sunday lineup card. A failed
     # state read skips the weekly block — it must not abort the run before
     # the report persists and the dead-man ping fires.
