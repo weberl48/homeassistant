@@ -309,34 +309,43 @@ def deep_street(world):
     world.executemany(
         "INSERT INTO players(sleeper_id,name,pos,team,status,updated_at) "
         "VALUES(?,?,?,?, 'Active', '2026-08-26T00:00:00+00:00')", rows)
-    # Descending value, top of the pool comparable to a real waiver add.
+    # Geometric decay from a genuine league-winner down to waiver chaff, which
+    # is the shape a real street has. The original fixture stepped down 0.55 a
+    # man, so the top twenty were within six points of each other — flat enough
+    # that no pricing rule could differentiate them, which was fine when price
+    # came from RANK and is the whole question now that it comes from value.
     world.executemany(
         "INSERT INTO consensus(player_id,week,pts_mean,pts_robust,stdev,tier,vbd) "
         "VALUES(?,0,?,?,1.0,3,0.0)",
-        [(f"fa-{i:03d}", 190.0 - i * 0.55, 190.0 - i * 0.55) for i in range(300)])
+        [(f"fa-{i:03d}", 300.0 * (0.93 ** i), 300.0 * (0.93 ** i))
+         for i in range(300)])
     world.commit()
     return world
 
 
 def test_faab_ladder_survives_a_real_pool(deep_street):
-    """The priced ladder must spread whatever the pool size.
+    """The priced ladder must behave whatever the pool size.
 
-    value_pct used to rank the twenty shown targets against the WHOLE scored
-    pool, so the visible ladder occupied only the top 20/n of the book. At a
-    300-man pool that put every target between roughly P94 and P100 — the
-    twentieth man quoted near the most this room has ever paid, and every row
-    tripping the confirm-twice warning. Both assertions below fail against
-    that arithmetic and pass against a denominator that measures the same set
-    the rank came from.
+    History: value_pct used to be the target's RANK, first against the whole
+    scored pool (which squeezed every visible row into the top 20/n of the
+    book) and then against the shortlist (which fixed that and introduced a
+    worse one — rank 1 exists every week, so the best available always drew
+    the 100th percentile). Pricing is now absolute: a fraction of the width of
+    the roster the man would join. See `engines.waivers.value_fraction` and
+    `tests/test_waiver_horizon.py` for the value-response property itself.
+
+    The spread assertion this test used to carry is deliberately GONE. It
+    asserted that the shown percentiles span half the book, which under an
+    absolute anchor is a statement about the pool rather than the pricing —
+    twenty men within six points of each other SHOULD price within a dollar
+    of each other, and asserting otherwise would pin the very cry-wolf
+    behaviour the rest of this test forbids. What survives is everything that
+    is still a property of the ladder rather than of the fixture.
     """
     out = brain.waiver_targets(deep_street)
     targets = out["targets"]
     assert len(targets) > 5, "the deep fixture must actually widen the street"
-
-    pcts = [t["value_pct"] for t in targets]
-    assert max(pcts) - min(pcts) > 0.5, (
-        f"the ladder collapsed into {min(pcts):.3f}-{max(pcts):.3f} of the "
-        "book — rank and denominator are measuring different sets")
+    assert out["pool"] > 250, "the whole pool must still be counted and reported"
 
     # A warning that fires on every row has stopped being a warning.
     flagged = sum(1 for t in targets if t["hard_confirm"])
@@ -346,8 +355,10 @@ def test_faab_ladder_survives_a_real_pool(deep_street):
 
     bids = [t["bid"] for t in targets]
     assert bids == sorted(bids, reverse=True), f"bid ladder inverted: {bids}"
+    assert len(set(bids)) > 1, f"bids did not differentiate at all: {bids}"
     assert min(bids) * 2 < max(bids), (
-        f"bids barely differentiate across the ladder: {bids}")
+        f"bids barely differentiate across a pool spanning a league-winner "
+        f"down to chaff: {bids}")
 
 
 def test_waiver_targets_shape(world):

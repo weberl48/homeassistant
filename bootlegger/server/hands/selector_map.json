@@ -1,6 +1,6 @@
 {
   "_comment": "Locators for Sleeper's lineup editor. READ locators were calibrated 2026-08-31 against the live team page with tools/calibrate_lineup.py and are real, not placeholders. The WRITE locator (confirm_swap) is still unknown: the confirm control does not exist in the DOM until a swap is initiated, so discovering it means clicking on a real roster \u2014 a watched step, not an unattended one. `calibrated` stays false until it is known and a swap has been rehearsed end to end.",
-  "version": 2,
+  "version": 3,
   "calibrated": false,
   "team_page_url": "https://sleeper.com/leagues/{league_id}/team",
   "locators": {
@@ -9,9 +9,11 @@
     "player_name": ".player-name",
     "injury_badge": ".player-injury-container",
     "logged_in_probe": ".team-roster",
-    "starter_row": ".team-roster-item:not(:has(.league-slot-position-square:text-is('BN')))",
-    "bench_row": ".team-roster-item:has(.league-slot-position-square:text-is('BN'))",
-    "confirm_swap": null
+    "starter_row": ".team-roster-item:not(:has(.league-slot-position-square:has-text('BN'))):not(:has(.league-slot-position-square:has-text('IR')))",
+    "bench_row": ".team-roster-item:has(.league-slot-position-square:has-text('BN'))",
+    "select_slot": ".league-slot-position-square",
+    "valid_target": ".league-slot-position-square.valid",
+    "invalid_target": ".league-slot-position-square.invalid"
   },
   "pacing_seconds": {
     "min": 0.8,
@@ -39,6 +41,15 @@
       "IR"
     ],
     "read_verified": "slot label, player name and injury badge all resolve per row",
-    "write_unverified": "confirm_swap requires initiating a swap to observe"
+    "write_unverified": "The mechanism is now known and the locators recorded, but no swap has been executed end to end. `calibrated` stays false until one has been rehearsed and confirmed by the API.",
+    "predicate_note": "Use :has-text, NOT :text-is. The slot square wraps its label in a child node, so exact-text matching returns zero while substring matching returns the right five. The flex square holds three children and reads 'W\nR\nT' by innerText but 'WRT' by textContent \u2014 do not match flex on a literal 'W/R/T'."
+  },
+  "interaction": {
+    "model": "two taps, and THE SECOND ONE COMMITS",
+    "step_1": "tap the slot square of the man to move; the page then marks every other slot .valid or .invalid for him",
+    "step_2": "tap a .valid slot square \u2014 the swap is written immediately",
+    "confirm_step": null,
+    "why_it_matters": "The map assumed a confirm_swap control. There is none: observed on the live page, tapping a slot adds only the classes `valid` and `invalid` and introduces no button, so nothing stands between the second tap and a changed lineup. There is no dialog to abandon and no Cancel to press. Any actuation must therefore treat tap two as irreversible, and must prove the result against the Sleeper API rather than the browser \u2014 which is what hands/worker.py's post-verify already does.",
+    "safe_abort": "after tap one, Escape leaves the roster untouched (verified against the API before and after, 2026-08-31)"
   }
 }
