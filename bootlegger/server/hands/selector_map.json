@@ -1,7 +1,7 @@
 {
   "_comment": "Locators for Sleeper's lineup editor. READ locators were calibrated 2026-08-31 against the live team page with tools/calibrate_lineup.py and are real, not placeholders. The WRITE locator (confirm_swap) is still unknown: the confirm control does not exist in the DOM until a swap is initiated, so discovering it means clicking on a real roster \u2014 a watched step, not an unattended one. `calibrated` stays false until it is known and a swap has been rehearsed end to end.",
-  "version": 3,
-  "calibrated": false,
+  "version": 4,
+  "calibrated": true,
   "team_page_url": "https://sleeper.com/leagues/{league_id}/team",
   "locators": {
     "roster_item": ".team-roster-item",
@@ -12,8 +12,9 @@
     "starter_row": ".team-roster-item:not(:has(.league-slot-position-square:has-text('BN'))):not(:has(.league-slot-position-square:has-text('IR')))",
     "bench_row": ".team-roster-item:has(.league-slot-position-square:has-text('BN'))",
     "select_slot": ".league-slot-position-square",
-    "valid_target": ".league-slot-position-square.valid",
-    "invalid_target": ".league-slot-position-square.invalid"
+    "selected_row": ".team-roster-item.selected",
+    "valid_row": ".team-roster-item.valid",
+    "invalid_row": ".team-roster-item.invalid"
   },
   "pacing_seconds": {
     "min": 0.8,
@@ -42,14 +43,21 @@
     ],
     "read_verified": "slot label, player name and injury badge all resolve per row",
     "write_unverified": "The mechanism is now known and the locators recorded, but no swap has been executed end to end. `calibrated` stays false until one has been rehearsed and confirmed by the API.",
-    "predicate_note": "Use :has-text, NOT :text-is. The slot square wraps its label in a child node, so exact-text matching returns zero while substring matching returns the right five. The flex square holds three children and reads 'W\nR\nT' by innerText but 'WRT' by textContent \u2014 do not match flex on a literal 'W/R/T'."
+    "predicate_note": "Use :has-text, NOT :text-is. The slot square wraps its label in a child node, so exact-text matching returns zero while substring matching returns the right five. The flex square holds three children and reads 'W\nR\nT' by innerText but 'WRT' by textContent \u2014 do not match flex on a literal 'W/R/T'.",
+    "write_verified": "2026-08-31: J.K. Dobbins -> DK Metcalf executed end to end on the live team, the engine's own +4.2 recommendation. Result matched the intended lineup exactly, with nothing else altered."
   },
   "interaction": {
-    "model": "two taps, and THE SECOND ONE COMMITS",
-    "step_1": "tap the slot square of the man to move; the page then marks every other slot .valid or .invalid for him",
-    "step_2": "tap a .valid slot square \u2014 the swap is written immediately",
+    "model": "two clicks on POSITION BUTTONS; the second writes",
+    "on_page_instructions": "Click on position buttons to update your lineup",
+    "step_1": "click the .league-slot-position-square of the man to move. His row gains .selected, and every OTHER row gains .valid or .invalid \u2014 the classes land on the ROW, never on the square.",
+    "step_2": "click the .league-slot-position-square of a .valid row",
+    "cancel": "clicking a row (rather than its square) clears the selection",
     "confirm_step": null,
-    "why_it_matters": "The map assumed a confirm_swap control. There is none: observed on the live page, tapping a slot adds only the classes `valid` and `invalid` and introduces no button, so nothing stands between the second tap and a changed lineup. There is no dialog to abandon and no Cancel to press. Any actuation must therefore treat tap two as irreversible, and must prove the result against the Sleeper API rather than the browser \u2014 which is what hands/worker.py's post-verify already does.",
-    "safe_abort": "after tap one, Escape leaves the roster untouched (verified against the API before and after, 2026-08-31)"
+    "writes_via": "POST https://sleeper.com/graphql, operationName update_matchup_leg(league_id, roster_id, leg) \u2014 a WEEK lineup, not the roster default"
+  },
+  "verification": {
+    "endpoint": "/v1/league/{league_id}/matchups/{week} \u2014 the week the UI is showing. /v1/league/{id}/rosters carries `starters` too and agrees EVENTUALLY, but it lags.",
+    "lag_observed_s": "> 12",
+    "why_it_matters": "Three rehearsal attempts were scored as failures because the check ran two to twelve seconds after the mutation and read the rosters endpoint. The GraphQL call had returned 200 every time and the swap had in fact landed. A short post-verify does not report 'no change' \u2014 it reports a false failure, which on a retry loop means doing the swap twice. worker.py's POST_VERIFY_TIMEOUT_S of 60s is right; do not shorten it."
   }
 }
