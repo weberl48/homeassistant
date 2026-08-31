@@ -316,9 +316,9 @@ def deep_street(world):
     # came from RANK and is the whole question now that it comes from value.
     world.executemany(
         "INSERT INTO consensus(player_id,week,pts_mean,pts_robust,stdev,tier,vbd) "
-        "VALUES(?,0,?,?,1.0,3,0.0)",
-        [(f"fa-{i:03d}", 300.0 * (0.93 ** i), 300.0 * (0.93 ** i))
-         for i in range(300)])
+        "VALUES(?,0,?,?,1.0,3,?)",
+        [(f"fa-{i:03d}", 300.0 * (0.93 ** i), 300.0 * (0.93 ** i),
+          300.0 * (0.93 ** i) - 150.0) for i in range(300)])
     world.commit()
     return world
 

@@ -1954,6 +1954,27 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         # Nothing spare on the shelf: an add means cutting a starter, so the
         # bar is the weakest man you own, not a body you were happy to lose.
         replacement_pts = min(mine_season) if mine_season else 0.0
+
+    # ...and the bar in VALUE, which is the only currency in which two men at
+    # different positions can be compared at all.
+    #
+    # Measuring "over the drop" in RAW POINTS was the first version and it is
+    # wrong for the same reason a positional bar was wrong, from the opposite
+    # end. Quarterbacks outscore running backs by seventy points a season
+    # before anybody is better at anything, so against a droppable back the
+    # live board offered C.J. Stroud, Bryce Young, Geno Smith, Aaron Rodgers
+    # and three more backup quarterbacks at $50, $45, $39 — every one of them
+    # labelled "depth", because the lineup arithmetic beside the price knew
+    # perfectly well they could never start behind Josh Allen.
+    #
+    # VBD is exactly this comparison, already computed per position off
+    # baselines derived from this league's own roster shape. Points say how
+    # big a man's number is; VBD says how much of that number you could not
+    # get for free at his position, which is the only version of "better than
+    # the man leaving" that survives crossing a position line.
+    season_vbd = {pid: (r["vbd"] or 0.0) for pid, r in cons.items()}
+    drop_vbd = season_vbd.get(drop["id"], 0.0) if drop is not None else (
+        min((season_vbd.get(pid, 0.0) for pid in my_ids if pid in cons), default=0.0))
     # The denominator that turns "eleven points better than the man I'd cut"
     # into a price: the distance from that bar up to a TYPICAL man in your
     # starting lineup.
@@ -1965,12 +1986,10 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
     # has paid $50. The bar a max bid should clear is not "as good as the best
     # player you own", it is "as good as the men you start every week", which
     # is also the sentence the page can print.
-    starter_pts = sorted(p.proj for _, p in optimize(my_pool, rp).assignment)
-    if starter_pts:
-        mid = statistics.median(starter_pts)
-    else:
-        mid = max(mine_season) if mine_season else 0.0
-    roster_span = max(0.0, mid - replacement_pts)
+    starter_ids = [p.player_id for _, p in optimize(my_pool, rp).assignment]
+    starter_vbd = sorted(season_vbd.get(pid, 0.0) for pid in starter_ids)
+    mid = statistics.median(starter_vbd) if starter_vbd else 0.0
+    roster_span = max(0.0, mid - drop_vbd)
 
     # The weakest body at each position, still shown on the row because "over
     # your worst WR" is a real thing to know. It is no longer the gate. Men
@@ -2004,31 +2023,72 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
 
     def gain(pool: list[PlayerProj], base: float, pid: str,
              pts: dict[str, float], week: int) -> float:
+        """How much the optimal lineup improves if he joins it.
+
+        Note this is >= 0 by construction: the optimiser simply declines to
+        start a man who does not help, so a gain can never express "he would
+        cost you points". That is what `week_vs_best` below is for, and the
+        distinction matters — a warning keyed off a negative gain would have
+        been dead code that looked like a safeguard.
+        """
         cand = _proj_pool([pid], players, pts, week=week)
         if not cand:
             return 0.0
         return round(optimize(pool + cand, rp).total - base, 1)
 
+    # The best man I already own at each position THIS WEEK — the bar a
+    # candidate actually has to clear to be worth starting on Sunday.
+    my_best_wk: dict[str, float] = {}
+    for pid in my_ids:
+        p_ = players.get(pid)
+        if not p_ or (wk and p_["bye"] == wk) or ros_status(p_["injury_status"]):
+            continue
+        my_best_wk[p_["pos"]] = max(my_best_wk.get(p_["pos"], 0.0),
+                                    wk_pts.get(pid, 0.0))
+
     rows = []
     for pid in considered:
         p = players[pid]
         ros = season_pts.get(pid, 0.0)
-        over_drop = round(ros - replacement_pts, 1)
+        # Value over the man leaving, in VBD — comparable across positions.
+        # `over_pts` keeps the raw-points version for the row's tooltip, where
+        # it is informative and decides nothing.
+        over_drop = round(season_vbd.get(pid, 0.0) - drop_vbd, 1)
+        over_pts = round(ros - replacement_pts, 1)
         rows.append({
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
             "ros": round(ros, 1),
             "fa_score": round(waivers_engine.fa_score(
                 ros, worst_by_pos.get(p["pos"], 0.0)), 1),
             "over_drop": over_drop,
+            "over_pts": over_pts,
             "lineup_gain": gain(my_pool, base_total, pid, season_pts, 0),
             "week_pts": round(wk_pts.get(pid, 0.0), 1) if wk else None,
             "week_gain": gain(my_week_pool, base_week, pid, wk_pts, wk) if wk else None,
+            # Head to head against the best man I own at his position this
+            # week. Negative means adding him is a rest-of-season call that
+            # would be a mistake to act on this Sunday — the exact shape of
+            # the Cleveland-over-Jacksonville recommendation.
+            "week_vs_best": (round(wk_pts.get(pid, 0.0) - my_best_wk[p["pos"]], 1)
+                             if wk and p["pos"] in my_best_wk else None),
             "tier": cons[pid]["tier"],
             "heat": heat.get(pid, 0),
         })
 
     # ------------------------------------------------------------ the upgrades
-    top = [r for r in rows if r["over_drop"] > 0]
+    # You start exactly one kicker and one defense and you never bench-stash
+    # either, so at those positions "worth more than the man I'd cut" is not a
+    # reason to bid — only "better than the one I already start" is. Without
+    # this the street filled with them: K/DEF baselines are twelve deep in a
+    # twelve-team league, so the thirteenth kicker sits near zero VBD while a
+    # droppable running back sits at -16, and every kicker and defense alive
+    # cleared the bar on option value alone. The draft engine has held this
+    # rule since a live mock took three defenses (see
+    # draft.roster_need_multiplier); the waiver lane was missing it.
+    NO_STASH = {"K", "DEF"}
+    top = [r for r in rows
+           if r["over_drop"] > 0
+           and (r["pos"] not in NO_STASH or r["lineup_gain"] > 0)]
     top.sort(key=lambda r: -(max(0.0, r["lineup_gain"])
                              + OPTION_WEIGHT * r["over_drop"]))
     top = top[:12]
@@ -2119,7 +2179,8 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
             "history_n": len(bids_hist),
             "pool": pool_n, "considered": len(considered), "week": wk,
             "replacement": ({"name": drop["name"], "pos": drop["pos"],
-                             "pts": round(replacement_pts, 1)} if drop else None),
+                             "pts": round(replacement_pts, 1),
+                             "vbd": round(drop_vbd, 1)} if drop else None),
             "roster_span": round(roster_span, 1),
             "budget": settings.faab_budget,
             "pricing": pricing,

@@ -1711,3 +1711,10 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
   display: inline-block; min-height: 44px; line-height: 44px;
   padding: 0 2px; text-underline-offset: 3px;
 }
+
+/* Where the two horizons disagree. Small, and the colour of a caution rather
+   than an error: the row is still a legitimate rest-of-season add. */
+.week-warn {
+  margin-top: 2px; font-size: .68rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--oxblood); font-weight: 700;
+}

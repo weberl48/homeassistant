@@ -1275,6 +1275,18 @@ async function loadWaivers() {
         : stream ? "streaming price"
         : `P${Math.round((t.value_pct ?? 0) * 100)} of this room's book`}</div></td>`;
 
+    // A rest-of-season upgrade can still be the wrong man to start on Sunday,
+    // and that is not a hypothetical: Cleveland is a real upgrade on this
+    // roster's defense over seventeen weeks and would have cost it three
+    // points in week 1. The season lane may not imply a weekly recommendation
+    // it has not made, so where the two horizons disagree the row says so.
+    const weekWarning = (t) => (t.week_vs_best != null && t.week_vs_best < -0.5)
+      ? `<div class="week-warn" title="This is a rest-of-season call. On the
+          week ${data.week} projections he is worse than the man he'd replace in
+          your lineup, so adding him is not a reason to start him.">${
+          t.week_vs_best.toFixed(1)} vs yours this week</div>`
+      : "";
+
     const drop = data.replacement;
     const upgradeRows = (data.targets || []).map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
@@ -1283,7 +1295,8 @@ async function loadWaivers() {
       ${bidCell(t)}
       ${data.targets.some((x) => x.heat) ? `<td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>` : ""}
       <td class="num">${t.lineup_gain == null ? "–"
-        : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}</td>
+        : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}
+        ${weekWarning(t)}</td>
       <td class="num">${nextUp(t)}</td>
       <td>${why(t)}</td></tr>`).join("");
 
@@ -1321,7 +1334,9 @@ async function loadWaivers() {
         <th style="text-align:right">Bid</th>
         <th style="text-align:right">Next up</th>
         <th></th></tr></thead>
-        <tbody>${streamRows}</tbody></table>` : "";
+        <tbody>${streamRows}</tbody></table>`
+      : data.week ? `<h3 class="w-lane">Streamers <span class="w-lane-sub">week ${data.week} only</span></h3>
+         <p class="muted">Nobody on the street improves your week ${data.week} lineup.</p>` : "";
 
     // Every add is a drop. A bid the owner can't execute is half an answer.
     const d = (data.targets && data.targets[0]?.drop) || (data.streamers && data.streamers[0]?.drop);
