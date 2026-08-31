@@ -605,6 +605,60 @@ def audit_mid_draft(pg, base: str, r: Results) -> None:
     pg.request.post(f"{base}/api/draft/reset")
 
 
+# ---------------------------------------------------------------------------
+# provenance
+# ---------------------------------------------------------------------------
+
+def audit_provenance(pg, base: str, r: Results) -> None:
+    """A page may not name evidence the payload says it does not have.
+
+    The waivers surface captioned every bid "P100 of this room's book" and
+    explained it as "that percentile of 0 winning bids this room has actually
+    paid", while `/api/waivers` was returning `history_n: 0` and a `pricing`
+    string that said in plain words the book was empty. The server computed
+    the caveat and the client had never read the field. Every other check in
+    this file interrogates the DOM alone, which is exactly why none of them
+    could see it: the page was internally consistent and externally false.
+
+    So this one reads both sides. It is deliberately narrow — a count of zero
+    must never appear inside a sentence asserting that evidence exists, and a
+    caveat the server bothered to compute must reach the page.
+    """
+    payload = pg.request.get(f"{base}/api/waivers").json()
+    pg.goto(f"{base}#waivers", wait_until="networkidle")
+    pg.wait_for_timeout(1200)
+    text = " ".join((pg.inner_text("#room-waivers") or "").split())
+
+    # 1. An empty book may not be cited as a book.
+    n = payload.get("history_n") or 0
+    cites_book = "of this room's book" in text or "bids this room has actually paid" in text
+    r.check(n > 0 or not cites_book, "no bid is priced off a book that is empty",
+            f"history_n={n}, page cites the book: {cites_book}")
+
+    # 2. Zero may not be interpolated into a claim of evidence.
+    zero_claims = re.findall(r"0 (?:winning bids|bids|men|targets|sources)", text)
+    r.check(not zero_claims, "no sentence asserts evidence it counts as zero",
+            f"found {zero_claims}" if zero_claims else "none")
+
+    # 3. A caveat the server computed has to reach the reader.
+    pricing = (payload.get("pricing") or "").strip()
+    if pricing:
+        stem = " ".join(pricing.split()[:6])
+        r.check(stem.lower() in text.lower(), "the server's pricing basis is on the page",
+                f"looked for {stem!r}")
+    else:
+        r.ok("the server's pricing basis is on the page", "no basis stated")
+
+    # 4. The street's own census must be visible, not implied by a short list.
+    pool = payload.get("pool")
+    if pool:
+        r.check(str(pool) in text or f"{pool:,}" in text,
+                "the size of the street is stated, not implied",
+                f"pool={pool}")
+    else:
+        r.ok("the size of the street is stated, not implied", "empty street")
+
+
 def run(pg, base: str) -> Results:
     r = Results()
     audit_token_drift(r)
@@ -622,6 +676,7 @@ def run(pg, base: str) -> Results:
     audit_no_sideways(pg, base, r)
     audit_targets(pg, base, r)
     audit_contrast(pg, base, r)
+    audit_provenance(pg, base, r)
     # Last: it drives the sim forward, so everything above reads the board in
     # the state it has always been audited in, and this one reads the state
     # that actually ships tonight. It resets the sim behind itself.

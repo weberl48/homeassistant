@@ -200,8 +200,12 @@ provenance.
   <section class="room" id="room-waivers" role="tabpanel" tabindex="0" aria-labelledby="tab-waivers" hidden>
     <div class="room-body w-sheet">
       <h2 class="room-title">Waiver Targets</h2>
-      <p class="room-note">Bids sized from this league's own history. Advisory only —
-      waivers have no actuation path in this house.</p>
+      <!-- How bids are sized is a fact about the payload, not about the page:
+           with no book on the books this used to promise "this league's own
+           history" under prices that had never seen a bid. The line is written
+           from `pricing` at render time. -->
+      <p class="room-note" id="waivers-provenance">Advisory only — waivers have no
+      actuation path in this house.</p>
       <div id="waivers-body"><p class="muted">Working the phones…</p></div>
     </div>
   </section>

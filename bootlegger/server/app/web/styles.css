@@ -1562,6 +1562,25 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
 .row-context { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
 
 /* ======================== WAIVERS: the other half ======================== */
+/* Two lanes on one page, and the reader has to see instantly which horizon a
+   table is answering on — a season number and a week number differ by a factor
+   of seventeen and look alike in a column. The qualifier carries that, so it
+   is set apart from the lane name rather than running on after it. */
+.w-lane {
+  margin: 22px 0 8px; font-size: .95rem; font-weight: 700;
+  letter-spacing: .04em; color: var(--ink);
+}
+.w-lane:first-child { margin-top: 6px; }
+.w-lane::after {
+  content: ""; display: block; height: 1px; margin-top: 6px;
+  background: linear-gradient(90deg, var(--line), transparent);
+}
+.w-lane-sub {
+  margin-left: 8px; font-weight: 500; font-size: .74rem;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+}
+.w-lane-sub::before { content: "· "; }
+
 .drop-line {
   margin: 10px 0 0; padding: 9px 12px; border-radius: 8px;
   border: 1px dashed var(--line); background: rgba(236, 242, 255, .04);

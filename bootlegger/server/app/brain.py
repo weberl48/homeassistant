@@ -8,6 +8,7 @@ import json
 import math
 import re
 import sqlite3
+import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1180,8 +1181,11 @@ def draft_grades(conn: sqlite3.Connection) -> dict:
         })
 
     teams = grades_engine.compose(teams)
-    for t in teams:
-        t["note"] = grades_engine.seat_note(t)
+    # Room-wide, not per-seat: a five-phrase vocabulary repeats itself across
+    # twelve seats, and the card shipped with its top two rows reading the
+    # same sentence. seat_notes resolves collisions from each seat's own
+    # signals. See engines/grades.seat_notes.
+    grades_engine.seat_notes(teams)
     if steal is not None:
         seat = next((t for t in teams if t["slot"] == steal["slot"]), None)
         steal["owner"] = seat["owner"] if seat else f"Seat {steal['slot']}"
@@ -1950,9 +1954,23 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         # Nothing spare on the shelf: an add means cutting a starter, so the
         # bar is the weakest man you own, not a body you were happy to lose.
         replacement_pts = min(mine_season) if mine_season else 0.0
-    # The width of the roster he would join — the denominator that turns
-    # "eleven points better than the man I'd cut" into a price.
-    roster_span = (max(mine_season) - replacement_pts) if mine_season else 0.0
+    # The denominator that turns "eleven points better than the man I'd cut"
+    # into a price: the distance from that bar up to a TYPICAL man in your
+    # starting lineup.
+    #
+    # The first version measured to your BEST man, and it under-priced
+    # everything. Almost no free agent is ever a large fraction of a first-
+    # round quarterback, so a back worth 47 points of optimal lineup — the
+    # kind of add that decides a season — came out at $4 against a book that
+    # has paid $50. The bar a max bid should clear is not "as good as the best
+    # player you own", it is "as good as the men you start every week", which
+    # is also the sentence the page can print.
+    starter_pts = sorted(p.proj for _, p in optimize(my_pool, rp).assignment)
+    if starter_pts:
+        mid = statistics.median(starter_pts)
+    else:
+        mid = max(mine_season) if mine_season else 0.0
+    roster_span = max(0.0, mid - replacement_pts)
 
     # The weakest body at each position, still shown on the row because "over
     # your worst WR" is a real thing to know. It is no longer the gate. Men
@@ -2082,8 +2100,9 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         t["news"] = news.get(t["id"])
         t["opening"] = openings.get((t["team"], t["pos"]))
 
-    pricing = ("this room's own winning bids, indexed by where each man sits on "
-               "the width of your roster" if bids_hist else
+    pricing = ("this room's own winning bids, indexed by where each man sits "
+               "between the body you'd cut and a typical starter of yours"
+               if bids_hist else
                "no bid history on the books yet — sized from the edge itself, "
                "not from this room")
     if top:

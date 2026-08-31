@@ -295,3 +295,46 @@ def test_payload_carries_its_own_provenance(world):
     assert empty["history_n"] == 0
     assert "no bid history" in empty["pricing"].lower(), \
         "with no book the payload must say so in its own words"
+
+
+# ---------------------------------------------------------------------------
+# The report card's reads
+# ---------------------------------------------------------------------------
+
+def test_every_seat_gets_its_own_read(world):
+    """The live card printed "The deepest shelf in the room." on both of its
+    top two rows, "A straight pour" on three more, and one "shopped the
+    discounts" variant on three others. A ranking whose rows cannot be told
+    apart is not a ranking anybody can read."""
+    from app.engines import grades
+
+    teams = [{"starters": 2200.0 - i * 15, "vbd": 470.0 - i * 9,
+              "surplus": -30.0 + i * 14, "depth": max(0, 3 - i // 4),
+              "risk": 40.0 + i, "owner": f"seat{i}"} for i in range(12)]
+    grades.compose(teams)
+    grades.seat_notes(teams)
+    notes = [t["note"] for t in teams]
+    assert len(set(notes)) == len(notes), (
+        "seats sharing a read: "
+        + repr(sorted(n for n in notes if notes.count(n) > 1)))
+    for n in notes:
+        assert n and n[0].isupper() and n.endswith("."), f"malformed read: {n!r}"
+
+
+def test_a_read_never_invents_a_claim(world):
+    """The de-duplicator may only fall back to signals the seat actually has
+    and numbers already on it — never to a phrase it did not earn."""
+    from app.engines import grades
+
+    # Two seats identical in every metric: nothing distinguishes them but the
+    # figures, so the second must fall through to the evidence tail.
+    teams = [{"starters": 2000.0, "vbd": 400.0, "surplus": 0.0, "depth": 1,
+              "risk": 40.0, "owner": "a"},
+             {"starters": 2000.0, "vbd": 400.0, "surplus": 0.0, "depth": 1,
+              "risk": 40.0, "owner": "b"}]
+    grades.compose(teams)
+    grades.seat_notes(teams)
+    assert teams[0]["note"] != teams[1]["note"]
+    assert "2000" in teams[1]["note"] or "400" in teams[1]["note"] \
+        or "spare" in teams[1]["note"] or "risk" in teams[1]["note"], \
+        f"the tail-breaker must name a real figure, got {teams[1]['note']!r}"

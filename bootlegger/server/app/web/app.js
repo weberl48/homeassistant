@@ -1229,10 +1229,28 @@ async function pollWeek() {
 }
 
 /* --------------------------------- waivers -------------------------------- */
+/* Two lanes, because a claim answers one of two questions on two different
+   horizons — see brain.waiver_targets. The upgrade lane is rest-of-season
+   against the man you'd actually cut; the streaming lane is THIS WEEK, which
+   is the horizon that caught the board recommending a 4.97-point defense over
+   the owner's own 8.19-point one. */
 async function loadWaivers() {
   try {
     const data = await fetchJSON("/api/waivers");
     if (!changed("waivers", data, !$("#waivers-body")?.childElementCount)) { wireOK(); return; }
+
+    // Provenance is a fact about the payload. The page used to caption every
+    // bid "P100 of this room's book" and explain it as "that percentile of 0
+    // winning bids this room has actually paid" — while the server had
+    // already computed, and this file had never read, the sentence saying the
+    // book was empty. Say what the server says.
+    const prov = $("#waivers-provenance");
+    if (prov) {
+      prov.innerHTML = `Bids sized from ${esc(data.pricing || "no stated basis")}.
+        Advisory only — waivers have no actuation path in this house.`;
+    }
+    const hasBook = (data.history_n || 0) > 0;
+
     const nextUp = (t) => {
       // The bid traps first: a target who can't help the week you bought him.
       if (t.bye_now) return `<span class="confirm-flag">${icon.flag}ON BYE NOW</span>`;
@@ -1250,50 +1268,90 @@ async function loadWaivers() {
       if (t.news) return `<span class="street" title="${esc(t.news.headline)}">${esc(t.news.headline)}</span>`;
       return t.hard_confirm ? `<span class="confirm-flag">${icon.flag}BIG SWING — CONFIRM TWICE</span>` : "";
     };
-    // A column of nothing but dashes is furniture. The street (Sleeper's
-    // trending adds) is empty before the season and Next up is empty until the
-    // schedule is loaded — in both cases the honest thing is to not draw the
-    // column at all rather than rule six rows of "–" across the board.
-    const hasStreet = data.targets.some((t) => t.heat);
-    const hasNextUp = data.targets.some((t) => t.bye_now || t.bye_next || t.opp);
+    // A bid caption may only name evidence that exists. With no book the
+    // number came from the edge itself and the caption says exactly that.
+    const bidCell = (t, stream = false) => `<td class="num"><span class="bid">$${t.bid}</span>
+      <div class="bid-why">${!hasBook ? "no book — sized from the edge"
+        : stream ? "streaming price"
+        : `P${Math.round((t.value_pct ?? 0) * 100)} of this room's book`}</div></td>`;
 
-    const rows = data.targets.map((t) => `
+    const drop = data.replacement;
+    const upgradeRows = (data.targets || []).map((t) => `
       <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
         <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
-      <td class="num" title="${t.fa_score} more season points than the weakest ${esc(posOf(t))} on your shelf. Measured against YOUR ${esc(posOf(t))}s only — it does not compare across positions.">${t.fa_score}<div class="bid-why">over your ${esc(posOf(t))}s</div></td>
-      <td class="num"><span class="bid">$${t.bid}</span>${t.value_pct == null ? ""
-        : `<div class="bid-why">P${Math.round(t.value_pct * 100)} of this room's book</div>`}</td>
-      ${hasStreet ? `<td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>` : ""}
+      <td class="num" title="${t.over_drop.toFixed(1)} more rest-of-season points than ${esc(drop ? drop.name : "the man you would cut")}, the man whose exit costs your optimal lineup least. He is also ${t.fa_score} against the weakest ${esc(posOf(t))} you own — shown because it is worth knowing, no longer used to decide who appears.">+${t.over_drop.toFixed(1)}<div class="bid-why">over the drop</div></td>
+      ${bidCell(t)}
+      ${data.targets.some((x) => x.heat) ? `<td class="num street">${t.heat ? `${t.heat.toLocaleString()} adds` : "–"}</td>` : ""}
       <td class="num">${t.lineup_gain == null ? "–"
         : t.lineup_gain > 0 ? `<b>starts · +${t.lineup_gain}</b>` : `<span class="street">depth</span>`}</td>
-      ${hasNextUp ? `<td class="num">${nextUp(t)}</td>` : ""}
+      <td class="num">${nextUp(t)}</td>
       <td>${why(t)}</td></tr>`).join("");
-    // Every add is a drop. A bid the owner can't execute is half an answer.
-    const drop = data.targets[0]?.drop;
-    const dropLine = drop
-      ? `<p class="drop-line">To make room: <b>${esc(drop.name)}</b>
-         <span class="pos pos-${esc(drop.pos)}">${esc(drop.pos)}</span> — cutting him costs the
-         optimal lineup ${drop.cost === 0 ? "nothing" : `${drop.cost} pts`}${
-           drop.injury ? `, and he's carrying a ${esc(drop.injury)} tag` : ""}.</p>`
-      : `<p class="drop-line">No spare body on the shelf — an add here means cutting a starter.</p>`;
-    $("#waivers-body").innerHTML = data.targets.length ? `
+
+    const upgrade = data.targets && data.targets.length ? `
+      <h3 class="w-lane">The upgrade <span class="w-lane-sub">rest of season</span></h3>
       <table class="wtable">
         <thead><tr><th>Player</th>
-        <th style="text-align:right" title="Season points over the weakest body at his own position on your shelf. Each row names the position it is measured against, because two of these are only comparable when they share one.">Over your worst</th>
+        <th style="text-align:right" title="Rest-of-season points over the man who would actually leave to make room. Position-locked comparisons were the old rule and they hid the street: you drop your RB6 to add a receiver.">Over the drop</th>
         <th style="text-align:right">Bid</th>
-        ${hasStreet ? `<th style="text-align:right">The street</th>` : ""}
+        ${data.targets.some((x) => x.heat) ? `<th style="text-align:right">The street</th>` : ""}
         <th style="text-align:right">Your lineup</th>
-        ${hasNextUp ? `<th style="text-align:right">Next up</th>` : ""}
+        <th style="text-align:right">Next up</th>
         <th></th></tr></thead>
-        <tbody>${rows}</tbody></table>
-      ${dropLine}
-      <p class="optimal-note">Ranked by what each man is worth <b>to this shelf</b> — the lineup
-      he'd crack today, plus a share of the column on the left for the bye and the injury you
-      haven't had yet. That ranking is the percentile under each bid, and the bid is that
-      percentile of ${data.history_n} winning bids this room has actually paid, rounded to the
-      +$1 over a round number. Depth pays half a starter's price — which is why the biggest
-      number on the left is not always the biggest number in the middle.</p>`
-      : `<p class="muted">${esc(data.note || "Nobody on the street worth a dollar this week.")}</p>`;
+        <tbody>${upgradeRows}</tbody></table>`
+      : `<h3 class="w-lane">The upgrade <span class="w-lane-sub">rest of season</span></h3>
+         <p class="muted">${esc(data.note || "Nobody on the street worth a dollar this week.")}</p>`;
+
+    // Streaming: a man who is nothing on the season and the right play on
+    // Sunday. The season lane will never find him, which is why there are two.
+    const streamRows = (data.streamers || []).map((t) => `
+      <tr><td><span class="pname">${esc(t.name)}</span> <span class="team">${esc(t.team ?? "")}</span>
+        <div><span class="pos pos-${posOf(t)}">${posOf(t)}</span></div></td>
+      <td class="num">${t.week_pts.toFixed(1)}<div class="bid-why">wk ${data.week} proj</div></td>
+      <td class="num"><b>+${t.week_gain.toFixed(1)}</b><div class="bid-why">this week</div></td>
+      ${bidCell(t, true)}
+      <td class="num">${nextUp(t)}</td>
+      <td>${why(t)}</td></tr>`).join("");
+
+    const streamers = (data.streamers && data.streamers.length) ? `
+      <h3 class="w-lane">Streamers <span class="w-lane-sub">week ${data.week} only</span></h3>
+      <table class="wtable">
+        <thead><tr><th>Player</th>
+        <th style="text-align:right">Wk ${data.week}</th>
+        <th style="text-align:right" title="Points this man adds to your OPTIMAL week-${data.week} lineup. Scored on the week, never on the season — a season total said Cleveland was an upgrade on a Jacksonville defense that outprojected it by three points on the Sunday in question.">Starts you</th>
+        <th style="text-align:right">Bid</th>
+        <th style="text-align:right">Next up</th>
+        <th></th></tr></thead>
+        <tbody>${streamRows}</tbody></table>` : "";
+
+    // Every add is a drop. A bid the owner can't execute is half an answer.
+    const d = (data.targets && data.targets[0]?.drop) || (data.streamers && data.streamers[0]?.drop);
+    const dropLine = d
+      ? `<p class="drop-line">To make room: <b>${esc(d.name)}</b>
+         <span class="pos pos-${esc(d.pos)}">${esc(d.pos)}</span> — cutting him costs the
+         optimal lineup ${d.cost === 0 ? "nothing" : `${d.cost} pts`}${
+           d.injury ? `, and he's carrying a ${esc(d.injury)} tag` : ""}.</p>`
+      : `<p class="drop-line">No spare body on the shelf — an add here means cutting a starter.</p>`;
+
+    // NEVER a silent short list. Two rows out of 455 free agents, with nothing
+    // on the page saying so, is how this surface shipped.
+    const census = `<p class="optimal-note"><b>${(data.pool || 0).toLocaleString()}</b> men on the
+      street; ${data.considered || 0} of them — the deepest at each position on both the season
+      and the week — were actually scored.
+      ${drop ? `The bar is <b>${esc(drop.name)}</b> at ${drop.pts}: the man whose exit costs your
+      optimal lineup least.` : "You have no spare body, so an add here means cutting a starter."}</p>`;
+
+    // This sentence has to describe the anchor the server actually used. It
+    // said "to your best man" for one build after the denominator moved to the
+    // median starter — the same class of defect as captioning a bid "P100 of
+    // this room's book" when the book was empty, and worth naming twice.
+    const priceNote = `<p class="optimal-note">The upgrade lane is priced by how far a man sits
+      above that bar, as a share of the ${data.roster_span} points between the bar and a typical
+      man in your starting lineup${hasBook ? `, read off the ${data.history_n} winning bids this
+      room has actually paid` : `. This room has no bid history yet, so the number comes from the
+      edge itself and not from evidence it doesn't have`}. Depth pays half a starter's price, and
+      a one-week rental never pays more than the middle of the book.</p>`;
+
+    $("#waivers-body").innerHTML = upgrade + streamers + dropLine + census + priceNote;
     wireOK();
   } catch { wireFail(); }
 }
@@ -1712,7 +1770,14 @@ function renderReportCard(g) {
       ${Math.round(g.steal.surplus)} picks earlier.</p>` : ""}
     <table class="wtable rc-table"><thead><tr>
       <th></th><th></th><th>Seat</th><th style="text-align:right">proj starters</th>
-      <th style="text-align:right">value</th><th style="text-align:right">composite</th>
+      <!-- This column holds surplus, which the component chips below the table
+           call "discounts". It was headed "value" — the name those chips give
+           to vbd — so one screen showed "VALUE -28" beside "VALUE A" for the
+           same seat, reading as a contradiction rather than as two metrics.
+           (No backticks in here: this comment sits inside a template literal
+           and one of them ended the string, which is how it shipped broken for
+           exactly one run.) -->
+      <th style="text-align:right">discounts</th><th style="text-align:right">composite</th>
       <th>the read</th></tr></thead>
       <tbody>${rows}</tbody></table>
     <p class="optimal-note">Seats are ranked by the <b>composite</b> — starting nine (45%),

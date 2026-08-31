@@ -1,8 +1,18 @@
-"""Waiver/FAAB engine (design doc §4): FA score = ROS consensus value − worst
-droppable roster value at the position; bid = league-history percentile for the
-value tier (default P70), rounded to +$1 over round numbers; hard-confirm above
-25% of remaining budget. Advisory only — there is no waiver actuation path in
-this codebase, by design."""
+"""Waiver/FAAB engine (design doc §4).
+
+Bid = the percentile of this league's own winning bids matching where the man
+sits between the body you would cut and a typical starter of yours
+(`value_fraction`), rounded to +$1 over a round number; depth pays half, a
+one-week rental is capped at the middle of the book, and anything over 25% of
+the remaining budget hard-confirms.
+
+`fa_score` — points over the weakest body at the same position — is still
+computed and still shown, because "over your worst WR" is worth knowing. It is
+no longer the gate: see `brain.waiver_targets` for why a positional bar hid an
+entire street behind a bench receiver.
+
+Advisory only — there is no waiver actuation path in this codebase, by design.
+"""
 from __future__ import annotations
 
 import math
@@ -83,13 +93,18 @@ def value_fraction(over_drop: float, roster_span: float) -> float:
     only damper, and it does not apply to a man who starts.
 
     An absolute anchor fixes it without inventing a scale: measure him against
-    the width of the roster he would join. `over_drop` is how far he sits
-    above the man you would actually cut; `roster_span` is how far your BEST
-    man sits above that same body. A free agent as good as your best player is
-    a max-price add. One a tenth of the way up that span pays a tenth of the
-    book. Both terms are season points from the same table, so the ratio is
-    scale-free and survives the season-vs-week change of units that has
-    broken thresholds here before.
+    the roster he would join. `over_drop` is how far he sits above the man you
+    would actually cut; `roster_span` is how far a TYPICAL man in your starting
+    lineup sits above that same body. A free agent as good as the men you start
+    every week is a max-price add; one a tenth of the way up that span pays a
+    tenth of the book.
+
+    Anchoring on the BEST man you own was tried first and under-priced
+    everything — almost no free agent is a large fraction of a first-round
+    quarterback, so a back worth 47 points of optimal lineup priced at $4
+    against a book that has paid $50. Both terms are season points from the
+    same table, so the ratio is scale-free and survives the season-vs-week
+    change of units that has broken thresholds here before.
     """
     if roster_span <= 0:
         return 1.0 if over_drop > 0 else 0.0

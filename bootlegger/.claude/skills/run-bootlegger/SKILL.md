@@ -71,7 +71,7 @@ C:\Python314\python.exe .claude\skills\run-bootlegger\driver.py flow   <outdir>
 | `check` | page paints, no JS errors | `title 'BOOTLEGGER' · 6 tabs · 6 cols · 182 rows · js errors none` |
 | `shots` | all six tabs render; PNG each | `OK: all tabs rendered` |
 | `flow` | approve → executed → verified, via real button click | `OK: rec reached verified` |
-| `audit` | the A++ gate — 17 checks a screenshot cannot make | `OK: all 17 audit checks passed` |
+| `audit` | the A++ gate — 29 checks a screenshot cannot make | `OK: all 29 audit checks passed` |
 
 `audit` (in `audit.py`, next to the driver) is the one that catches what
 review by eye does not: live regions announcing on an idle poll, a tablist
@@ -81,6 +81,20 @@ five widths, the deciding columns wrapping, and the extension's inline palette
 drifting from the board's. Every check corresponds to a defect that shipped at
 least once — that is the entry requirement, so the file stays a record rather
 than a wishlist.
+
+`audit_provenance` is the one that reads BOTH sides. Every other check
+interrogates the DOM alone, and the defect that earned it was invisible to all
+of them: the waivers page captioned each bid "P100 of this room's book" and
+explained it as "that percentile of 0 winning bids this room has actually
+paid", while `/api/waivers` was returning `history_n: 0` plus a `pricing`
+string saying in plain words that the book was empty — a field `app.js` had
+never read. The page was internally consistent and externally false, so a
+screenshot, a render check and twenty-five DOM assertions all passed. It now
+asserts that a count of zero never appears inside a claim of evidence, that an
+empty book is never cited as a book, that a caveat the server bothered to
+compute reaches the reader, and that the size of the street is stated rather
+than implied by a short list. Mutation-checked 2026-08-31: restoring the
+unconditional caption fails the gate (`1 of 29 failed`).
 
 `all` runs the five in sequence. Every command exits nonzero on failure, so they
 are usable as a gate.
@@ -118,7 +132,7 @@ cd server
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-`260 passed` (2026-08-27). Counts in this file go stale fast — re-run rather
+`355 passed` (2026-08-31). Counts in this file go stale fast — re-run rather
 than trust one that looks old.
 
 ## Rehearse the draft pilot

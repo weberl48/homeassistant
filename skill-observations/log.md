@@ -285,3 +285,144 @@ found nothing. Only a known-positive sample tells them apart.
 **Issue:** Every gate in that suite was written by the same person who wrote the code, immediately after fixing a defect. So the gates encode the failure modes already imagined and are structurally blind to the rest — three of this session's defects were only reachable on the live board, and none of the six regressions touched an existing assertion. "Tests pass" and "the gate is green" were both true and neither was evidence of correctness.
 **Suggested improvement:** Before declaring a milestone complete, run an adversarial review of the day's diff — not the whole branch. Treat the completion claim as the trigger, the way a challenged finding triggers stress-test-findings. The cost is one review; the alternative here was shipping a draft-night crash.
 **Principle:** A gate proves you did not break what you thought of. Only a reader who did not write the code can tell you what you did not think of.
+
+### Observation 22: Counterfactual replays must re-run each advisor against its OWN state
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Bootlegger draft post-mortem — scoring four advisors (engine "THE CALL",
+FantasyPros ECR, session assistant, actual picks) on best-legal-starting-lineup points.
+**Skill:** stress-test-findings
+**Issue:** The replay truncated the draft to each pick and re-ran the board against the ACTUAL
+roster state. That re-recommends any player the user declined, creating phantom duplicates. The
+post-mortem flagged this for exactly one pick (Jacobs at 65) and treated it as a one-off
+"artifact". The same mechanism actually fired at four more places — SESSION@137 (Meyers,
+re-recommended after being declined at 128), ECR@128 (Robinson, declined at 113), and CALL@152/@161
+(a second K and DEF, which the engine's own `roster_need_multiplier` in
+server/app/engines/draft.py would have scored 0.05, not 1.0). A caveat noticed once was assumed to
+be local when it was systematic.
+**Suggested improvement:** In "The Skeptic's Pass" Move 2, add: when a caveat is granted at one
+data point, enumerate every other point where the same mechanism could fire before accepting the
+caveat as local. A one-off exception is a hypothesis about scope, and scope claims need the same
+n>1 discipline as "always/never" claims (already asserted under Mindset).
+**Principle:** An acknowledged artifact is more dangerous than an unnoticed one, because flagging
+it once creates the false impression it has been handled.
+
+### Observation 23: Rank advisors on startable output, never on raw roster sums
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Same post-mortem. FantasyPros graded the roster 1st of 12; following ECR
+literally produced a roster with zero TEs, zero defenses, one RB and four QBs — three empty
+mandatory slots and ~1,775 bench points, scoring 589 points BELOW the actual draft once lineup
+legality was enforced.
+**Skill:** stress-test-findings
+**Issue:** The headline comparison ("ECR ranked this roster 1st") was computed on a quantity
+nobody scores. Slot legality and positional redundancy inverted the ranking completely. The same
+correction flipped two of three suspected engine defects: D1 (flex inflation) is a real mechanism
+that cost ~0.5 points on this board, and D3's "a 179-pt receiver beats a kicker" was wrong here
+because that receiver was the 6th WR on a roster starting two.
+**Suggested improvement:** In Move 4 (assumption-independent evidence), add a line: when a metric
+aggregates units that the system consumes selectively (starters vs bench, billable vs non-billable,
+shipped vs staged), recompute under the selection rule before comparing. Prefer structural counts
+that hold regardless of the underlying values — "ECR drafted zero tight ends in fifteen rounds"
+survives any projection source.
+**Principle:** A sum over items only some of which count is not a measurement of anything. Find the
+selection rule and apply it before ranking.
+
+### Observation 22: Grade a competing advisor by the code that produced its column, not by its brand
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Bootlegger draft post-mortem — a lens task asked me to "characterize FantasyPros ECR's decision procedure from its observable behavior" in a comparison table.
+**Skill:** stress-test-findings
+**Issue:** The "FantasyPros ECR said" column was not FantasyPros' advice. It was our own `brain.get_board()` field `experts_call`, computed as `min(ecr_rank)` over available players — five lines that read neither roster nor survival. Characterizing "ECR's decision procedure" from that column would have described our reduction and attributed it to a vendor. The premise named a brand; the evidence was a local function.
+**Suggested improvement:** In Move 2 (name the load-bearing assumptions), add provenance as a standing assumption whenever a finding compares "us" to a named external system: *which code produced the external system's column?* If the comparison values are computed locally, the finding is about our adapter, not about them, and the claim must be scoped to the adapter.
+**Principle:** A benchmark against an outside authority is only as external as the last line of code that touched it.
+
+### Observation 23: Run the perturbation before believing a component is inert
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Same post-mortem. Three "engine defects" were proposed for confirmation, framed as if the engine were pure projections-VBD.
+**Skill:** stress-test-findings
+**Issue:** Two claims collapsed under cheap runnable tests that no amount of code reading had settled. (1) A constant added to a position pool cancels in `suggestion_score` to within `c x PROD(1-p)` — measured delta 0.0000 on a deep pool — so the alleged positional inflation never reaches the score. (2) Flattening and inverting the ECR blend completely reordered the board's top five, proving a component the finding had treated as absent was in fact load-bearing. Both took under two minutes to run.
+**Suggested improvement:** In Move 4 (assumption-independent evidence), add the perturbation test as a named technique alongside "read the persisted artifact": when a finding says a term dominates or a term is absent, *set that term to a constant, and to its inverse, and re-run*. Ordering that does not move refutes "dominant"; ordering that moves refutes "absent".
+**Principle:** Reading code tells you a term exists. Only perturbing it tells you whether the answer depends on it.
+
+### Observation 24: A post-mortem brief's own factual premises must be re-derived from source data
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Bootlegger draft post-mortem — auditing the pick engine's divergences from the picks actually made. The task brief supplied premises ("the news wire had ZERO items on him, 168 items scanned"; "K1-to-K12 spread of only 15.2 points"; "at 65 the replay re-recommended Jacobs... treat as an artifact").
+**Skill:** stress-test-findings
+**Issue:** Two of the brief's stated premises did not survive contact with the database. "ZERO news items on Josh Jacobs" was false — the `news` table held 25 rows keyed to his player_id, twelve of them reporting a Commissioner's Exempt List placement ingested 5h24m before the draft started. That single check turned the headline conclusion inside out: the finding was not "the human had off-field information the system lacked" but "the system had the information and never routed it to the board." The "artifact at pick 65" caveat was also wrong — the player was genuinely still on the board there. The brief's numbers were sincere summaries from an earlier session, not adversarial, which is exactly why they were easy to accept.
+**Suggested improvement:** In the "Separate proof from inference" section, add: when a brief, ticket, or prior session hands you premises, treat every *quantitative or absence* claim in it ("zero X", "N items", "no records") as inference, not proof, and re-derive it from source before building on it. Absence claims deserve priority — they are the cheapest to check (one query) and the most load-bearing when wrong, because a false absence removes an entire causal branch from consideration.
+**Principle:** An inherited premise is someone else's finding. Absence claims are the ones that silently delete hypotheses, so they get checked first, not last.
+
+### Observation 25: Check the working tree again before proposing a fix on a shared branch
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Designing one surgical engine fix from the draft post-mortem (Bootlegger). Mid-task, `app/brain.py` gained an uncommitted `flex_repl` / "ONE SLOT, ONE RULER" block from a second Claude session on the same worktree — the exact fix for the post-mortem's defect D1, which I had independently derived and was about to propose.
+**Skill:** delegation-triage (and the memory `claude_worktree_concurrency`)
+**Issue:** My anchors for a scripted patch stopped matching, which is the only reason I noticed. Had I patched by line number or proposed from my first read, I would have shipped a duplicate of work already in progress and clobbered it. The existing memory warns that HEAD can move; it does not warn that the *uncommitted working tree* can move, which is the more dangerous case because `git log` looks unchanged.
+**Suggested improvement:** In `delegation-triage`, add to the pre-implementation checklist: re-run `git status --short` and re-read the target function immediately before writing the change, not only at task start — and treat a dirty file you did not dirty as a hard stop for that file. The check that catches violations is cheap: patch by content anchor with an assert, never by line number, so a moved file fails loudly.
+**Principle:** On a shared worktree, a read is only valid for as long as you hold no write. Anchor-based edits are self-verifying; line-based edits fail silently.
+
+### Observation 26: A three-defect brief may have one shared root, and the arithmetic will say which
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Post-mortem listed three suspected engine defects (flex VBD inflation, static room calibration, supply-blind need weighting) and asked for one fix.
+**Skill:** stress-test-findings
+**Issue:** Two of the three (D1 flex inflation, D3 supply-blind K/DEF) turned out to be the same root — raw VBD compared across positions whose replacement baselines sit at different point levels — surfacing at two different call sites. Separately, D1's headline evidence (a TE with 42% more VBD at half a point fewer) proved to be largely *cosmetic in the score*, because `suggestion_score` is a within-pool difference and a constant added to a whole pool cancels to within Π(1−survival). The brief's framing invited fixing the displayed number rather than the decision.
+**Suggested improvement:** Add a step to `stress-test-findings`: before accepting a defect list as independent, ask whether the same quantity is being misused at more than one call site, and check whether the suspect term actually reaches the output — trace it to the decision, not the display. A term inside a difference over a shared pool is invariant to level shifts; only terms added at absolute level (here, the endgame nudge) can carry a baseline error into the ranking.
+**Principle:** Find where a wrong quantity is used at absolute level. That is where it can hurt; everywhere else it may cancel.
+
+### Observation 27: "Nothing changed between A and B" is a measurable claim, not a premise
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Adversarial regression-risk review of a Bootlegger draft-engine fix (`brain.py` endgame starvation guard). The proposal proved a bug by algebra over two observed picks: "at 128 urgency was 0.5 and DEF won; at 137 urgency was 1.0 and K won; nothing about the two pools changed between them, so only urgency could have flipped it."
+**Skill:** stress-test-findings
+**Issue:** The derivation was internally valid but rested on an unstated invariant — that the compared quantity is constant across the two observations. Instrumenting the actual code and replaying showed the invariant is false: the cliff term is computed against a horizon (`my_after`) that moves with each pick, so with the candidate pools *provably frozen* (same count, same top value at both picks) the measured cliff still tripled, 1.86 -> 5.75. Two inequalities in what were assumed to be two unknowns are actually two inequalities in four, and imply nothing. Re-arguing the algebra would never have found this; only measuring the intermediate quantity did.
+**Suggested improvement:** In the "attack the load-bearing assumptions" section, add a named check: **invariance claims**. When a finding's proof compares two observations and asserts that everything but one variable held constant, treat that as the primary hypothesis to attack — identify every input to the compared quantity and measure it at both points, rather than reasoning about whether it plausibly moved. Time-, horizon-, and window-dependent terms are the usual culprits, alongside the existing timezone/effective-date/snapshot-timing entries.
+**Principle:** A differencing argument is only as strong as its controls. "Only X moved" is an empirical claim about every other input, and it is usually cheaper to instrument the code and read the intermediate value at both points than to argue about it.
+
+### Observation 28: A fix that changes nothing on all available data has not been verified
+**Status:** OPEN
+**Date:** 2026-08-30
+**Session context:** Same review. The proposal reported "full suite 280 passed" and a reproduction "on a doctored demo endgame" as its verification.
+**Skill:** stress-test-findings
+**Issue:** A green suite and a purpose-built synthetic scenario are both consistent with a fix that is inert. Sweeping the only real draft in the repo (12 seats x 15 picks = 180 board builds, baseline vs patched) showed **0 changed recommendations** — the patch reinforced orderings the engine already had and never flipped one. The claimed target behaviour was unreachable in the data because the fix's precondition (the flat position carrying the higher standing value) never held. A synthetic scenario built by the fix's author to demonstrate the fix will demonstrate the fix; it is not independent evidence that the condition occurs in reality.
+**Suggested improvement:** Add to the evidence-sufficiency section: when a change is justified by a specific past incident, sweep it across *all* comparable historical states available, and report the count of decisions changed. Zero changes on real data means the mechanism is unexercised and the diagnosis is unconfirmed, regardless of test-suite colour. Treat an author-constructed reproduction as a statement of the fix's precondition, then test whether that precondition is satisfiable in the real data.
+**Principle:** Passing tests show a change is not harmful. Only a sweep over real historical states shows it does anything, and a synthetic repro authored alongside the fix is a restatement of the hypothesis, not a test of it.
+
+### Observation 29: Executing a throwaway probe beats a verifier agent
+**Status:** OPEN
+**Date:** 2026-08-31
+**Session context:** Max-effort `/code-review` of 9 commits on the bootlegger sleeper-design branch (1607-line diff, 10 finder angles + sweep).
+**Skill:** code-review
+**Issue:** The skill's Phase 2 prescribes verification by dispatching one verifier *agent* per candidate, which returns a reasoned CONFIRMED/PLAUSIBLE/REFUTED. In this review the decisive evidence for 7 of the top findings came instead from writing a ~20-line throwaway pytest against the repo's own `conn` fixture and running it: the news-suppression regression, the `sheet_as_of` MAX-vs-MIN inversion, the `read_out`/`adjust_adp` divergence, `draft_picks.pos` being NULL for 40/40 live picks, two wire-regex gaps, and the `DNR`-not-in-`INactive` cross-surface split. Each produced a failing assertion with real values — evidence a reasoning agent cannot match, at a fraction of the tokens (a verifier agent cost ~140k; a probe cost ~2k). Reading alone would have graded several of these PLAUSIBLE rather than CONFIRMED.
+**Suggested improvement:** In Phase 2 ("Verify"), add a rule ahead of the agent dispatch: *if the repo has a runnable test harness, first try to confirm the candidate by executing it — a throwaway test file, or a REPL call against the changed function. A failing assertion with concrete values is a CONFIRMED vote and needs no verifier agent. Delete the probe file afterwards; never commit it.* Reserve verifier agents for candidates that cannot be executed (deploy scripts, CSS, cross-process timing, deployment-state claims). Also note the corollary for Phase 0: run the existing suite once up front — a fully green suite is itself a finding when the diff claims to fix bugs, because it tells you the new tests do not cover the mechanism.
+**Principle:** In a repo with a test harness, the cheapest verifier is the interpreter. Reasoning about what code does is a fallback for when you cannot make it do it.
+
+### Observation 30: A new test that passes on the fixture is not a pinned invariant
+**Status:** OPEN
+**Date:** 2026-08-31
+**Session context:** Same review. Several new tests asserted broad invariants but were satisfied by the particular fixture rather than by the code.
+**Skill:** code-review
+**Issue:** Three separate defects in this diff hid behind tests that pass: `test_the_shelf_and_the_math_now_agree` asserts "whatever shifts the board is said aloud" but only exercises a fixture that happens to yield <=3 spoken lines, while the same file's `test_still_capped_at_three_lines` fixture breaks the invariant outright; `test_the_luxury_markdown_does_not_promote_negatives` asserts `luxury_markdown(-30.0) < -2.0`, which is trivially true of the identity branch and so cannot fail; `test_irrelevant_players_do_not_pad_the_score` passes only because it seeds a 1.0-point season projection that no real source emits. The finder angles surfaced these only because one angle was explicitly told to look for unfalsifiable assertions.
+**Suggested improvement:** Add to the Phase 1 angle list (or fold into the sweep's focus list): *for every NEW test in the diff, ask whether it would still pass against the pre-fix code, and whether its assertion is satisfiable by the fixture rather than the mechanism. Try to construct an input inside the test's own stated rule that the test does not cover — the diff's other fixtures are the first place to look.*
+**Principle:** A test added alongside a fix is written to pass. Whether it constrains anything is a separate question, and asking it is a distinct review angle.
+
+### Observation 31: A rendered surface can contradict the payload that fed it — the gate can't see it
+**Status:** ACTIONED — `bootlegger/.claude/skills/run-bootlegger/audit.py` (`audit_provenance`, 4 checks) + SKILL.md, 2026-08-31. Mutation-checked: restoring the unconditional "P100 of this room's book" caption fails the gate (1 of 29).
+**Date:** 2026-08-31
+**Session context:** Comparative review of the live Bootlegger board (accuracy + usefulness vs the big fantasy sites), focused on draft and waivers.
+**Skill:** `bootlegger/.claude/skills/run-bootlegger` (audit.py, the "A++ gate")
+**Issue:** The live Waivers page prints "P100 of this room's book" under each bid and "the bid is that percentile of 0 winning bids this room has actually paid", while `/api/waivers` returned `history_n: 0` and `pricing: "no bid history on the books — score-proportional"`. `data.pricing` is not referenced anywhere in `app.js` — the server's own honest disclaimer is computed and dropped. `driver.py check`/`shots` pass (page paints, no JS errors) and `audit`'s 18 checks pass, because every one of them asks about the DOM in isolation. Nothing in the gate ever asks whether the page's claims agree with the JSON that produced them. The house principle this violates ("never silently fail", "say only what the evidence pays for") is the product's stated principle #1.
+**Suggested improvement:** Add a check class to `audit.py`: for each tab, fetch the API payload the tab renders and assert a small set of payload↔DOM consistency invariants — starting with (a) any provenance phrase naming a source of evidence ("this room's book", "N winning bids", "P<n>") must not render when the payload's own `*_n`/`pricing`-style field says that evidence is absent, and (b) every explanatory string the API computes for the UI must appear in the DOM or be deliberately listed as unused. Cheapest general form: assert no rendered text interpolates a count that equals 0 into a sentence asserting evidence exists.
+**Principle:** A screenshot proves the page rendered; it cannot prove the page is telling the truth about where its numbers came from. When the server computes a caveat string, the gate should verify the client consumed it — an unreferenced disclaimer field is a silent failure wearing the costume of an honest one.
+
+### Observation 32: Reconcile the served payload against the database before blaming the code
+**Status:** OPEN — escalated: edits `~/.claude/skills/stress-test-findings`, a user-scope skill. See [[stress_test_findings_pending_dropins]] for the same blocker.
+**Date:** 2026-08-31
+**Session context:** Same review — establishing *why* the live waiver board showed 2 targets when 455 free agents carried projections.
+**Skill:** `stress-test-findings` (Move 4, assumption-independent evidence)
+**Issue:** The obvious path was "read `brain.waiver_targets`, explain the filter". That path is unfalsifiable here: `run-bootlegger`'s own gotchas warn that the running container's Python is whatever was imported at process start, so a source reading can describe code the live board is not executing. What actually settled it was arithmetic: the served `fa_score` values (6.5, 1.1) were reproduced to the decimal from the live DB (CLE 101.925 − my worst DEF 95.465 = 6.460; KC 96.549 − 95.465 = 1.084), which proves the deployed binary implements that rule regardless of which revision it is. Move 4 already says "the persisted output, not a re-reading of the code" — but it frames that as *logs/artifacts*, and this case is a third form: recomputing the served response from the inputs.
+**Suggested improvement:** In Move 4's specialization (a) — currently "when the finding is 'the code does X', the assumption-independent proof is the pipeline's persisted output" — add the API/response variant: *for a running service, recompute the served response from its own datastore. A numeric match between payload and inputs proves which rule the deployed process is executing, without needing to know which revision it is running.* Name the failure it routes around (stale process serving old code behind fresh static assets).
+**Principle:** When the artifact under test is a live response rather than a batch output, the assumption-independent proof is a reconciliation, not a log line. Match the number, not the source file.
