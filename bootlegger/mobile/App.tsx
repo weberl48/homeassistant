@@ -27,7 +27,10 @@ export default function App() {
   const [wire, setWire] = useState<"live" | "down">("down");
 
   useEffect(() => {
-    setUpPush();
+    // Floating no more: a rejection here is the whole notification path
+    // failing, and it used to vanish into an unhandled promise.
+    setUpPush().catch((e) =>
+      console.error("[push] setUpPush failed; no notifications will arrive:", e));
     const stop = listenForActions();
     // Deep-link consumer for push.ts's data.deep_link (recs.py sends
     // "bootlegger://week" on a lineup call). No expo-linking dependency

@@ -2,6 +2,7 @@
  * buttons. [Approve & Execute] fires the actuation job without opening the app. */
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 import { api } from "./api";
@@ -29,11 +30,35 @@ export async function setUpPush(): Promise<string | null> {
   if (!Device.isDevice) return null;
   const perm = await Notifications.requestPermissionsAsync();
   if (perm.status !== "granted") return null;
-  const token = (await Notifications.getExpoPushTokenAsync()).data;
+  // getExpoPushTokenAsync needs a projectId outside Expo Go, and it THROWS
+  // without one. This call had no argument and no catch, and App.tsx invokes
+  // setUpPush() as a floating promise — so a missing projectId produced an
+  // unhandled rejection, no token, and not one word about why. The server was
+  // already reporting "0 devices" forever; between them nothing anywhere said
+  // the notification path was dead. Same failure as the wire, one layer up.
+  const projectId =
+    (Constants.expoConfig?.extra as any)?.eas?.projectId ??
+    (Constants.easConfig as any)?.projectId;
+  let token: string;
+  try {
+    token = (await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined)).data;
+  } catch (e) {
+    console.error(
+      "[push] could not mint an Expo token — the phone will never be notified. " +
+      (projectId
+        ? `projectId=${projectId}; error: ${e}`
+        : "no projectId in app.json (expo.extra.eas.projectId). Expo Go on " +
+          "Android cannot do remote push from SDK 53 on, so this needs an EAS " +
+          "project and a dev/EAS build."),
+    );
+    return null;
+  }
   try {
     await api.registerDevice(token);
-  } catch {
+  } catch (e) {
     // API unreachable (Tailscale down?) — the app retries on next launch.
+    console.warn("[push] token minted but not registered with the server:", e);
   }
   return token;
 }
