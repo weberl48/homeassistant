@@ -946,9 +946,25 @@ def ping_healthchecks(ok: bool = True) -> None:
         pass  # the ping's absence *is* the alert
 
 
+def league_client(conn: sqlite3.Connection):
+    """Who answers the league-shaped calls (league, rosters, matchups, drafts).
+
+    Sleeper by default; the ESPN adapter when BOOTLEGGER_PLATFORM=espn. The
+    adapter speaks SleeperClient's dialect — the etl functions below cannot
+    tell them apart, which is the entire integration strategy: the national
+    data layer (players, projections, ADP, news) stays on Sleeper's public API
+    regardless of where the league lives, and only these calls change hands.
+    """
+    if settings.platform == "espn":
+        from .espn import EspnClient
+        return EspnClient(conn)
+    return SleeperClient()
+
+
 def nightly(conn: sqlite3.Connection) -> dict:
     """The nightly ETL bundle for live mode."""
     client = SleeperClient()
+    lg_client = league_client(conn)
     # force=True: the players blob is disk-cached for 24h and this job runs on
     # a 24h loop, so the two periods race and the nightly can re-read its own
     # stale copy indefinitely. Observed live — a refresh at 06:11 wrote a fresh
@@ -973,8 +989,8 @@ def nightly(conn: sqlite3.Connection) -> dict:
     except Exception as e:
         print(f"state/nfl unavailable ({e}); keeping last known week", flush=True)
     if settings.league_id:
-        etl_league(client, conn)
-        etl_rosters(client, conn)
+        etl_league(lg_client, conn)
+        etl_rosters(lg_client, conn)
     # The schedule layer: kickoff times for the don't-act rules and locks,
     # byes straight from the source (FP-ECR scrape remains the fallback),
     # and this week's outdoor-game weather. Byes and weather read the
@@ -1003,9 +1019,20 @@ def nightly(conn: sqlite3.Connection) -> dict:
     try:
         # Past drafts change slowly; re-reading them nightly is cheap and means
         # a newly-linked previous season is picked up without a special run.
-        out["history"] = etl_draft_history(conn, client)
+        out["history"] = etl_draft_history(conn, lg_client)
     except Exception as e:
         out["history"] = f"failed: {e}"
+    if settings.platform == "espn" and settings.league_id:
+        # No draft poller runs on this platform — ESPN's draft is not pollable
+        # the way Sleeper's is, and the pilot is Sleeper-only. The completed
+        # draft still matters (the board's history, the room's tendencies), so
+        # the nightly stores it through the same etl the poller would use.
+        try:
+            for d in lg_client.league_drafts(settings.league_id):
+                out["espn_draft"] = {
+                    "picks": etl_draft_picks(lg_client, conn, d["draft_id"])}
+        except Exception as e:
+            out["espn_draft"] = f"failed: {e}"
     out["adp"] = etl_adp(conn)
     out["values"] = etl_values(conn)
     out["projections"] = etl_projections(client, conn, week=0)
@@ -1081,7 +1108,7 @@ def nightly(conn: sqlite3.Connection) -> dict:
         # behind — the win-probability model reads both.
         for target in {wk, max(1, wk - 1)}:
             try:
-                out[f"matchups_w{target}"] = etl_matchups(conn, client, target)
+                out[f"matchups_w{target}"] = etl_matchups(conn, lg_client, target)
             except Exception as e:
                 out[f"matchups_w{target}"] = f"failed: {e}"
     # Persist the report — /health serves it so a quietly dying scrape source
@@ -1103,6 +1130,12 @@ def main() -> None:
     if args.job == "nightly":
         print(json.dumps(nightly(conn)))
     elif args.job == "draft-poll":
+        if settings.platform == "espn":
+            # ESPN drafts are not pollable this way and the pilot is
+            # Sleeper-only; the nightly stores the completed draft instead.
+            print("draft-poll is a Sleeper job; platform=espn does not run it",
+                  flush=True)
+            return
         client = SleeperClient()
         draft_id = settings.draft_id
         if not draft_id and settings.league_id:

@@ -67,5 +67,29 @@ docker run -d --name bootlegger-hands --restart unless-stopped \
   -e BOOTLEGGER_APPROVE_REQUIRED=1 -e HANDS_DRY_RUN="${HANDS_DRY_RUN:-1}" \
   --memory=2g --shm-size=512m $ENV_COMMON $IMG python -m hands.worker
 
+# ---------------------------------------------------------------------------
+# The second league: No Punts Intended (ESPN), read-only advisory stack.
+#
+# Same image, its own database and port. The platform switch changes exactly
+# one thing — who answers the league-shaped calls (see app/espn.py) — while
+# players, projections, ADP and news ride the same public pipeline as the
+# Sleeper stack. No hands and no draft poller here: actuation and draft
+# piloting are Sleeper-only, and the board's fallback copy says "Set it on
+# ESPN" accordingly. Auth comes from /data-espn/.espn_cookies.json, captured
+# by tools/espn_login.py; until it exists the nightly logs EspnAuthError in
+# words and the board serves the national layer without league rows.
+ESPN_LEAGUE=1435831655
+ESPN_ROSTER="${ESPN_ROSTER:-2}"   # Wolverines team id, verified live 2026-08-31
+ESPN_DATA=/mnt/data/supervisor/share/bootlegger/data-espn
+mkdir -p "$ESPN_DATA"
+ENV_ESPN="-e BOOTLEGGER_MODE=live -e BOOTLEGGER_PLATFORM=espn   -e BOOTLEGGER_LEAGUE_ID=$ESPN_LEAGUE -e BOOTLEGGER_MY_ROSTER_ID=$ESPN_ROSTER   -e BOOTLEGGER_SEASON=$SEASON -e FANTASYPROS_API_KEY=$FANTASYPROS_API_KEY   -e BOOTLEGGER_API_TOKEN=$API_TOKEN -v $ESPN_DATA:/data"
+
+docker rm -f bootlegger-espn bootlegger-espn-nightly 2>/dev/null || true
+# shellcheck disable=SC2086
+docker run -d --name bootlegger-espn --restart unless-stopped -p 8485:8484   $ENV_ESPN $IMG
+# shellcheck disable=SC2086
+docker run -d --name bootlegger-espn-nightly --restart unless-stopped $ENV_ESPN   --entrypoint sh $IMG -c 'while true; do python -m app.ingest nightly; sleep 86400; done'
+
 sleep 5
 curl -sf http://192.168.1.160:8484/health && echo && echo "deployed."
+curl -sf http://192.168.1.160:8485/health >/dev/null && echo "espn stack up on :8485."   || echo "espn stack not answering yet (fine on first boot — nightly seeds it)."

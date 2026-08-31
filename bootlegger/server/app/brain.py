@@ -895,6 +895,11 @@ def get_week_card(conn: sqlite3.Connection, week: int = 1) -> dict[str, Any]:
         "wx_concerns": sorted({f"{r['team']}: {w}" for r in actual_rows
                                for w in (r["wx"] or [])}),
         "lineup_hash": lineup_hash(starters),
+        # Which platform holds the real lineup — the UI's "set it yourself"
+        # link must point at the site that can actually set it.
+        "platform": settings.platform,
+        "league_url": (f"https://fantasy.espn.com/football/team?leagueId={settings.league_id}"
+                       if settings.platform == "espn" else "https://sleeper.com"),
         "rec": dict(open_rec) if open_rec else None,
         # Who you're playing, and what that does to the right lineup.
         "matchup": week_matchup(conn, week, pool, rp, d),

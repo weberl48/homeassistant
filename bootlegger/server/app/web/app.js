@@ -964,10 +964,10 @@ function renderWeek(card) {
       <span class="spin"></span>The hands are moving…</button></div>`;
   } else if (recState === "failed") {
     actions = `<p class="holds">${icon.hold} WIDE RIGHT — the swap missed. Every failure
-      degrades to this notice, never to silence. <a href="https://sleeper.com" rel="noopener">Set it in Sleeper</a>.</p>`;
+      degrades to this notice, never to silence. <a href="${esc(d.league_url || "https://sleeper.com")}" rel="noopener">Set it on ${d.platform === "espn" ? "ESPN" : "Sleeper"}</a>.</p>`;
   } else if (recState === "dry_run") {
     actions = `<p class="holds">${icon.hold} Dry run — the hands touched nothing.
-      <a href="https://sleeper.com" rel="noopener">Set it in Sleeper</a> if you agree.</p>`;
+      <a href="${esc(d.league_url || "https://sleeper.com")}" rel="noopener">Set it on ${d.platform === "espn" ? "ESPN" : "Sleeper"}</a> if you agree.</p>`;
   }
 
   wrap.innerHTML = `

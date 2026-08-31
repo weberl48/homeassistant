@@ -52,7 +52,10 @@ class Settings:
     db_path: Path = PROJECT_DIR / "data" / "bootlegger.db"
     audit_dir: Path = PROJECT_DIR / "audit"
     season: int = 2026
-    league_id: str = ""                    # live mode: your Sleeper league id
+    platform: str = "sleeper"              # sleeper | espn — who answers league-shaped calls
+    league_id: str = ""                    # live mode: your league id on that platform
+    espn_swid: str = ""                    # espn platform: SWID cookie (private leagues)
+    espn_s2: str = ""                      # espn platform: espn_s2 cookie
     user_id: str = ""                      # live mode: your Sleeper user id
     draft_id: str = ""                     # optional explicit draft id
     my_roster_id: int = 7                  # demo: draft slot / roster id
@@ -78,7 +81,13 @@ class Settings:
         s.db_path = Path(_env("BOOTLEGGER_DB", str(s.db_path)))
         s.audit_dir = Path(_env("BOOTLEGGER_AUDIT_DIR", str(s.audit_dir)))
         s.season = int(_env("BOOTLEGGER_SEASON", str(s.season)))
-        s.league_id = _env("SLEEPER_LEAGUE_ID", s.league_id)
+        s.platform = _env("BOOTLEGGER_PLATFORM", s.platform).lower()
+        # SLEEPER_LEAGUE_ID keeps its name for compatibility with the running
+        # stack; BOOTLEGGER_LEAGUE_ID wins when both are set, and is the one
+        # an ESPN deployment should use.
+        s.league_id = _env("BOOTLEGGER_LEAGUE_ID", _env("SLEEPER_LEAGUE_ID", s.league_id))
+        s.espn_swid = _env("BOOTLEGGER_ESPN_SWID", s.espn_swid)
+        s.espn_s2 = _env("BOOTLEGGER_ESPN_S2", s.espn_s2)
         s.user_id = _env("SLEEPER_USER_ID", s.user_id)
         s.draft_id = _env("SLEEPER_DRAFT_ID", s.draft_id)
         s.my_roster_id = int(_env("BOOTLEGGER_MY_ROSTER_ID", str(s.my_roster_id)))
