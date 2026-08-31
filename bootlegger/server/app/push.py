@@ -45,4 +45,38 @@ def send(conn: sqlite3.Connection, title: str, body: str,
         # Failure to notify is itself a failure mode that must not be silent.
         log.error("push delivery failed: %s", e)
         return 0
-    return len(messages)
+
+    # Expo answers 200 for a request it PARSED, and reports each message's fate
+    # in the body. Returning len(messages) here counted a rejected notification
+    # as a delivered one — so the subsystem whose entire purpose is never
+    # failing quietly was the one reporting success into a void. Verified
+    # against the live service: a token belonging to no device comes back
+    # HTTP 200, status "error", DeviceNotRegistered.
+    try:
+        tickets = (r.json() or {}).get("data") or []
+    except ValueError:
+        log.error("push: Expo returned a non-JSON body; delivery unconfirmed")
+        return 0
+
+    ok, dead = 0, []
+    for token, ticket in zip(tokens, tickets):
+        if (ticket or {}).get("status") == "ok":
+            ok += 1
+            continue
+        detail = ((ticket or {}).get("details") or {}).get("error")
+        log.error("push rejected for %s: %s (%s)", token[-12:],
+                  (ticket or {}).get("message"), detail)
+        if detail == "DeviceNotRegistered":
+            dead.append(token)
+
+    # Expo asks that a DeviceNotRegistered token be dropped rather than retried
+    # forever; a reinstalled app registers a fresh one on next launch.
+    if dead:
+        conn.executemany("DELETE FROM devices WHERE push_token=?",
+                         [(t,) for t in dead])
+        conn.commit()
+        log.warning("push: dropped %d unregistered device(s)", len(dead))
+
+    if ok < len(messages):
+        log.error("push: %d of %d messages accepted", ok, len(messages))
+    return ok
