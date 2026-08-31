@@ -356,7 +356,18 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     my_picks = [p for p in picks if p["draft_slot"] == my_slot]
     my_counts: dict[str, int] = {}
     for p in my_picks:
-        pos = players[p["player_id"]]["pos"]
+        # Prefer the position recorded ON THE PICK. A man released after you
+        # drafted him leaves the players index — etl_players keeps only the
+        # rostered — and this was a bare subscript, so the whole board raised
+        # KeyError the moment one of YOUR OWN picks was cut. Worse than the
+        # feed sites: my_counts drives every need multiplier, so it is not a
+        # cosmetic row but the thing deciding what you are told to draft.
+        # draft_picks carries `pos` for exactly this reason.
+        row = players.get(p["player_id"])
+        pos = (p["pos"] if "pos" in p.keys() and p["pos"] else None) or \
+              (row["pos"] if row else None)
+        if not pos:
+            continue
         my_counts[pos] = my_counts.get(pos, 0) + 1
     rp = roster_positions(conn)
 

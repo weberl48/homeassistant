@@ -264,14 +264,24 @@ def test_a_released_player_does_not_break_the_board(conn):
     a 500 on the main board the afternoon somebody gets released. Forty-three
     such picks already existed in this league's past drafts."""
     _draft_to(conn, 30, 7, [])
-    # Somebody inside the last twelve picks, so he is on the feed the board
-    # actually renders (recent_picks is picks[-12:]).
-    gone = conn.execute(
+    # Delete a man from BOTH surfaces at once: one of my own picks (my_counts
+    # and my_roster) and one from the last twelve (recent_picks). The first
+    # version of this test only cut the newest pick, which belongs to another
+    # seat — so it passed while the live board still raised KeyError on
+    # my_counts, the lookup that actually decides what you are advised to
+    # draft. A guard is only proven by the surface it was missing.
+    mine = conn.execute(
+        "SELECT player_id FROM draft_picks WHERE draft_slot=7 "
+        "ORDER BY pick_no DESC LIMIT 1").fetchone()[0]
+    newest = conn.execute(
         "SELECT player_id FROM draft_picks ORDER BY pick_no DESC LIMIT 1").fetchone()[0]
-    conn.execute("DELETE FROM players WHERE sleeper_id=?", (gone,))
+    for pid in {mine, newest}:
+        conn.execute("DELETE FROM players WHERE sleeper_id=?", (pid,))
     conn.commit()
+
     board = brain.get_board(conn)          # must not raise
     assert board["recent_picks"], "the feed went empty rather than degrading"
+    assert board["suggestions"], "The Call went silent rather than degrading"
     names = [r["player"] for r in board["recent_picks"]] + \
             [r["player"] for r in board["my_roster"]]
     assert "(no longer rostered)" in names, (
