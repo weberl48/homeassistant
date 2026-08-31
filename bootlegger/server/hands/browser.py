@@ -9,6 +9,7 @@ never decides anything; it executes a validated job and reports."""
 from __future__ import annotations
 
 import json
+import os
 import random
 import time
 from pathlib import Path
@@ -16,7 +17,23 @@ from pathlib import Path
 from app.config import settings
 
 SELECTOR_MAP_PATH = Path(__file__).parent / "selector_map.json"
-STORAGE_STATE_PATH = Path("/run/secrets/sleeper_storage_state")  # compose secret
+# WHERE THE SLEEPER SESSION LIVES — one owner for the whole package.
+#
+# This module knew only the compose-secret path while draft_pilot.py searched
+# three candidates and fell back to /data. So the two halves of the same
+# subsystem looked for the same credential in different places, and on the Pi
+# the lineup swapper reported "storageState secret missing" while a perfectly
+# good session sat at /data/.sleeper_storage_state, which the draft pilot found
+# without trouble. Same fact, two copies, diverged — so it lives here now and
+# draft_pilot imports it.
+_STATE_CANDIDATES = [p for p in (os.environ.get("BOOTLEGGER_STATE_FILE", "").strip(),
+                                 "/run/secrets/sleeper_storage_state",
+                                 "/data/.sleeper_storage_state") if p]
+
+
+def state_file() -> Path | None:
+    """The first candidate that is actually a file, or None."""
+    return next((Path(p) for p in _STATE_CANDIDATES if Path(p).is_file()), None)
 
 CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
 
@@ -53,8 +70,10 @@ def perform_swaps(swaps: list[dict], rec_id: int) -> list[tuple[str, str]]:
         raise NotCalibrated(
             "selector_map.json is not calibrated — rehearse in the test league "
             "and record the real locators before pointing hands at anything.")
-    if not STORAGE_STATE_PATH.exists():
-        raise ReauthNeeded(f"storageState secret missing at {STORAGE_STATE_PATH}")
+    state = state_file()
+    if state is None:
+        raise ReauthNeeded(
+            "no Sleeper session found in any of " + ", ".join(_STATE_CANDIDATES))
 
     from playwright.sync_api import sync_playwright  # imported lazily; optional dep
 
@@ -65,7 +84,7 @@ def perform_swaps(swaps: list[dict], rec_id: int) -> list[tuple[str, str]]:
     shots: list[tuple[str, str]] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
-        ctx = browser.new_context(storage_state=str(STORAGE_STATE_PATH))
+        ctx = browser.new_context(storage_state=str(state))
         page = ctx.new_page()
         page.goto(m["team_page_url"].format(league_id=settings.league_id),
                   wait_until="networkidle")
@@ -104,13 +123,14 @@ def canary(rec_id: int = 0) -> dict:
     """Wednesday dry-run (design doc §5.7): walk the flow up to — not including
     — the final tap, and report which locators still resolve."""
     m = _map()
-    if not m.get("calibrated") or not STORAGE_STATE_PATH.exists():
+    state = state_file()
+    if not m.get("calibrated") or state is None:
         return {"ok": False, "reason": "not calibrated or no storageState"}
     from playwright.sync_api import sync_playwright
     results = {}
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
-        ctx = browser.new_context(storage_state=str(STORAGE_STATE_PATH))
+        ctx = browser.new_context(storage_state=str(state))
         page = ctx.new_page()
         page.goto(m["team_page_url"].format(league_id=settings.league_id),
                   wait_until="networkidle")

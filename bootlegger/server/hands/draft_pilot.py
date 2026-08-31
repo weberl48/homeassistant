@@ -39,7 +39,7 @@ from pathlib import Path
 
 import httpx
 
-from . import sleeper_login
+from . import browser, sleeper_login
 
 log = logging.getLogger("bootlegger.pilot")
 
@@ -52,9 +52,7 @@ SELECTOR_MAP_PATH = Path(__file__).parent / "selector_map.json"
 # the working DIRECTORY and the real session file was never reached. Playwright
 # would then be handed a directory as storage_state on draft night. Skip blank
 # values, and require an actual file: a directory is not a session.
-_STATE_CANDIDATES = [p for p in (os.environ.get("BOOTLEGGER_STATE_FILE", "").strip(),
-                                 "/run/secrets/sleeper_storage_state",
-                                 "/data/.sleeper_storage_state") if p]
+# The session's home is hands/browser.py — one owner, imported not copied.
 POST_VERIFY_TIMEOUT_S = 15.0
 # ONE PARSER FOR ONE SWITCH. This read `!= "0"` while app/config.py reads
 # `not in ("0", "false", "no")`, and ops/pi/deploy.sh pipes the operator's raw
@@ -110,7 +108,7 @@ def _shut(browser) -> None:
 
 
 def state_file() -> Path | None:
-    return next((Path(p) for p in _STATE_CANDIDATES if Path(p).is_file()), None)
+    return browser.state_file()
 
 
 def draft_map() -> dict:

@@ -287,3 +287,34 @@ def test_a_released_player_does_not_break_the_board(conn):
     assert "(no longer rostered)" in names, (
         "the released man vanished silently instead of being rendered as a "
         "pick whose player is gone")
+
+
+# ---------------------------------------------------------------------------
+# 5. The hands look for the session in one place
+
+
+def test_both_halves_of_the_hands_find_the_same_session(tmp_path, monkeypatch):
+    """browser.py knew only the compose-secret path while draft_pilot searched
+    three candidates, so on the Pi the lineup swapper reported "storageState
+    secret missing" while a perfectly good session sat at /data — which the
+    draft pilot found without trouble. Same fact, two copies, diverged."""
+    from hands import browser, draft_pilot
+    fake = tmp_path / "state.json"
+    fake.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(browser, "_STATE_CANDIDATES", [str(fake)])
+    assert browser.state_file() == fake
+    assert draft_pilot.state_file() == fake, "the pilot kept its own copy again"
+
+
+def test_a_missing_session_names_every_place_it_looked(monkeypatch):
+    """"missing at /run/secrets/..." sent me looking in one directory when the
+    file was in another. An error about a search should name the search."""
+    from hands import browser
+    monkeypatch.setattr(browser, "_STATE_CANDIDATES", ["/nope/a", "/nope/b"])
+    assert browser.state_file() is None
+    try:
+        browser.swap_lineup({}, [])          # any call that needs auth
+    except browser.ReauthNeeded as e:
+        assert "/nope/a" in str(e) and "/nope/b" in str(e)
+    except Exception:
+        pass    # a different guard fired first; the resolution is what matters

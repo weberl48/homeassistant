@@ -1830,16 +1830,76 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
     }
 
 
+def current_week(conn: sqlite3.Connection) -> int:
+    """The week every in-season surface should be answering about.
+
+    `current_week` meta is authoritative (the nightly reads it from Sleeper's
+    own state, and only advances it once season_type is regular). Before that
+    job has ever run — a fresh demo, a test world — fall back to the newest
+    week the projection table actually holds, so a surface that needs a week
+    is never silently handed zero and quietly reverts to season totals.
+    """
+    wk = int(db.meta_get(conn, "current_week") or 0)
+    if wk:
+        return wk
+    row = conn.execute("SELECT MAX(week) FROM consensus WHERE week > 0").fetchone()
+    return int(row[0]) if row and row[0] else 0
+
+
+# How deep into each position the street is even considered. The lanes below
+# run a lineup optimisation per candidate, which is cheap but not free, and
+# nobody has ever bid on the 40th-best free-agent receiver.
+CONSIDER_PER_POS = 12
+# Share of a man's rest-of-season edge over the droppable body that counts as
+# option value — the bye and the injury you have not had yet.
+OPTION_WEIGHT = 0.35
+
+
+def _proj_pool(ids: list[str], players: dict, pts: dict[str, float],
+               week: int = 0) -> list[PlayerProj]:
+    """PlayerProj rows for a set of ids on one horizon. `week` > 0 marks men
+    whose bye falls in that week as unavailable, which is the whole reason a
+    streaming lane exists."""
+    out = []
+    for pid in ids:
+        p = players.get(pid)
+        if p is None:
+            continue
+        out.append(PlayerProj(pid, p["pos"], pts.get(pid, 0.0) or 0.0, p["name"],
+                              ros_status(p["injury_status"]),
+                              on_bye=bool(week and p["bye"] == week)))
+    return out
+
+
 def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None) -> dict:
     """Free agents worth a bid, priced against this league's own book.
 
-    Found by FA score (points over the weakest body at the same position on my
-    shelf), then RE-RANKED on what each man is worth to this roster — the
-    lineup he cracks today plus a share of that score for option value. The
-    bid is that rank's percentile of the league's winning bids; depth pays
-    half. Tier-bucketed sizing was replaced by continuous pricing (see
-    engines/waivers.py) — a three-step staircase priced a 33-point add and a
-    2.5-point add identically. `heat` is Sleeper trending-add counts.
+    Two lanes, because a waiver claim answers one of two different questions
+    and they are scored on different horizons:
+
+    **The upgrade** — is he better, rest of season, than the man I would
+    actually cut? Judged on season consensus against the DROPPABLE body, not
+    against the weakest man at his own position. The old baseline was the
+    latter, and after a fifteen-round draft in a twelve-team room your worst
+    receiver is your WR5, so nothing on the street ever cleared it: 455 free
+    agents with projections filtered down to two defenses, with no line on the
+    page saying anything had been filtered. Position-locking the comparison
+    was wrong twice over — you drop your RB6 to add a receiver, and the drop
+    is already computed here by re-optimising the lineup without him.
+
+    **The streamers** — who would start for me THIS WEEK? Scored on week
+    consensus, which is the horizon the decision actually has. Scoring it on
+    season totals is not a rounding error: on the live board it recommended
+    bidding on Cleveland (4.97 projected in week 1) and Kansas City (5.66) to
+    replace the owner's own Jacksonville, which at 8.19 was the best defense
+    in the league that week. Every number on the row was correct and the
+    advice was backwards, because the question was weekly and the arithmetic
+    was annual. Byes are honoured here for the same reason.
+
+    The bid is this room's own winning-bid book, indexed by where the man sits
+    on the width of your roster (see `engines.waivers.value_fraction`); depth
+    pays half and a one-week rental is capped at the middle of the book.
+    `heat` is Sleeper trending-add counts.
     """
     heat = heat or {}
     rp = roster_positions(conn)
@@ -1849,172 +1909,202 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
     # Pre-draft, nobody is rostered, so "free agents ranked by score" is just
     # the top of the player pool — Josh Allen at a $100 bid. Refuse honestly.
     if not rostered:
-        return {"targets": [], "history_n": 0,
+        return {"targets": [], "streamers": [], "history_n": 0, "pool": 0,
+                "considered": 0, "week": 0, "replacement": None,
+                "budget": settings.faab_budget, "pricing": None,
                 "note": "Everyone's a free agent until the draft — "
                         "the street opens once rosters exist."}
     my = my_roster_row(conn)
     my_ids = json.loads(my["players_json"]) if my else []
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
     players = {r["sleeper_id"]: r for r in conn.execute("SELECT * FROM players")}
+    wk = current_week(conn)
+    wk_pts = week_projections(conn, wk) if wk else {}
+    season_pts = {pid: (r["pts_robust"] or 0.0) for pid, r in cons.items()}
 
-    # Bid history bucketed by value tier (the engine's contract). Demo history
-    # labels each txn's tier in adds_json; unlabeled (live) bids bucket by bid
-    # size, mirroring the demo generator's bands (hot 18+, solid 6+, dart <6).
-    hist_by_tier: dict[str, list[float]] = {"hot": [], "solid": [], "dart": []}
+    # Bid history. Live leagues label nothing; the demo labels a tier per txn.
+    # Only the flat list is read now that pricing is continuous, but the
+    # bucketing stays because the fallback in `size_bid` still takes one.
     bids_hist: list[float] = []
     for r in conn.execute(
-            "SELECT faab, adds_json FROM transactions WHERE type='waiver' AND faab IS NOT NULL"):
-        faab = r["faab"]
-        bids_hist.append(faab)
-        try:
-            tier = (json.loads(r["adds_json"] or "{}") or {}).get("tier")
-        except (ValueError, TypeError):
-            tier = None
-        if tier not in hist_by_tier:
-            tier = "hot" if faab >= 18 else "solid" if faab >= 6 else "dart"
-        hist_by_tier[tier].append(faab)
+            "SELECT faab FROM transactions WHERE type='waiver' AND faab IS NOT NULL"):
+        bids_hist.append(r["faab"])
 
+    # ---------------------------------------------------------------- my shelf
+    my_pool = _proj_pool(my_ids, players, season_pts)
+    base_total = optimize(my_pool, rp).total
+    my_week_pool = _proj_pool(my_ids, players, wk_pts, week=wk) if wk else []
+    base_week = optimize(my_week_pool, rp).total if my_week_pool else 0.0
+
+    # WHO LEAVES, computed first, because he is the bar everything else clears.
+    # A bid the owner cannot execute is half an answer, and in a full-roster
+    # league every add IS a drop. The man to cut is the one whose absence
+    # costs the optimal lineup least — never the one with the lowest raw
+    # points (a bench quarterback with a big number is worth less than a
+    # startable flex with a small one).
+    drop = drop_candidate(conn, my_ids, my_pool, rp, base_total)
+    mine_season = [season_pts.get(pid, 0.0) for pid in my_ids if pid in cons]
+    if drop is not None:
+        replacement_pts = season_pts.get(drop["id"], 0.0)
+    else:
+        # Nothing spare on the shelf: an add means cutting a starter, so the
+        # bar is the weakest man you own, not a body you were happy to lose.
+        replacement_pts = min(mine_season) if mine_season else 0.0
+    # The width of the roster he would join — the denominator that turns
+    # "eleven points better than the man I'd cut" into a price.
+    roster_span = (max(mine_season) - replacement_pts) if mine_season else 0.0
+
+    # The weakest body at each position, still shown on the row because "over
+    # your worst WR" is a real thing to know. It is no longer the gate. Men
+    # carrying a season-ending tag are skipped: an IR'd receiver is not a
+    # standard the street has to beat, and leaving him in kept the bar at his
+    # healthy projection for the rest of the year.
     worst_by_pos: dict[str, float] = {}
     for pid in my_ids:
         if pid not in players or pid not in cons:
             continue
+        if ros_status(players[pid]["injury_status"]):
+            continue
         pos = players[pid]["pos"]
-        v = cons[pid]["pts_robust"] or 0
-        worst_by_pos[pos] = min(worst_by_pos.get(pos, 1e9), v)
+        worst_by_pos[pos] = min(worst_by_pos.get(pos, 1e9), season_pts.get(pid, 0.0))
 
-    # Score everyone first, then rank within this week's pool. Fixed point
-    # thresholds silently break when the value scale changes: fa_score runs on
-    # season-scale consensus in-season, so a 30/10 cut put every target in
-    # "hot" and every bid flat-lined at the same dollar.
-    scored = []
-    for pid, c in cons.items():
-        if pid in rostered or pid not in players:
-            continue
+    # -------------------------------------------------------------- the street
+    free = [pid for pid in cons if pid not in rostered and pid in players]
+    pool_n = len(free)
+    by_pos: dict[str, list[str]] = {}
+    for pid in free:
+        by_pos.setdefault(players[pid]["pos"], []).append(pid)
+    considered: set[str] = set()
+    for pos, ids in by_pos.items():
+        # Deep enough at each position on BOTH horizons: a streamer can be
+        # nowhere near the season list and still be the best play this Sunday.
+        considered |= set(sorted(ids, key=lambda p: -season_pts.get(p, 0.0))
+                          [:CONSIDER_PER_POS])
+        if wk:
+            considered |= set(sorted(ids, key=lambda p: -wk_pts.get(p, 0.0))
+                              [:CONSIDER_PER_POS])
+
+    def gain(pool: list[PlayerProj], base: float, pid: str,
+             pts: dict[str, float], week: int) -> float:
+        cand = _proj_pool([pid], players, pts, week=week)
+        if not cand:
+            return 0.0
+        return round(optimize(pool + cand, rp).total - base, 1)
+
+    rows = []
+    for pid in considered:
         p = players[pid]
-        score = waivers_engine.fa_score(c["pts_robust"] or 0,
-                                        worst_by_pos.get(p["pos"], 0))
-        if score <= 0:
-            continue
-        scored.append((pid, p, score))
-    scored.sort(key=lambda t: -t[2])
-    n = len(scored)
-
-    # Would he crack the lineup? Computed for the whole shortlist up front,
-    # because price depends on it: a man who does not start is depth, and
-    # depth pays the depth price.
-    my_pool = [PlayerProj(pid, players[pid]["pos"],
-                          (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
-                          players[pid]["name"],
-                          ros_status(players[pid]["injury_status"]))
-               for pid in my_ids if pid in players]
-    base_lineup = optimize(my_pool, rp)
-    base_total = base_lineup.total
-    shortlist = scored[:20]
-
-    def gain_for(pid: str, pos: str, name: str) -> float:
-        cand = PlayerProj(pid, pos,
-                          (cons[pid]["pts_robust"] or 0.0) if pid in cons else 0.0,
-                          name, ros_status(players[pid]["injury_status"]))
-        return round(optimize(my_pool + [cand], rp).total - base_total, 1)
-
-    gains = {pid: (gain_for(pid, p["pos"], p["name"]) if my_ids else None)
-             for pid, p, _ in shortlist}
-
-    # Re-rank on what he is worth TO THIS ROSTER, not to a generic one.
-    # fa_score measures a man against the worst body at his position, which is
-    # the right way to find him and the wrong way to price him: a receiver who
-    # out-scores your WR5 but never cracks the lineup is worth less than a back
-    # who starts on Sunday. So the ordering blends the immediate lineup gain
-    # with a fraction of fa_score standing in for option value — depth, byes,
-    # and the injury you haven't had yet.
-    OPTION_WEIGHT = 0.35
-    shortlist.sort(key=lambda t: -(max(0.0, gains.get(t[0]) or 0.0)
-                                   + OPTION_WEIGHT * t[2]))
-
-    # The denominator has to measure the SAME set the rank comes from. It used
-    # to be `n` — every free agent with a pulse — while the rank ran over the
-    # twenty being priced, so the whole visible ladder was squeezed into the
-    # top 20/n of the book. Measured against the shipped price_at() and a real
-    # 90-bid book (median $6, max $50): at a 300-man pool the twentieth target
-    # was quoted $37 and all twenty tripped the 25%-of-budget confirm-twice
-    # warning — the cry-wolf failure this house guards against everywhere else.
-    # It is also the exact failure continuous pricing replaced tiers to fix,
-    # arriving from the other end.
-    #
-    # The demo cannot reach it: 168 of its 182 players end up rostered, leaving
-    # five free agents, where the two denominators nearly agree.
-    #
-    # Ranking the priced list against itself is also the faithful reading of
-    # the rule in engines/waivers.py: the historical book records what this
-    # room paid for men it actually bid on, not for the 300th-best free agent,
-    # and the weeks with nothing worth having are already in that book as its
-    # $1 and $2 entries.
-    priced = len(shortlist)
-    out = []
-    for rank, (pid, p, score) in enumerate(shortlist):
-        value_pct = 1.0 - (rank / (priced - 1)) if priced > 1 else 1.0
-        starts = bool(gains.get(pid)) and (gains.get(pid) or 0) > 0
-        if bids_hist:
-            bid = waivers_engine.price_at(value_pct, bids_hist,
-                                          settings.faab_budget, starts=starts)
-        else:  # no book to read: fall back to the score-proportional rule
-            bid = waivers_engine.size_bid(score, [], settings.faab_budget).bid
-        out.append({
+        ros = season_pts.get(pid, 0.0)
+        over_drop = round(ros - replacement_pts, 1)
+        rows.append({
             "id": pid, "name": p["name"], "pos": p["pos"], "team": p["team"],
-            "fa_score": round(score, 1), "bid": bid,
-            "value_pct": round(value_pct, 3),
-            "hard_confirm": bid > waivers_engine.HARD_CONFIRM_FRACTION * settings.faab_budget,
-            # the row's OWN tier — `c` here would be a stale loop leftover
-            "tier": cons[pid]["tier"] if pid in cons else None,
+            "ros": round(ros, 1),
+            "fa_score": round(waivers_engine.fa_score(
+                ros, worst_by_pos.get(p["pos"], 0.0)), 1),
+            "over_drop": over_drop,
+            "lineup_gain": gain(my_pool, base_total, pid, season_pts, 0),
+            "week_pts": round(wk_pts.get(pid, 0.0), 1) if wk else None,
+            "week_gain": gain(my_week_pool, base_week, pid, wk_pts, wk) if wk else None,
+            "tier": cons[pid]["tier"],
             "heat": heat.get(pid, 0),
-            "lineup_gain": gains.get(pid),
         })
-    for row, bid in zip(out, waivers_engine.enforce_ladder([r["bid"] for r in out])):
-        row["bid"] = bid
-        row["hard_confirm"] = bid > waivers_engine.HARD_CONFIRM_FRACTION * settings.faab_budget
-    top = out
+
+    # ------------------------------------------------------------ the upgrades
+    top = [r for r in rows if r["over_drop"] > 0]
+    top.sort(key=lambda r: -(max(0.0, r["lineup_gain"])
+                             + OPTION_WEIGHT * r["over_drop"]))
+    top = top[:12]
+    for r in top:
+        r["value_pct"] = round(waivers_engine.value_fraction(
+            r["over_drop"], roster_span), 3)
+        starts = r["lineup_gain"] > 0
+        if bids_hist:
+            r["bid"] = waivers_engine.price_at(r["value_pct"], bids_hist,
+                                               settings.faab_budget, starts=starts)
+        else:
+            r["bid"] = waivers_engine.size_bid(
+                max(r["over_drop"], 0.0), [], settings.faab_budget).bid
+    for r, bid in zip(top, waivers_engine.enforce_ladder([r["bid"] for r in top])):
+        r["bid"] = bid
+        r["hard_confirm"] = bid > waivers_engine.HARD_CONFIRM_FRACTION * settings.faab_budget
+
+    # ----------------------------------------------------------- the streamers
+    # Men who would START for me this week and are not already an upgrade.
+    # Priced on the week's own scale and capped: a rental is not an asset.
+    upgrade_ids = {r["id"] for r in top}
+    streamers: list[dict] = []
+    if wk and my_week_pool:
+        mine_week = [wk_pts.get(pid, 0.0) for pid in my_ids if pid in players]
+        week_span = (max(mine_week) - min(mine_week)) if mine_week else 0.0
+        streamers = [r for r in rows
+                     if r["id"] not in upgrade_ids and (r["week_gain"] or 0) > 0]
+        streamers.sort(key=lambda r: -(r["week_gain"] or 0))
+        streamers = streamers[:8]
+        for r in streamers:
+            frac = waivers_engine.value_fraction(r["week_gain"] or 0.0, week_span)
+            r["value_pct"] = round(frac * waivers_engine.STREAM_CAP, 3)
+            r["bid"] = (waivers_engine.price_at(r["value_pct"], bids_hist,
+                                                settings.faab_budget)
+                        if bids_hist else max(1, int(round((r["week_gain"] or 0) / 2))))
+            r["hard_confirm"] = (r["bid"] >
+                                 waivers_engine.HARD_CONFIRM_FRACTION * settings.faab_budget)
+        for r, bid in zip(streamers,
+                          waivers_engine.enforce_ladder([r["bid"] for r in streamers])):
+            r["bid"] = bid
+
+    shown = top + streamers
 
     # Schedule context: who the target plays this week, and the bid traps —
     # on bye now (he can't help the week you bought him) or next week.
-    wk_now = int(db.meta_get(conn, "current_week") or 0)
-    if wk_now:
+    if wk:
         gnow = {g["team"]: g for g in conn.execute(
             "SELECT * FROM nfl_games WHERE season=? AND week=?",
-            (settings.season, wk_now))}
-        for t in top:
+            (settings.season, wk))}
+        for t in shown:
             g = gnow.get(t["team"])
             byew = players[t["id"]]["bye"]
             t["opp"] = (("" if g["is_home"] else "@") + (g["opponent"] or "")) if g else None
-            t["bye_now"] = byew == wk_now
-            t["bye_next"] = byew == wk_now + 1
+            t["bye_now"] = byew == wk
+            t["bye_next"] = byew == wk + 1
             t["imp"] = g["implied_total"] if g else None
             t["wx"] = schedule.weather_flags(g)
 
-    # Who leaves. A bid the owner cannot execute is half an answer, and in a
-    # full-roster league every add IS a drop. The man to cut is the one whose
-    # absence costs the optimal lineup least — computed by removing him and
-    # re-optimising, never by raw points (a bench quarterback with a big
-    # number is worth less than a startable flex with a small one).
-    drop = drop_candidate(conn, my_ids, my_pool, rp, base_total)
-    for t in top:
+    for t in shown:
         t["drop"] = drop
 
     # The wire's word on each target, and the reason half of them are here:
     # a free agent whose starter just went on IR is not a value pick, he is a
     # job opening. That is how waiver weeks are actually won, and until the
     # wire existed this board could not see it.
-    news = alerts.for_players(conn, [t["id"] for t in top])
+    news = alerts.for_players(conn, [t["id"] for t in shown])
     openings = job_openings(conn, rostered)
-    for t in top:
+    for t in shown:
         t["news"] = news.get(t["id"])
         t["opening"] = openings.get((t["team"], t["pos"]))
 
-    return {"targets": top, "history_n": len(bids_hist),
-            "pool": n, "budget": settings.faab_budget,
-            "pricing": ("this league's own bids, indexed continuously by the "
-                        "target's value percentile" if bids_hist
-                        else "no bid history on the books — score-proportional"),
-            "note": "Advisory only — waivers have no actuation path."}
+    pricing = ("this room's own winning bids, indexed by where each man sits on "
+               "the width of your roster" if bids_hist else
+               "no bid history on the books yet — sized from the edge itself, "
+               "not from this room")
+    if top:
+        note = "Advisory only — waivers have no actuation path."
+    else:
+        # NEVER a silent short list. The honest answer is often "nobody", and
+        # it has to be said out loud with the number behind it.
+        note = (f"Nobody on the street beats {drop['name']} — the man you'd "
+                f"cut — on rest-of-season points."
+                if drop else
+                "Nothing on the street beats the weakest man you own, and you "
+                "have no spare body to cut.")
+    return {"targets": top, "streamers": streamers,
+            "history_n": len(bids_hist),
+            "pool": pool_n, "considered": len(considered), "week": wk,
+            "replacement": ({"name": drop["name"], "pos": drop["pos"],
+                             "pts": round(replacement_pts, 1)} if drop else None),
+            "roster_span": round(roster_span, 1),
+            "budget": settings.faab_budget,
+            "pricing": pricing,
+            "note": note}
 
 
 def drop_candidate(conn: sqlite3.Connection, my_ids: list[str],

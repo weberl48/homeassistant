@@ -54,16 +54,46 @@ class BidAdvice:
 # value, and a three-step staircase cannot.
 #
 # The fix keeps the same evidence — this league's own winning bids — and indexes
-# it continuously. A man at the 90th percentile of this week's free agents is
-# worth the 90th percentile of what this room has historically paid. That is
-# monotone by construction, interpolates smoothly, and still says "$21" rather
-# than "$20" because the room bids round numbers.
+# it continuously, so the ladder interpolates smoothly and still says "$21"
+# rather than "$20" because the room bids round numbers.
 #
-# One damper: a percentile is a statement about RANK, and in a barren week the
-# best available man is still not worth a hot-add price. A target who does not
-# crack your starting lineup is depth, and depth pays the depth price.
+# What it must NOT index on is rank. A percentile of the shortlist is a
+# statement about the shape of one week's street, and rank 1 is rank 1 every
+# week — so the best available always drew the top of the book even in a week
+# with nothing on it. `value_fraction` below supplies an absolute position
+# instead, measured against the roster the man would join. A target who does
+# not crack your starting lineup is depth on top of that, and depth pays the
+# depth price.
 DEPTH_DISCOUNT = 0.5
 MIN_LIVE_BID = 1
+# A one-week rental is not a rest-of-season asset. Streaming never pays more
+# than the middle of this room's book, whatever the week's arithmetic says.
+STREAM_CAP = 0.5
+
+
+def value_fraction(over_drop: float, roster_span: float) -> float:
+    """Where a free agent sits on YOUR OWN roster's scale, in [0, 1].
+
+    The percentile handed to `price_at` used to be the target's RANK within
+    the twenty men being priced, which made it a statement about the shape of
+    one week's shortlist rather than about the man. Rank 1 is rank 1 every
+    week, so the best available always priced at the 100th percentile of the
+    book — the most this room has ever paid — in a barren week as readily as
+    in a week somebody's season-winner hit the street. Depth pricing was the
+    only damper, and it does not apply to a man who starts.
+
+    An absolute anchor fixes it without inventing a scale: measure him against
+    the width of the roster he would join. `over_drop` is how far he sits
+    above the man you would actually cut; `roster_span` is how far your BEST
+    man sits above that same body. A free agent as good as your best player is
+    a max-price add. One a tenth of the way up that span pays a tenth of the
+    book. Both terms are season points from the same table, so the ratio is
+    scale-free and survives the season-vs-week change of units that has
+    broken thresholds here before.
+    """
+    if roster_span <= 0:
+        return 1.0 if over_drop > 0 else 0.0
+    return max(0.0, min(1.0, over_drop / roster_span))
 
 
 def price_at(value_pct: float, history: list[float], remaining_budget: int,

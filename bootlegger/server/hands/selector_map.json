@@ -1,35 +1,44 @@
 {
-  "_comment": "Accessibility-first locators for Sleeper's tap-to-swap lineup editor. These are placeholders until the rehearsal league calibration (design doc §5.8) records the real roles/names; the Wednesday canary diffs this file against the live page so UI redeploys break loudly midweek, not silently on Sunday.",
-  "version": 1,
+  "_comment": "Locators for Sleeper's lineup editor. READ locators were calibrated 2026-08-31 against the live team page with tools/calibrate_lineup.py and are real, not placeholders. The WRITE locator (confirm_swap) is still unknown: the confirm control does not exist in the DOM until a swap is initiated, so discovering it means clicking on a real roster \u2014 a watched step, not an unattended one. `calibrated` stays false until it is known and a swap has been rehearsed end to end.",
+  "version": 2,
   "calibrated": false,
   "team_page_url": "https://sleeper.com/leagues/{league_id}/team",
   "locators": {
-    "logged_in_probe": {
-      "role": "button",
-      "name_re": "(?i)my team|roster"
-    },
-    "starter_row": {
-      "role": "button",
-      "name_re": "(?i){player_name}"
-    },
-    "bench_row": {
-      "role": "button",
-      "name_re": "(?i){player_name}"
-    },
-    "confirm_swap": {
-      "role": "button",
-      "name_re": "(?i)confirm|save"
-    }
+    "roster_item": ".team-roster-item",
+    "slot_label": ".league-slot-position-square",
+    "player_name": ".player-name",
+    "injury_badge": ".player-injury-container",
+    "logged_in_probe": ".team-roster",
+    "starter_row": ".team-roster-item:not(:has(.league-slot-position-square:text-is('BN')))",
+    "bench_row": ".team-roster-item:has(.league-slot-position-square:text-is('BN'))",
+    "confirm_swap": null
   },
   "pacing_seconds": {
     "min": 0.8,
     "max": 2.5
   },
   "draft_room": {
-    "_comment": "Calibrated LIVE 2026-08-25 in practice room 1398024983728377856 (verified pick: Harold Fannin P71, mine=true). draft-button-wrapper is a semantic Sleeper class, not a build hash — the one deliberate exception to the role/text rule; the confirm stays text-based.",
+    "_comment": "Calibrated LIVE 2026-08-25 in practice room 1398024983728377856 (verified pick: Harold Fannin P71, mine=true). draft-button-wrapper is a semantic Sleeper class, not a build hash \u2014 the one deliberate exception to the role/text rule; the confirm stays text-based.",
     "calibrated": true,
     "search_placeholder": "Find player",
     "row_draft_button_css": ".draft-button-wrapper, .draft-button",
     "confirm_text": "Draft"
+  },
+  "calibration_notes": {
+    "calibrated_at": "2026-08-31",
+    "observed": "16 roster items = 15 players + one empty IR slot",
+    "slot_labels": [
+      "QB",
+      "RB",
+      "WR",
+      "TE",
+      "W\nR\nT (flex, stacked)",
+      "K",
+      "DEF",
+      "BN",
+      "IR"
+    ],
+    "read_verified": "slot label, player name and injury badge all resolve per row",
+    "write_unverified": "confirm_swap requires initiating a swap to observe"
   }
 }

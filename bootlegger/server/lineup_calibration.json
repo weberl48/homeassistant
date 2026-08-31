@@ -1,0 +1,167 @@
+{
+ "url": "https://sleeper.com/leagues/1389751438090977280/team",
+ "roles": {
+  "logged_in_probe": [
+   {
+    "how": "role",
+    "role": "link",
+    "value": "Scores",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "role",
+    "role": "button",
+    "value": "Lineup",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "text",
+    "role": null,
+    "value": "My Team",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='avatar']",
+    "n": 60,
+    "sample": ""
+   }
+  ],
+  "starter_row": [
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='starter'] [class*='player-name']",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[data-testid*='starter']",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='roster-slot']",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='team-roster-item']",
+    "n": 16,
+    "sample": "QB / J Allen / QB - BUF / (7) / Sun 1:00 PM / @ HOU / 100% / 100% / - / 20.36"
+   }
+  ],
+  "bench_row": [
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='bench'] [class*='player-name']",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[data-testid*='bench']",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='bench-slot']",
+    "n": 0,
+    "sample": ""
+   }
+  ],
+  "confirm_swap": [
+   {
+    "how": "role",
+    "role": "button",
+    "value": "Confirm",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "role",
+    "role": "button",
+    "value": "Save",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "text",
+    "role": null,
+    "value": "Move here",
+    "n": 0,
+    "sample": ""
+   },
+   {
+    "how": "css",
+    "role": null,
+    "value": "[class*='confirm']",
+    "n": 0,
+    "sample": ""
+   }
+  ]
+ },
+ "title": "Sleeper",
+ "final_url": "https://sleeper.com/leagues/1389751438090977280/team",
+ "looks_logged_out": false,
+ "dom_hints": [
+  [
+   "team-roster-item",
+   16
+  ],
+  [
+   "league-slot-position-square",
+   16
+  ],
+  [
+   "avatar-player",
+   16
+  ],
+  [
+   "cell-player-meta",
+   16
+  ],
+  [
+   "player-name-row",
+   15
+  ],
+  [
+   "player-name",
+   15
+  ],
+  [
+   "player-scoring",
+   15
+  ],
+  [
+   "player-injury-container",
+   4
+  ],
+  [
+   "team-roster",
+   1
+  ],
+  [
+   "update-roster-copy",
+   1
+  ],
+  [
+   "transaction-player",
+   1
+  ]
+ ]
+}
