@@ -945,7 +945,12 @@ def ping_healthchecks(ok: bool = True) -> None:
 def nightly(conn: sqlite3.Connection) -> dict:
     """The nightly ETL bundle for live mode."""
     client = SleeperClient()
-    out = {"players": etl_players(client, conn)}
+    # force=True: the players blob is disk-cached for 24h and this job runs on
+    # a 24h loop, so the two periods race and the nightly can re-read its own
+    # stale copy indefinitely. Observed live — a refresh at 06:11 wrote a fresh
+    # updated_at over content from the previous day, which reads as freshness
+    # to everything downstream while carrying yesterday's injury flags.
+    out = {"players": etl_players(client, conn, force=True)}
     # The season's clock. Everything week-shaped (the lineup scanner, the
     # week card, weekly projections) needs to know what week it is; without
     # this they were all pinned to week 1 forever.

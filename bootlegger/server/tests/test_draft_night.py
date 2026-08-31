@@ -251,3 +251,29 @@ def test_the_board_says_how_old_its_sheet_is(conn):
     sheet, and nothing on screen distinguished them."""
     board = brain.get_board(conn)
     assert board["draft"]["sheet_as_of"], "no sheet_as_of on the payload"
+
+
+# ---------------------------------------------------------------------------
+# 4. Freshness and the men who leave the sheet
+
+
+def test_a_released_player_does_not_break_the_board(conn):
+    """etl_players keeps only positions we care about ON A TEAM, so the day a
+    rostered man is cut he vanishes from the index while his pick row stays
+    forever. Every lookup in `recent` and `my_roster` was a bare subscript —
+    a 500 on the main board the afternoon somebody gets released. Forty-three
+    such picks already existed in this league's past drafts."""
+    _draft_to(conn, 30, 7, [])
+    # Somebody inside the last twelve picks, so he is on the feed the board
+    # actually renders (recent_picks is picks[-12:]).
+    gone = conn.execute(
+        "SELECT player_id FROM draft_picks ORDER BY pick_no DESC LIMIT 1").fetchone()[0]
+    conn.execute("DELETE FROM players WHERE sleeper_id=?", (gone,))
+    conn.commit()
+    board = brain.get_board(conn)          # must not raise
+    assert board["recent_picks"], "the feed went empty rather than degrading"
+    names = [r["player"] for r in board["recent_picks"]] + \
+            [r["player"] for r in board["my_roster"]]
+    assert "(no longer rostered)" in names, (
+        "the released man vanished silently instead of being rendered as a "
+        "pick whose player is gone")

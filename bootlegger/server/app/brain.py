@@ -535,12 +535,27 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
         experts_call = {"id": erow["id"], "name": erow["name"],
                         "pos": erow["pos"], "ecr": round(er, 1)}
 
+    # A drafted man who has since left the players table. etl_players keeps
+    # only positions we care about ON A TEAM, so the day somebody is released
+    # he vanishes from the index while his pick row stays forever — and every
+    # lookup here was a bare subscript, i.e. a 500 on the main board the
+    # afternoon a rostered player gets cut. Forty-three such picks already
+    # exist across this league's past drafts; the live board escaped only
+    # because it reads the newest draft. He keeps his pick and loses his
+    # details, which is the honest rendering of what is actually known.
+    def _drafted(pid: str) -> dict:
+        p = players.get(pid)
+        return {"name": p["name"] if p else "(no longer rostered)",
+                "pos": p["pos"] if p else "—",
+                "team": p["team"] if p else None,
+                "bye": p["bye"] if p else None}
+
     recent = [
         {
             "pick_no": p["pick_no"], "round": p["round"], "slot": p["draft_slot"],
-            "player": players[p["player_id"]]["name"],
-            "pos": players[p["player_id"]]["pos"],
-            "team": players[p["player_id"]]["team"],
+            "player": _drafted(p["player_id"])["name"],
+            "pos": _drafted(p["player_id"])["pos"],
+            "team": _drafted(p["player_id"])["team"],
             "mine": p["draft_slot"] == my_slot,
         }
         for p in picks[-12:]
@@ -548,11 +563,11 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
 
     my_roster = [
         {"pick_no": p["pick_no"], "round": p["round"],
-         "player": players[p["player_id"]]["name"],
-         "pos": players[p["player_id"]]["pos"],
-         "team": players[p["player_id"]]["team"],
+         "player": _drafted(p["player_id"])["name"],
+         "pos": _drafted(p["player_id"])["pos"],
+         "team": _drafted(p["player_id"])["team"],
          # the shelf panel cannot flag a bye it was never handed
-         "bye": players[p["player_id"]]["bye"]}
+         "bye": _drafted(p["player_id"])["bye"]}
         for p in my_picks
     ]
 
