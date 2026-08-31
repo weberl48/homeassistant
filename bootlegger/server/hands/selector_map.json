@@ -1,20 +1,16 @@
 {
   "_comment": "Locators for Sleeper's lineup editor. READ locators were calibrated 2026-08-31 against the live team page with tools/calibrate_lineup.py and are real, not placeholders. The WRITE locator (confirm_swap) is still unknown: the confirm control does not exist in the DOM until a swap is initiated, so discovering it means clicking on a real roster \u2014 a watched step, not an unattended one. `calibrated` stays false until it is known and a swap has been rehearsed end to end.",
-  "version": 4,
+  "version": 5,
   "calibrated": true,
   "team_page_url": "https://sleeper.com/leagues/{league_id}/team",
   "locators": {
-    "roster_item": ".team-roster-item",
     "slot_label": ".league-slot-position-square",
-    "player_name": ".player-name",
-    "injury_badge": ".player-injury-container",
     "logged_in_probe": ".team-roster",
-    "starter_row": ".team-roster-item:not(:has(.league-slot-position-square:has-text('BN'))):not(:has(.league-slot-position-square:has-text('IR')))",
-    "bench_row": ".team-roster-item:has(.league-slot-position-square:has-text('BN'))",
-    "select_slot": ".league-slot-position-square",
     "selected_row": ".team-roster-item.selected",
     "valid_row": ".team-roster-item.valid",
-    "invalid_row": ".team-roster-item.invalid"
+    "invalid_row": ".team-roster-item.invalid",
+    "row_by_name": ".team-roster-item:has(.player-name:has-text('{name}'))",
+    "slot_square": ".league-slot-position-square"
   },
   "pacing_seconds": {
     "min": 0.8,

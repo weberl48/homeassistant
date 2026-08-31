@@ -2160,11 +2160,16 @@ def waiver_targets(conn: sqlite3.Connection, heat: dict[str, int] | None = None)
         t["news"] = news.get(t["id"])
         t["opening"] = openings.get((t["team"], t["pos"]))
 
-    pricing = ("this room's own winning bids, indexed by where each man sits "
-               "between the body you'd cut and a typical starter of yours"
+    # A whole sentence, because the page prints it as one. It used to be a
+    # fragment completing "Bids sized from ...", which read fine with a book
+    # ("...this room's own winning bids") and badly without one ("Bids sized
+    # from no bid history on the books yet").
+    pricing = ("Bids are sized from this room's own winning bids, indexed by "
+               "where each man sits between the body you'd cut and a typical "
+               "starter of yours."
                if bids_hist else
-               "no bid history on the books yet — sized from the edge itself, "
-               "not from this room")
+               "This room has no bid history yet, so bids are sized from the "
+               "edge itself rather than from evidence it doesn't have.")
     if top:
         note = "Advisory only — waivers have no actuation path."
     else:

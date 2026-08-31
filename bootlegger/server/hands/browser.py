@@ -62,9 +62,36 @@ def _shoot(page, rec_id: int, step: str) -> str:
     return str(path)
 
 
+def _row(page, m: dict, full_name: str):
+    """The roster row for a player, matched on LAST NAME.
+
+    Sleeper prints "J Dobbins", not "J.K. Dobbins" — matching the full name
+    from our own players table finds nothing. The surname is the stable part.
+    Anything other than exactly one match raises: two men sharing a surname on
+    one roster is rare and clicking the wrong one is not recoverable.
+    """
+    surname = full_name.split()[-1].strip(".")
+    sel = m["locators"]["row_by_name"].format(name=surname)
+    loc = page.locator(sel)
+    n = loc.count()
+    if n != 1:
+        raise RuntimeError(
+            f"{full_name!r} matched {n} roster rows on surname {surname!r}; "
+            f"refusing to guess which man to move")
+    return loc.first
+
+
 def perform_swaps(swaps: list[dict], rec_id: int) -> list[tuple[str, str]]:
     """Returns [(step, screenshot_path)]. Raises on anything unexpected — the
-    worker turns every raise into a failed job plus an urgent notification."""
+    worker turns every raise into a failed job plus an urgent notification.
+
+    The gesture, calibrated against the live page on 2026-08-31: click the
+    POSITION BUTTON of the man to move, which marks his row `.selected` and
+    every other row `.valid` or `.invalid`; then click the position button of a
+    `.valid` row. There is no confirm step — the second click writes, via a
+    `update_matchup_leg` GraphQL mutation. Nothing here can undo it, so the
+    validity check before that second click is the last line of defence.
+    """
     m = _map()
     if not m.get("calibrated"):
         raise NotCalibrated(
@@ -78,38 +105,69 @@ def perform_swaps(swaps: list[dict], rec_id: int) -> list[tuple[str, str]]:
     from playwright.sync_api import sync_playwright  # imported lazily; optional dep
 
     from app.db import connect
-    from app.brain import _players_index  # names for role/text locators
+    from app.brain import _players_index
     names = {pid: r["name"] for pid, r in _players_index(connect()).items()}
 
     shots: list[tuple[str, str]] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
-        ctx = browser.new_context(storage_state=str(state))
+        # A viewport, explicitly. Chromium defaults to 1280x720, at which
+        # Sleeper renders a narrower layout with no .team-roster at all —
+        # the probe found nothing and a perfectly good session read as
+        # expired.
+        ctx = browser.new_context(storage_state=str(state),
+                                  viewport={"width": 1400, "height": 1100})
         page = ctx.new_page()
-        page.goto(m["team_page_url"].format(league_id=settings.league_id),
-                  wait_until="networkidle")
+        url = m["team_page_url"].format(league_id=settings.league_id)
+        # The Pi fails this three different ways: ERR_NETWORK_CHANGED on
+        # navigation, a navigation that succeeds onto an EMPTY body, or it
+        # simply works. Only the first is a goto error, so retrying goto alone
+        # left the empty-render case looking like an expired session. Retry on
+        # the thing actually wanted — the roster being on the page.
+        roster_sel = m["locators"]["row_by_name"].split(":has")[0]
+        for attempt in range(4):
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                page.wait_for_selector(roster_sel, timeout=20000)
+                break
+            except Exception:
+                if attempt == 3:
+                    shots.append(("blank", _shoot(page, rec_id, "blank")))
+                    raise RuntimeError(
+                        "the team page never rendered a roster after 4 attempts "
+                        "— the browser reached Sleeper but the app did not come "
+                        "up. Seen on the Pi; the same session renders fine "
+                        "elsewhere, so suspect this host's network path.")
+                page.wait_for_timeout(3000)
         shots.append(("loaded", _shoot(page, rec_id, "loaded")))
 
-        probe = m["locators"]["logged_in_probe"]
-        if not page.get_by_role(probe["role"], name=_re(probe["name_re"])).count():
+        if not page.locator(m["locators"]["logged_in_probe"]).count():
             shots.append(("reauth", _shoot(page, rec_id, "reauth")))
             raise ReauthNeeded("session expired — export a fresh storageState.json")
 
+        square = m["locators"]["slot_square"]
         for i, s in enumerate(swaps):
             _pace(m)
-            row = m["locators"]["starter_row"]
-            page.get_by_role(row["role"], name=_re(row["name_re"], player_name=names[s["out_id"]])).first.click()
+            _row(page, m, names[s["out_id"]]).locator(square).click()
+            page.wait_for_timeout(1200)
             shots.append((f"tap_out_{i}", _shoot(page, rec_id, f"tap_out_{i}")))
+
+            dest = _row(page, m, names[s["in_id"]])
+            cls = dest.get_attribute("class") or ""
+            # valid/invalid land on the ROW, never on the square. Reading the
+            # square finds neither and would abort every legal swap.
+            if "valid" not in cls.split() or "invalid" in cls.split():
+                shots.append((f"refused_{i}", _shoot(page, rec_id, f"refused_{i}")))
+                raise RuntimeError(
+                    f"{names[s['in_id']]} is not a legal destination for "
+                    f"{names[s['out_id']]} (row classes: {cls!r})")
+
             _pace(m)
-            row = m["locators"]["bench_row"]
-            page.get_by_role(row["role"], name=_re(row["name_re"], player_name=names[s["in_id"]])).first.click()
+            dest.locator(square).click()     # THIS WRITES
+            page.wait_for_timeout(2500)
             shots.append((f"tap_in_{i}", _shoot(page, rec_id, f"tap_in_{i}")))
-        _pace(m)
-        confirm = m["locators"]["confirm_swap"]
-        loc = page.get_by_role(confirm["role"], name=_re(confirm["name_re"]))
-        if loc.count():
-            loc.first.click()
-        shots.append(("confirmed", _shoot(page, rec_id, "confirmed")))
+
+        shots.append(("done", _shoot(page, rec_id, "done")))
         browser.close()
     return shots
 
@@ -130,7 +188,12 @@ def canary(rec_id: int = 0) -> dict:
     results = {}
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True, args=CHROMIUM_ARGS)
-        ctx = browser.new_context(storage_state=str(state))
+        # A viewport, explicitly. Chromium defaults to 1280x720, at which
+        # Sleeper renders a narrower layout with no .team-roster at all —
+        # the probe found nothing and a perfectly good session read as
+        # expired.
+        ctx = browser.new_context(storage_state=str(state),
+                                  viewport={"width": 1400, "height": 1100})
         page = ctx.new_page()
         page.goto(m["team_page_url"].format(league_id=settings.league_id),
                   wait_until="networkidle")

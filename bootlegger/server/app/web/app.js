@@ -1246,7 +1246,7 @@ async function loadWaivers() {
     // book was empty. Say what the server says.
     const prov = $("#waivers-provenance");
     if (prov) {
-      prov.innerHTML = `Bids sized from ${esc(data.pricing || "no stated basis")}.
+      prov.innerHTML = `${esc(data.pricing || "No stated pricing basis.")}
         Advisory only — waivers have no actuation path in this house.`;
     }
     const hasBook = (data.history_n || 0) > 0;
@@ -1362,8 +1362,7 @@ async function loadWaivers() {
     const priceNote = `<p class="optimal-note">The upgrade lane is priced by how far a man sits
       above that bar, as a share of the ${data.roster_span} points between the bar and a typical
       man in your starting lineup${hasBook ? `, read off the ${data.history_n} winning bids this
-      room has actually paid` : `. This room has no bid history yet, so the number comes from the
-      edge itself and not from evidence it doesn't have`}. Depth pays half a starter's price, and
+      room has actually paid` : ``}. Depth pays half a starter's price, and
       a one-week rental never pays more than the middle of the book.</p>`;
 
     $("#waivers-body").innerHTML = upgrade + streamers + dropLine + census + priceNote;
