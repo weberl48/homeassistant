@@ -59,9 +59,13 @@ docker run -d --name bootlegger-nightly --restart unless-stopped $ENV_COMMON \
 # nothing consumed. Real execution additionally needs the calibrated swap
 # selector map + session state (see hands/browser.py) and BOOTLEGGER_API_TOKEN.
 # shellcheck disable=SC2086
+# --memory=2g and --shm-size=512m: the hands drive a real Chromium against
+# Sleeper's lineup editor, and at the old 1g ceiling it died mid-swap with
+# "Target crashed" rendering a hydrated React roster. Only this container
+# ever launches a browser, so the other three are unaffected.
 docker run -d --name bootlegger-hands --restart unless-stopped \
   -e BOOTLEGGER_APPROVE_REQUIRED=1 -e HANDS_DRY_RUN="${HANDS_DRY_RUN:-1}" \
-  --memory=1g $ENV_COMMON $IMG python -m hands.worker
+  --memory=2g --shm-size=512m $ENV_COMMON $IMG python -m hands.worker
 
 sleep 5
 curl -sf http://192.168.1.160:8484/health && echo && echo "deployed."

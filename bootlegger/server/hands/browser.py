@@ -35,7 +35,16 @@ def state_file() -> Path | None:
     """The first candidate that is actually a file, or None."""
     return next((Path(p) for p in _STATE_CANDIDATES if Path(p).is_file()), None)
 
-CHROMIUM_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+# Chromium on a Raspberry Pi with ~2GB free. The first live attempt died with
+# "Target crashed" mid-swap — the OOM this project had already seen once, in a
+# draft room. Single-process with a capped JS heap survives it; the container
+# also needs --memory=2g and --shm-size=512m (see ops/pi/deploy.sh), because
+# the default 1g limit is not enough to render a hydrated React roster.
+CHROMIUM_ARGS = [
+    "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+    "--single-process", "--no-zygote", "--disable-extensions",
+    "--disable-background-networking", "--js-flags=--max-old-space-size=256",
+]
 
 
 class ReauthNeeded(RuntimeError):
