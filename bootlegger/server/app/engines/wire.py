@@ -39,8 +39,13 @@ NOTIFY = {"out", "doubtful", "questionable", "practice", "role"}
 DEPARTURE = re.compile(
     r"\b(injured reserve|placed on ir\b|season-ending|out for the (season|year)"
     # "suspended \d" wanted a game count, so "suspended indefinitely" — the
-    # worse news — opened no waiver window at all. Stem it and drop the digit.
-    r"|torn (acl|achilles|pcl)|suspen(ded|sion)|waived|released|cut by|traded to"
+    # worse news — opened no waiver window at all. Drop the digit, but keep the
+    # PARTICIPLE and not the stem: "suspension" is the word people use when a
+    # man is coming BACK ("returns from suspension", "suspension reduced",
+    # "wins appeal of suspension"), and stemming graded every one of those as
+    # the worst news on the wire. Same whole-phrase discipline as the legal
+    # patterns below; the first version of this rule broke it.
+    r"|torn (acl|achilles|pcl)|suspended|waived|released|cut by|traded to"
     # A man on the exempt list is off the field for an unknown number of weeks
     # while still on his team's roster: nothing in the injury vocabulary
     # describes it, and until 2026-08-30 nothing in this file did either.
@@ -54,7 +59,7 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("out", re.compile(
         r"\b(ruled out|won'?t play|will not play|out (for|indefinitely|multiple)"
         r"|inactive (for|sunday|monday|thursday)|injured reserve|placed on ir\b"
-        r"|season-ending|out for the (season|year)|carted off|suspen(ded|sion)"
+        r"|season-ending|out for the (season|year)|carted off|suspended"
         # The 2026 draft: the wire carried nine headlines putting a first-round
         # back on the Commissioner's Exempt List and every one graded INFO,
         # because no table in this file had ever heard of it. The board went on
@@ -78,7 +83,8 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
     # a bare "charged" grades a crowd charged up by a touchdown.
     ("questionable", re.compile(
         r"\b(questionable|game-time decision|true toss-?up"
-        r"|arrested|charged with|facing (felony|misdemeanor|domestic)"
+        r"|arrested|charged with|facing (felony|misdemeanor|domestic|a )?suspension"
+        r"|facing (felony|misdemeanor|domestic)"
         r"|under investigation|pleads? (guilty|not guilty))\b", re.I)),
     ("practice", re.compile(
         r"\b(did not practice|won'?t practice|not practicing|absent (for|from)"
@@ -89,7 +95,12 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
         r"\b(expected to start|will start|named (the )?starter|starting|promoted"
         r"|takes over|leads? the backfield|first-team|top of the depth chart"
         r"|signs?\b|activated|returns? (sunday|monday|thursday|to action)"
-        r"|cleared|elevated|claimed)\b", re.I)),
+        r"|cleared|elevated|claimed"
+        # A man coming back off a suspension is a ROLE event — his snaps
+        # return. Grading these merely `info` was safe; this reads them
+        # the way the news actually means them.
+        r"|returns? from suspension|suspension (lifted|reduced|overturned)"
+        r"|wins appeal)\b", re.I)),
 ]
 
 # The body part, when the feed puts it in the usual parenthetical: "Chase

@@ -42,9 +42,13 @@ import sqlite3
 
 from .calibration import RELEVANT_PTS, SourceScore
 
-# A full NFL season, for prorating a season-long projection against however
-# much of it has actually been played.
-SEASON_GAMES = 17
+# A season-long projection is a TOTAL for the regular season, and the regular
+# season runs eighteen weeks — seventeen games plus each man's bye. Prorating
+# by weeks elapsed over 17 (games, not weeks) inflated every expectation by
+# 18/17, and because that inflation is proportional to the projection it fell
+# hardest on the most optimistic source. That is a systematic thumb on the
+# scale, not the common noise this module claims cancels.
+SEASON_WEEKS = 18
 # Weeks that must be finished before a prorated grade means anything. Three is
 # the point where a single blow-up Sunday stops dominating; it is the same
 # instinct as calibration.MIN_SAMPLE, expressed in weeks because a season-long
@@ -66,6 +70,19 @@ def snapshot(conn: sqlite3.Connection, tag: str, season: int,
         "INSERT INTO projection_ledger(tag,season,player_id,source,week,pts,taken_at) "
         "SELECT ?,?,player_id,source,week,pts,? FROM projections WHERE week=?",
         (tag, season, now, week)).rowcount
+    # And the blend itself, under the reserved source name `consensus`.
+    #
+    # Freezing only the inputs would have missed the point: the board does not
+    # draft on any source's number, it drafts on consensus.pts_robust, and that
+    # table is DELETE-and-rewritten every nightly exactly like `projections`.
+    # Storing it here costs one more INSERT and buys the question actually
+    # worth asking in October — not just which source read the season best, but
+    # whether averaging the six of them beat the best of them.
+    n += conn.execute(
+        "INSERT INTO projection_ledger(tag,season,player_id,source,week,pts,taken_at) "
+        "SELECT ?,?,player_id,'consensus',week,pts_robust,? FROM consensus "
+        "WHERE week=? AND pts_robust IS NOT NULL",
+        (tag, season, now, week)).rowcount
     conn.commit()
     return n
 
@@ -83,9 +100,16 @@ def grade(conn: sqlite3.Connection, tag: str, season: int,
           relevant_pts: float = RELEVANT_PTS) -> list[SourceScore]:
     """Mean absolute error per source for a season-long snapshot, prorated.
 
-    A projection of P points over a full season, judged after W finished weeks,
-    predicts P * W / 17. It is charged the gap between that and what the man
+    A season TOTAL of P points, judged after W finished weeks, predicts
+    P * W / 18 — eighteen because that is how many weeks the regular season
+    takes, bye included. It is charged the gap between that and what the man
     actually scored across those weeks.
+
+    Bye timing still adds noise: two men with equal projections differ by
+    whether their week off has happened yet. That noise IS common across
+    sources — every source forecasts the same man with the same bye — so it
+    cancels for ranking sources against each other, which is the only thing
+    this function claims to do.
 
     `weeks` must be the FINISHED weeks — the same discipline calibration
     applies, and for the same reason: Sleeper reports points continuously, so
@@ -110,7 +134,7 @@ def grade(conn: sqlite3.Connection, tag: str, season: int,
           AND (l.pts >= ? OR a.total >= ?)
         GROUP BY l.source
         """,
-        (len(weeks), SEASON_GAMES, season, *sorted(weeks), tag, season,
+        (len(weeks), SEASON_WEEKS, season, *sorted(weeks), tag, season,
          relevant_pts, relevant_pts)).fetchall()
     return [SourceScore(r["source"], r["n"], r["mae"])
             for r in rows if r["mae"] is not None]

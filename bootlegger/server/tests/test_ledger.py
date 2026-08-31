@@ -71,8 +71,8 @@ def test_snapshots_are_listed_with_provenance(conn):
 def _two_sources(conn):
     """`sharp` nails a 170-point pace; `blunt` is 100 points high on both men."""
     for pid, real_per_week in (("a", 10.0), ("b", 8.0)):
-        _proj(conn, pid, "sharp", real_per_week * ledger.SEASON_GAMES)
-        _proj(conn, pid, "blunt", real_per_week * ledger.SEASON_GAMES + 100)
+        _proj(conn, pid, "sharp", real_per_week * ledger.SEASON_WEEKS)
+        _proj(conn, pid, "blunt", real_per_week * ledger.SEASON_WEEKS + 100)
         for wk in (1, 2, 3, 4):
             _actual(conn, pid, wk, real_per_week)
     ledger.snapshot(conn, "preseason-2026", 2026)
@@ -83,8 +83,8 @@ def test_the_better_source_scores_lower_error(conn):
     scores = {s.source: s.mae for s in
               ledger.grade(conn, "preseason-2026", 2026, weeks={1, 2, 3, 4})}
     assert scores["sharp"] < scores["blunt"]
-    # 100 season points over 4 of 17 weeks is ~23.5 points of prorated error.
-    assert 20 < scores["blunt"] - scores["sharp"] < 27
+    # 100 season points over 4 of 18 weeks is ~22.2 points of prorated error.
+    assert 20 < scores["blunt"] - scores["sharp"] < 25
 
 
 def test_a_season_projection_is_prorated_not_compared_whole(conn):
@@ -136,3 +136,20 @@ def test_the_read_out_refuses_to_rank_one_source(conn):
     said = ledger.read_out([SourceScore("cbs", 50, 12.0),
                             SourceScore("espn", 50, 4.0)])
     assert said and "espn" in said[0], "the best source must be named first"
+
+
+def test_the_blend_itself_is_frozen_not_just_its_inputs(conn):
+    """The board drafts on consensus.pts_robust, not on any single source, and
+    that table is rewritten nightly too. Freezing only the inputs would leave
+    the module's stated motive — settling which read of a backfield was right —
+    still unanswerable."""
+    _proj(conn, "p1", "cbs", 300.0)
+    conn.execute("INSERT OR REPLACE INTO consensus(player_id,week,pts_robust) "
+                 "VALUES(?,?,?)", ("p1", 0, 275.0))
+    conn.commit()
+    ledger.snapshot(conn, "preseason-2026", 2026)
+    got = dict(conn.execute(
+        "SELECT source, pts FROM projection_ledger WHERE tag='preseason-2026' "
+        "AND player_id='p1'").fetchall())
+    assert got.get("consensus") == 275.0, "the number actually drafted on was not kept"
+    assert got.get("cbs") == 300.0, "and its inputs are still kept beside it"

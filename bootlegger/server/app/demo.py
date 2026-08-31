@@ -648,7 +648,14 @@ def _sim_pick_for_slot(conn: sqlite3.Connection, slot: int, pick_no: int) -> str
     rng = _rng("simpick", DEMO_DRAFT_ID, pick_no)
     best_pid, best_key = None, None
     for r in conn.execute(
-        "SELECT a.player_id, a.adp FROM adp a JOIN players p ON p.sleeper_id=a.player_id"
+        # source='demo' or the opponent AI sees a player once per SOURCE. The
+        # adp table is keyed (player_id, source) and holds two different units
+        # — pick position for sleeper/ffc/demo, expert RANK for fp_ecr — so an
+        # unfiltered read hands the sim duplicate rows and lets a rank stand in
+        # for an ADP. Harmless while the demo only ever wrote one source;
+        # a test that seeds fp_ecr changes the board the sim drafts from.
+        "SELECT a.player_id, a.adp FROM adp a JOIN players p ON p.sleeper_id=a.player_id "
+        "WHERE a.source='demo'"
     ).fetchall():
         pid = r["player_id"]
         if pid in taken:

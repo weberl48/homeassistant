@@ -54,20 +54,24 @@ CURVE_DEPTH = 12
 MIN_PICKS_PER_POS = 3
 # Hard cap on the correction, in picks. One round.
 MAX_OFFSET = 12.0
-# Confidence bar for SAYING a tendency out loud, as offset over spread.
+# Confidence bar for trusting a tendency at all, as offset over spread.
 #
-# The numbers need no such bar, and deliberately do not have one: widen_sigma
-# folds the room's draft-to-draft spread into the survival curve in quadrature,
-# so a position this room is erratic about already gets a FLATTER curve rather
-# than a confident shift. That is the honest treatment of a noisy habit, and it
-# is available to arithmetic.
+# Both the words and the arithmetic answer to this. The first version of this
+# comment argued the numbers needed no such bar — widen_sigma already folds the
+# room's spread into the survival curve, so an erratic position gets a flatter
+# curve rather than a confident shift, and that was called "the honest
+# treatment, available to arithmetic".
 #
-# Prose cannot flatten. A sentence either claims the habit or stays quiet, so
-# the words need a bar the math does not. Below this ratio the past drafts
-# disagree by too much of the effect's own width to assert it in English — and
-# the failure mode of asserting it anyway ("you can wait longer than the sheet
-# says") is losing a man you waited on, which is the one error draft night
-# cannot give back.
+# Half right, and the half that was wrong cost the 2026 draft its defense.
+# Widening flattens a curve; the SHIFT still moves its centre by the untrusted
+# number. Defenses measured -12.0 at a signal of 1.32 — pinned to the cap by
+# three drafts that disagreed across nearly its whole width — and the board
+# duly expected them to slide twelve picks. The best one went eleven picks
+# before the seat that wanted it. About 24.6 points, the largest measurable
+# engine cost of that night.
+#
+# So: a number you would not say out loud is a number you should not draft on.
+# read_out gates the sentence, adjust_adp gates the shift, both on this.
 MIN_SIGNAL = 2.0
 
 _POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")

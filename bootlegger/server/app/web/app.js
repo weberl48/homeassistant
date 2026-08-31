@@ -356,9 +356,29 @@ function playerRow(p) {
   return el;
 }
 
+/* The WIRE chip, kept in sync on every poll.
+   playerRow() builds a row once; renderBoard only rebuilds columns on first
+   paint, a rewind or a reset, so everything after that goes through
+   updateRow. The chip was built in playerRow alone — which meant a flag
+   arriving DURING a draft, the one case this feature exists for, could never
+   appear on a board that was already open. The server had already dropped the
+   man from The Call; his row just never said why. */
+function syncWire(el, p) {
+  const want = p.news && p.news.severity === "out" ? p.news : null;
+  const has = el.querySelector(".wire-flag");
+  if (!want) { if (has) has.remove(); return; }
+  if (has) { has.title = want.headline; return; }
+  const chip = document.createElement("span");
+  chip.className = "hurt wire-flag";
+  chip.title = want.headline;
+  chip.innerHTML = `${icon.cross}WIRE`;
+  el.querySelector(".l1").appendChild(chip);
+}
+
 function updateRow(el, p, justPicked) {
   const stamp = el.querySelector("[data-stamp]");
   const surv = el.querySelector("[data-surv]");
+  syncWire(el, p);
   if (p.pick_no) {
     el.classList.add("is-picked");
     el.classList.toggle("is-mine", !!p.mine);

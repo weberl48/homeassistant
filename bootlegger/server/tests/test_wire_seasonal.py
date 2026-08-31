@@ -184,3 +184,62 @@ def test_game_prose_is_not_a_legal_matter():
                    "Legal tampering window opens Monday",
                    "He charged into the end zone untouched"):
         assert wire.severity(benign) != "questionable", benign
+
+
+# ---------------------------------------------------------------------------
+# Coming BACK is not going away — regression introduced and caught 2026-08-31
+
+
+# Widening `suspended \d` to the stem `suspen(ded|sion)` fixed "suspended
+# indefinitely" and broke something worse: "suspension" is the word people use
+# when a man is RETURNING. Every headline below graded `out` with departure=1,
+# which would have fired a DND-piercing push for good news, opened a waiver
+# window telling the league to claim the backup of a man about to play again,
+# and suppressed him from The Call exactly as his value rose.
+#
+# The fix is the same whole-phrase discipline the legal patterns already used:
+# the PARTICIPLE ("suspended") means imposition, the bare noun does not.
+_RETURNING = [
+    "Returns from suspension Sunday",
+    "Suspension reduced to two games",
+    "Wins appeal of suspension",
+    "Eligible to return from suspension in Week 5",
+    "Suspension lifted by the league",
+]
+
+_STILL_GONE = [
+    "Suspended six games",
+    "Suspended indefinitely by the league",
+    "Suspended 6 games for violating the policy",
+]
+
+
+@pytest.mark.parametrize("headline", _RETURNING)
+def test_a_man_coming_back_is_never_graded_out(headline):
+    assert wire.severity(headline) != "out"
+
+
+@pytest.mark.parametrize("headline", _RETURNING)
+def test_a_man_coming_back_opens_no_waiver_window(headline):
+    """DEPARTURE tells the league to claim the body behind him. There is no
+    body behind a man who is returning."""
+    assert not wire.DEPARTURE.search(headline)
+
+
+@pytest.mark.parametrize("headline", _RETURNING)
+def test_a_man_coming_back_reads_as_a_role_event(headline):
+    """His snaps return; that is what `role` is for."""
+    assert wire.severity(headline) == "role"
+
+
+@pytest.mark.parametrize("headline", _STILL_GONE)
+def test_an_imposed_suspension_is_still_out(headline):
+    """The fix must not undo the fix: indefinite suspensions still grade out
+    and still open a window, which is why the digit was dropped."""
+    assert wire.severity(headline) == "out"
+    assert wire.DEPARTURE.search(headline)
+
+
+def test_facing_a_suspension_is_uncertainty_not_absence():
+    """Nobody has missed a snap yet, and the league office decides."""
+    assert wire.severity("Facing suspension for violating the policy") == "questionable"

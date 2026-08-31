@@ -64,9 +64,13 @@ def compute_consensus(conn: sqlite3.Connection, week: int = 0) -> int:
         pos_of[r["player_id"]] = r["pos"]
 
     # In-season, sources vote by how right they have been. Week 0 keeps the
-    # equal-weight robust mean: a season-long projection has nothing realized
-    # to be scored against until the season is over, which is exactly when it
-    # has stopped mattering. See engines/calibration.py.
+    # equal-weight robust mean, because a season-long projection has nothing
+    # realized to score against on the day the draft uses it.
+    #
+    # It does NOT stop mattering, which is what this comment used to claim. It
+    # stops mattering for that draft and is exactly what the next one needs —
+    # see engines/calibration.py and engines/ledger.py, which exists because
+    # the evidence takes a season to accumulate.
     wmap: dict[str, float] = {}
     weight_note = "equal weight (draft-season projections)"
     if week > 0:
