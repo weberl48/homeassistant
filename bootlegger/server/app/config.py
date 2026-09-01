@@ -89,9 +89,12 @@ class Settings:
         # stack; BOOTLEGGER_LEAGUE_ID wins when both are set, and is the one
         # an ESPN deployment should use.
         s.league_id = _env("BOOTLEGGER_LEAGUE_ID", _env("SLEEPER_LEAGUE_ID", s.league_id))
-        s.league_label = _env("BOOTLEGGER_LEAGUE_LABEL", s.league_label)
+        # Underscores stand in for spaces: deploy.sh expands its env bundles
+        # UNQUOTED, so a space in a value word-splits into docker arguments —
+        # observed as docker trying to pull an image named "no".
+        s.league_label = _env("BOOTLEGGER_LEAGUE_LABEL", s.league_label).replace("_", " ")
         s.sibling_port = int(_env("BOOTLEGGER_SIBLING_PORT", str(s.sibling_port)))
-        s.sibling_label = _env("BOOTLEGGER_SIBLING_LABEL", s.sibling_label)
+        s.sibling_label = _env("BOOTLEGGER_SIBLING_LABEL", s.sibling_label).replace("_", " ")
         s.espn_swid = _env("BOOTLEGGER_ESPN_SWID", s.espn_swid)
         s.espn_s2 = _env("BOOTLEGGER_ESPN_S2", s.espn_s2)
         s.user_id = _env("SLEEPER_USER_ID", s.user_id)
