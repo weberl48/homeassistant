@@ -80,7 +80,8 @@ async def _season_loop() -> None:
         try:
             week = int(db.meta_get(conn, "current_week") or 1)
             drow = conn.execute(
-                "SELECT status FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+                f"SELECT status FROM drafts WHERE {db.NOT_HISTORICAL} "
+                "ORDER BY updated_at DESC LIMIT 1").fetchone()
             my = brain.my_roster_row(conn)
             in_season = (drow and drow["status"] == "complete"
                          and my and json.loads(my["players_json"]))
@@ -151,7 +152,8 @@ async def _wire_loop() -> None:
         try:
             week = int(db.meta_get(conn, "current_week") or 1)
             drow = conn.execute(
-                "SELECT status FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+                f"SELECT status FROM drafts WHERE {db.NOT_HISTORICAL} "
+                "ORDER BY updated_at DESC LIMIT 1").fetchone()
             in_season = bool(drow and drow["status"] == "complete")
             hours = _next_kickoff_hours(conn, week) if in_season else None
             delay = wire_engine.poll_interval_seconds(hours, in_season)
@@ -207,7 +209,8 @@ def _json_meta(conn, key):
 @app.get("/health")
 def health():
     conn = get_conn()
-    drow = conn.execute("SELECT status FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+    drow = conn.execute(f"SELECT status FROM drafts WHERE {db.NOT_HISTORICAL} "
+                "ORDER BY updated_at DESC LIMIT 1").fetchone()
     last = conn.execute("SELECT MAX(updated_at) AS t FROM players").fetchone()
     # Source health: a scrape that quietly dies must be visible here — the
     # board's colophon and an HA sensor both read this.
@@ -298,7 +301,7 @@ _board_cache: dict = {"key": None, "board": None, "ts": 0.0}
 def draft_board():
     conn = get_conn()
     drow = conn.execute(
-        "SELECT draft_id, status, updated_at FROM drafts "
+        f"SELECT draft_id, status, updated_at FROM drafts WHERE {db.NOT_HISTORICAL} "
         "ORDER BY updated_at DESC LIMIT 1").fetchone()
     if drow:
         n = conn.execute("SELECT COUNT(*) FROM draft_picks WHERE draft_id=?",

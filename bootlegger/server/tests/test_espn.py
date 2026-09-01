@@ -264,3 +264,28 @@ def test_swid_gets_its_braces_back(conn, monkeypatch):
     monkeypatch.setattr(settings, "espn_s2", "s2value")
     c = EspnClient(conn)
     assert c._cookies()["SWID"] == "{ABCD-1234}", "ESPN rejects a bare SWID"
+
+
+def test_history_is_never_presented_as_the_draft(espn, conn):
+    """The live ESPN stack, day one: the league had not drafted, the only rows
+    in `drafts` were the ingested 2025 history, and every nightly re-touches
+    their updated_at — so "newest draft wins" elected LAST YEAR'S draft and
+    the board presented it as the draft. History is evidence for the room's
+    tendencies, never the present."""
+    conn.execute("DELETE FROM drafts")
+    conn.execute("DELETE FROM draft_picks")
+    conn.commit()
+    ingest.etl_draft_history(conn, espn, seasons=3)   # 2025 + 2024, historical
+    assert conn.execute("SELECT COUNT(*) FROM drafts").fetchone()[0] == 2
+
+    import app.config as cfg
+    old_mode = cfg.settings.mode
+    cfg.settings.mode = "live"        # demo mode pins the board to DEMO_DRAFT_ID
+    try:
+        board = brain.get_board(conn)
+    finally:
+        cfg.settings.mode = old_mode
+    d = board["draft"]
+    assert d["status"] == "pre_draft", f"presented {d['id']} as current"
+    assert d["id"] is None or "espn-" not in str(d["id"]), (
+        f"a historical draft ({d['id']}) is on the board")

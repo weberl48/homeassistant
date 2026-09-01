@@ -98,7 +98,7 @@ def get_queue(conn: sqlite3.Connection) -> dict:
     ids = json.loads(db.meta_get(conn, "draft_queue") or "[]")
     players = _players_index(conn)
     cons = {r["player_id"]: r for r in conn.execute("SELECT * FROM consensus WHERE week=0")}
-    drow = conn.execute("SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+    drow = conn.execute(f"SELECT * FROM drafts WHERE {db.NOT_HISTORICAL} ORDER BY updated_at DESC LIMIT 1").fetchone()
     picked = {r["player_id"] for r in conn.execute(
         "SELECT player_id FROM draft_picks WHERE draft_id=?",
         (drow["draft_id"],))} if drow else set()
@@ -275,7 +275,7 @@ def get_board(conn: sqlite3.Connection) -> dict[str, Any]:
     # unordered LIMIT 1 could bind the board to the dead one on draft night.
     drow = conn.execute("SELECT * FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone() \
         if settings.mode == "demo" else conn.execute(
-            "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+            f"SELECT * FROM drafts WHERE {db.NOT_HISTORICAL} ORDER BY updated_at DESC LIMIT 1").fetchone()
     dsettings = json.loads(drow["settings_json"]) if drow and drow["settings_json"] else {}
     teams = int(dsettings.get("teams", settings.teams))
     rounds = int(dsettings.get("rounds", settings.rounds))
@@ -1103,7 +1103,7 @@ def draft_grades(conn: sqlite3.Connection) -> dict:
     same treatment, with anonymous seat labels."""
     drow = conn.execute("SELECT * FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone() \
         if settings.mode == "demo" else conn.execute(
-            "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+            f"SELECT * FROM drafts WHERE {db.NOT_HISTORICAL} ORDER BY updated_at DESC LIMIT 1").fetchone()
     not_ready = {"ready": False,
                  "note": "The report card is written when the draft is in the books."}
     if not drow:
@@ -1726,7 +1726,7 @@ def player_dossier(conn: sqlite3.Connection, player_id: str) -> dict | None:
     # Draft context: my roster so far + my next two picks.
     drow = conn.execute("SELECT * FROM drafts WHERE draft_id=?", (DEMO_DRAFT_ID,)).fetchone() \
         if settings.mode == "demo" else conn.execute(
-            "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+            f"SELECT * FROM drafts WHERE {db.NOT_HISTORICAL} ORDER BY updated_at DESC LIMIT 1").fetchone()
     dsettings = json.loads(drow["settings_json"]) if drow and drow["settings_json"] else {}
     teams = int(dsettings.get("teams", settings.teams))
     rounds = int(dsettings.get("rounds", settings.rounds))

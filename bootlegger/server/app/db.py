@@ -294,6 +294,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+# A draft row the board may bind to. etl_draft_history stores PAST seasons in
+# the same table the live draft uses — deliberately, so room tendencies need no
+# second code path — and every nightly re-touches their updated_at. On a stack
+# whose league has not drafted yet, "newest draft wins" therefore elected LAST
+# YEAR'S draft and the board presented it as the draft. Seen live on the ESPN
+# stack the day it shipped. History is evidence, never the present.
+NOT_HISTORICAL = "COALESCE(json_extract(settings_json, '$.historical'), 0) = 0"
+
+
 def connect(db_path: Path | None = None) -> sqlite3.Connection:
     """One connection per thread; WAL so the pollers and API can share the file."""
     path = Path(db_path or settings.db_path)
