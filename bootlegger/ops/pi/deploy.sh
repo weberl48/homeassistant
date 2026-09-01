@@ -79,7 +79,7 @@ docker run -d --name bootlegger-hands --restart unless-stopped \
 # by tools/espn_login.py; until it exists the nightly logs EspnAuthError in
 # words and the board serves the national layer without league rows.
 ESPN_LEAGUE=1435831655
-ESPN_ROSTER="${ESPN_ROSTER:-2}"   # Wolverines team id, verified live 2026-08-31
+ESPN_ROSTER="${ESPN_ROSTER:-3}"   # Wolverines team id, matched by owner SWID 2026-08-31
 ESPN_DATA=/mnt/data/supervisor/share/bootlegger/data-espn
 mkdir -p "$ESPN_DATA"
 ENV_ESPN="-e BOOTLEGGER_MODE=live -e BOOTLEGGER_PLATFORM=espn   -e BOOTLEGGER_LEAGUE_ID=$ESPN_LEAGUE -e BOOTLEGGER_MY_ROSTER_ID=$ESPN_ROSTER   -e BOOTLEGGER_SEASON=$SEASON -e FANTASYPROS_API_KEY=$FANTASYPROS_API_KEY   -e BOOTLEGGER_API_TOKEN=$API_TOKEN -v $ESPN_DATA:/data"
