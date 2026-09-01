@@ -1718,3 +1718,18 @@ button.tier-rule:focus-visible { outline: 2px dashed var(--brass); outline-offse
   margin-top: 2px; font-size: .68rem; letter-spacing: .06em;
   text-transform: uppercase; color: var(--oxblood); font-weight: 700;
 }
+
+/* The tables — which league this page is, and the door to the other one.
+   Sits under the wordmark's tagline; the away link is a real control, so it
+   clears the 44px tap target like everything else does. */
+.houses {
+  margin-top: 6px; display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-ledger); font-size: .78rem; letter-spacing: .06em;
+}
+.house-here { color: var(--brass-bright); text-transform: uppercase; }
+.house-away {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px;
+  color: var(--ink-dim); text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+.house-away:hover, .house-away:focus-visible { color: var(--lamp-bright); }

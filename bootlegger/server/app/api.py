@@ -222,6 +222,15 @@ def health():
         "players_updated_at": last["t"],
         "approve_required": settings.approve_required,
         "hands_dry_run": settings.hands_dry_run,
+        # The masthead's table switcher. Two leagues run as two stacks on two
+        # ports of the same host, so the OTHER one is fully described by a
+        # port and a name — the client keeps its own hostname, which is what
+        # makes the link work identically over LAN and Tailscale.
+        "league": {"label": settings.league_label or None,
+                   "platform": settings.platform,
+                   "sibling": ({"port": settings.sibling_port,
+                                "label": settings.sibling_label or "the other table"}
+                               if settings.sibling_port else None)},
         "projection_sources": counts,
         "sources_live": len(live_sources) if settings.mode == "live" else None,
         "sources_expected": len(EXPECTED_SOURCES),

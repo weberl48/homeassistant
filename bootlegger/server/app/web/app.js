@@ -2020,6 +2020,29 @@ $("#reset-mock").addEventListener("click", async () => {
   catch { wireFail(); }
 });
 
+/* THE TABLES. Two leagues run as two stacks on two ports of one machine, and
+   until this existed each page pretended the other didn't. The switcher swaps
+   only the PORT — hostname and room hash are kept — so the same link works
+   from the LAN and over Tailscale, and you land in the same room you left. */
+function renderHouses(lg) {
+  const el = $("#houses");
+  if (!el || !lg || (!lg.label && !lg.sibling)) return;
+  const parts = [];
+  if (lg.label) parts.push(`<span class="house-here">${esc(lg.label)}</span>`);
+  if (lg.sibling && lg.sibling.port) {
+    const url = () => `${location.protocol}//${location.hostname}:${lg.sibling.port}/${location.hash}`;
+    parts.push(`<a class="house-away" href="${esc(url())}"
+      title="Cross the hall to ${esc(lg.sibling.label)}">&#8644; ${esc(lg.sibling.label)}</a>`);
+  }
+  el.innerHTML = parts.join("");
+  el.hidden = false;
+  // The hash moves as you change rooms; keep the crossing honest.
+  window.addEventListener("hashchange", () => {
+    const a = el.querySelector(".house-away");
+    if (a && lg.sibling) a.href = `${location.protocol}//${location.hostname}:${lg.sibling.port}/${location.hash}`;
+  });
+}
+
 async function boot() {
   // A hash in the URL beats the remembered room — a link you followed should
   // land where it points, not where you last were.
@@ -2029,6 +2052,7 @@ async function boot() {
   try {
     state.health = await fetchJSON("/health");
     if (state.health.mode === "demo") $("#reset-mock").hidden = false;
+    renderHouses(state.health.league);
     // Source health in the colophon: a dead scrape must never be a secret.
     const h = state.health;
     if (h.sources_live != null) {

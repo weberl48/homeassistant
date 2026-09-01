@@ -54,6 +54,9 @@ class Settings:
     season: int = 2026
     platform: str = "sleeper"              # sleeper | espn — who answers league-shaped calls
     league_id: str = ""                    # live mode: your league id on that platform
+    league_label: str = ""                 # what the masthead calls this league
+    sibling_port: int = 0                  # the OTHER league's port on this host; 0 = none
+    sibling_label: str = ""                # what to call it on the switcher
     espn_swid: str = ""                    # espn platform: SWID cookie (private leagues)
     espn_s2: str = ""                      # espn platform: espn_s2 cookie
     user_id: str = ""                      # live mode: your Sleeper user id
@@ -86,6 +89,9 @@ class Settings:
         # stack; BOOTLEGGER_LEAGUE_ID wins when both are set, and is the one
         # an ESPN deployment should use.
         s.league_id = _env("BOOTLEGGER_LEAGUE_ID", _env("SLEEPER_LEAGUE_ID", s.league_id))
+        s.league_label = _env("BOOTLEGGER_LEAGUE_LABEL", s.league_label)
+        s.sibling_port = int(_env("BOOTLEGGER_SIBLING_PORT", str(s.sibling_port)))
+        s.sibling_label = _env("BOOTLEGGER_SIBLING_LABEL", s.sibling_label)
         s.espn_swid = _env("BOOTLEGGER_ESPN_SWID", s.espn_swid)
         s.espn_s2 = _env("BOOTLEGGER_ESPN_S2", s.espn_s2)
         s.user_id = _env("SLEEPER_USER_ID", s.user_id)
