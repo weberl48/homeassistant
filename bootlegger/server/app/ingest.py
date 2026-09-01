@@ -849,13 +849,16 @@ def etl_fp_projections(conn: sqlite3.Connection, week: int = 0) -> dict:
 
 
 def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: str,
-                    full: bool = True) -> int:
+                    full: bool = True, fresh: bool = False) -> int:
     """full=True refreshes the draft document (status, draft_order) too;
     full=False is the hot path — picks only, one HTTP call — so the poller
     can run a sub-second cadence during a live draft. Both paths touch
     drafts.updated_at: that row is the freshness heartbeat the board watches."""
     if full:
-        d = client.draft(draft_id)
+        # `fresh` only means something to the ESPN adapter, which caches the
+        # league document per instance; SleeperClient's draft() has no such
+        # cache and no such argument.
+        d = (client.draft(draft_id, fresh=True) if fresh else client.draft(draft_id))
         # A snake draft cares about the DRAFT SLOT, not the roster id. Sleeper
         # publishes draft_order (user_id -> slot) once the order is set; merge
         # our slot into the stored settings so the board tracks it automatically.
@@ -880,7 +883,8 @@ def etl_draft_picks(client: SleeperClient, conn: sqlite3.Connection, draft_id: s
     else:
         conn.execute("UPDATE drafts SET updated_at=? WHERE draft_id=?",
                      (db.utcnow(), draft_id))
-    picks = client.draft_picks(draft_id)
+    picks = (client.draft_picks(draft_id, fresh=True) if fresh
+             else client.draft_picks(draft_id))
     for p in picks:
         conn.execute(
             "INSERT OR REPLACE INTO draft_picks(draft_id,pick_no,round,draft_slot,roster_id,player_id,ts) "
@@ -933,6 +937,62 @@ def refresh_draft_day(client: SleeperClient, conn: sqlite3.Connection,
         except Exception as e:
             out["projections"] = f"failed: {e}"
     return out
+
+
+def espn_draft_poll(conn: sqlite3.Connection) -> None:
+    """Follow an ESPN draft live.
+
+    ESPN has no pick-stream endpoint; the draft grid simply fills in on the
+    league document, so polling it IS the feed. The cadence mirrors the
+    Sleeper poller for the same reasons — fast while the room is live, idle
+    otherwise — and every pick lands through the SAME etl_draft_picks the
+    Sleeper path uses, so the board, the room strip and The Call need no
+    knowledge of where the picks came from.
+
+    Written 2026-09-01 for a draft on the 8th, and rehearsed against a
+    practice league first: the lesson of the Sleeper draft was that a surface
+    which has only ever run in one state is a surface nobody has tested.
+    """
+    from .espn import EspnClient, EspnAuthError
+    client = EspnClient(conn)
+    status, cycle, said = None, 0, None
+    while True:
+        try:
+            drafts = client.league_drafts(settings.league_id)
+            if not drafts:
+                # No draft document yet at all — nothing to follow.
+                if said != "none":
+                    print("espn: no draft on this league yet", flush=True)
+                    said = "none"
+                time.sleep(60.0)
+                continue
+            did = drafts[0]["draft_id"]
+            # fresh=True on every cycle: the client caches the league document
+            # per instance so one nightly is one call, and a poller reusing
+            # that cache would watch pick 1 forever.
+            n = etl_draft_picks(client, conn, did, full=True, fresh=True)
+            row = conn.execute("SELECT status FROM drafts WHERE draft_id=?",
+                               (did,)).fetchone()
+            status = row["status"] if row else None
+            line = f"espn draft={did} picks={n} status={status}"
+            if line != said:
+                print(line, flush=True)
+                said = line
+        except EspnAuthError as e:
+            print(f"espn auth: {e}", flush=True)
+            time.sleep(300.0)
+            continue
+        except Exception as e:
+            print(f"espn poll error (retrying): {e}", flush=True)
+        cycle += 1
+        if status == "drafting":
+            # ESPN's clock is 90s a pick here, and the whole league document
+            # is one request; 3s is responsive without being rude.
+            time.sleep(3.0)
+        elif status == "complete":
+            time.sleep(300.0)
+        else:
+            time.sleep(30.0)
 
 
 def ping_healthchecks(ok: bool = True) -> None:
@@ -1129,13 +1189,9 @@ def main() -> None:
     db.init_db(conn)
     if args.job == "nightly":
         print(json.dumps(nightly(conn)))
+    elif args.job == "draft-poll" and settings.platform == "espn":
+        espn_draft_poll(conn)
     elif args.job == "draft-poll":
-        if settings.platform == "espn":
-            # ESPN drafts are not pollable this way and the pilot is
-            # Sleeper-only; the nightly stores the completed draft instead.
-            print("draft-poll is a Sleeper job; platform=espn does not run it",
-                  flush=True)
-            return
         client = SleeperClient()
         draft_id = settings.draft_id
         if not draft_id and settings.league_id:

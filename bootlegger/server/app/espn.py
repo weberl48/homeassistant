@@ -116,9 +116,13 @@ class EspnClient:
 
     # -- transport -----------------------------------------------------------
 
-    def _league_doc(self, season: int) -> dict:
+    def _league_doc(self, season: int, fresh: bool = False) -> dict:
+        """`fresh` bypasses the per-instance cache. Harmless for the nightly,
+        essential during a draft: the cache exists so one nightly makes one
+        HTTP call per season, and a poller reusing it would show pick 1
+        forever."""
         key = f"doc:{season}"
-        if key in self._cache:
+        if key in self._cache and not fresh:
             return self._cache[key]
         views = "view=mSettings&view=mTeam&view=mRoster&view=mDraftDetail&view=mStatus"
         current = season == settings.season
@@ -302,21 +306,27 @@ class EspnClient:
         season = int(m.group(1)) if m else settings.season
         doc = self._league_doc(season)
         dd = doc.get("draftDetail") or {}
-        if not dd.get("drafted"):
+        # A draft IN PROGRESS is exactly the one the poller needs, and gating
+        # on `drafted` hid it — league_drafts returned nothing precisely while
+        # the room was live. Caught by the mid-draft pins, which is what they
+        # are for. An empty grid (no draftDetail at all) is still nothing.
+        if not (dd.get("drafted") or dd.get("inProgress") or dd.get("picks")):
             return []
         teams = ((doc.get("settings") or {}).get("size")
                  or len(doc.get("teams") or []) or 0)
         picks = dd.get("picks") or []
         rounds = max((p.get("roundId", 0) for p in picks), default=0)
         return [{"draft_id": f"espn-{settings.league_id}-{season}",
-                 "status": "complete",
+                 "status": ("drafting" if dd.get("inProgress")
+                            else "complete" if dd.get("drafted") else "pre_draft"),
                  "season": str(season),
                  "settings": {"teams": teams, "rounds": rounds}}]
 
-    def draft(self, draft_id: str) -> dict:
+    def draft(self, draft_id: str, fresh: bool = False) -> dict:
         season = int(str(draft_id).rsplit("-", 1)[-1])
-        doc = self._league_doc(season)
+        doc = self._league_doc(season, fresh=fresh)
         dd = doc.get("draftDetail") or {}
+        start_ms = ((doc.get("settings") or {}).get("draftSettings") or {}).get("date")
         picks = sorted(dd.get("picks") or [], key=lambda p: p.get("overallPickNumber", 0))
         teams = ((doc.get("settings") or {}).get("size")
                  or len(doc.get("teams") or []) or 0)
@@ -333,24 +343,70 @@ class EspnClient:
             st["slot"] = my_slot
         # slot_to_roster_id rides at the TOP level of the draft doc — that is
         # where Sleeper puts it and where etl_draft_picks reads it from.
+        # THREE states, not two. `drafted` alone cannot say "happening right
+        # now", and a board that only knows finished-or-not is no use on the
+        # one night it matters. ESPN carries inProgress beside it.
+        if dd.get("inProgress"):
+            status = "drafting"
+        elif dd.get("drafted"):
+            status = "complete"
+        else:
+            status = "pre_draft"
+        # The order is published BEFORE the draft — the placeholder rows carry
+        # teamId with playerId -1 — so the seating strip can be drawn while
+        # the room is still filling up.
+        if start_ms:
+            st["start_time"] = start_ms
         return {"draft_id": draft_id,
-                "status": "complete" if dd.get("drafted") else "pre_draft",
+                "status": status,
                 "settings": st,
                 "slot_to_roster_id": slot_to_roster}
 
-    def draft_picks(self, draft_id: str) -> list[dict]:
+    def _pool(self, ids: set[int]) -> dict:
+        """ESPN player objects for arbitrary ids, fetched live.
+
+        draft_picks used to read names out of the TEAM ROSTERS, which is fine
+        for a finished draft and useless during one: mid-draft the rosters are
+        still filling, so the man just taken is not in them and every pick
+        resolved to a synthetic id. The player endpoint answers for anyone.
+        """
+        if not ids:
+            return {}
+        url = (f"{READ_HOST}/seasons/{settings.season}/players"
+               f"?view=players_wl")
+        try:
+            r = httpx.get(url, cookies=self._cookies(), timeout=self.timeout,
+                          headers={"Accept": "application/json",
+                                   "x-fantasy-filter": json.dumps(
+                                       {"players": {"filterIds": {"value": sorted(ids)}}})})
+            r.raise_for_status()
+            return {p["id"]: p for p in r.json() if p.get("id") is not None}
+        except Exception:
+            return {}      # names degrade to synthetic ids; picks still land
+
+    def draft_picks(self, draft_id: str, fresh: bool = False) -> list[dict]:
         season = int(str(draft_id).rsplit("-", 1)[-1])
-        doc = self._league_doc(season)
+        doc = self._league_doc(season, fresh=fresh)
         dd = doc.get("draftDetail") or {}
+        # Rosters first (a completed draft resolves entirely from them, with
+        # no extra call), then the live pool for anyone still missing.
         players = {}
         for t in doc.get("teams") or []:
             for e in ((t.get("roster") or {}).get("entries") or []):
-                p = ((e.get("playerPoolEntry") or {}).get("player") or {})
-                if p.get("id") is not None:
-                    players[p["id"]] = p
-        picks = sorted(dd.get("picks") or [], key=lambda p: p.get("overallPickNumber", 0))
+                pl = ((e.get("playerPoolEntry") or {}).get("player") or {})
+                if pl.get("id") is not None:
+                    players[pl["id"]] = pl
+        # playerId -1 marks an UNFILLED slot: ESPN publishes the whole grid
+        # before the draft so the order is knowable. Those are not picks.
+        picks = sorted([p for p in (dd.get("picks") or [])
+                        if p.get("playerId") not in (None, -1)],
+                       key=lambda p: p.get("overallPickNumber", 0))
+        missing = {p["playerId"] for p in picks if p["playerId"] not in players}
+        players.update(self._pool(missing))
+
         teams = ((doc.get("settings") or {}).get("size") or 0)
-        roster_to_slot = {p.get("teamId"): i + 1 for i, p in enumerate(picks[:teams])}
+        grid = sorted(dd.get("picks") or [], key=lambda p: p.get("overallPickNumber", 0))
+        roster_to_slot = {p.get("teamId"): i + 1 for i, p in enumerate(grid[:teams])}
         out = []
         for p in picks:
             player = players.get(p.get("playerId"), {})
@@ -363,8 +419,6 @@ class EspnClient:
                 "draft_slot": roster_to_slot.get(p.get("teamId")),
                 "roster_id": p.get("teamId"),
                 "player_id": pid,
-                # The history walker reads position from metadata — the pick
-                # keeps it even when the man has left every players table.
                 "metadata": {"position": pos or ""},
             })
         return out

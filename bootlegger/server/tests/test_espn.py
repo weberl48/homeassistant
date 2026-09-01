@@ -127,7 +127,7 @@ def espn(conn, monkeypatch):
     c = EspnClient(conn)
     docs = {2026: _league_doc(), 2025: _league_doc(season=2025, prev=(2024,)),
             2024: _league_doc(season=2024, prev=())}
-    monkeypatch.setattr(c, "_league_doc", lambda season: docs[season])
+    monkeypatch.setattr(c, "_league_doc", lambda season, fresh=False: docs[season])
     monkeypatch.setattr(c, "_week_doc", lambda week: _week_doc())
     return c
 
@@ -289,3 +289,104 @@ def test_history_is_never_presented_as_the_draft(espn, conn):
     assert d["status"] == "pre_draft", f"presented {d['id']} as current"
     assert d["id"] is None or "espn-" not in str(d["id"]), (
         f"a historical draft ({d['id']}) is on the board")
+
+
+# ---------------------------------------------------------------------------
+# A draft in flight — the state the ESPN side had never been in
+
+
+def _mid_draft_doc(made=11):
+    """The grid half filled: ESPN publishes every slot up front with
+    playerId -1, and fills them in as picks land."""
+    doc = _league_doc(drafted=False)
+    doc["draftDetail"]["inProgress"] = True
+    doc["settings"]["draftSettings"] = {"type": "SNAKE", "date": 1788905700000,
+                                        "timePerSelection": 90}
+    # A unique man per pick: keying off teamId repeated the same eight players
+    # in round two, and `picked` is keyed by player, so the board showed eight
+    # crossed off out of eleven. No draft takes a man twice.
+    for i, p in enumerate(doc["draftDetail"]["picks"]):
+        p["playerId"] = (20000 + i) if i < made else -1
+    # Mid-draft the ROSTERS are still empty — the whole reason picks cannot be
+    # resolved from them.
+    for t in doc["teams"]:
+        t["roster"]["entries"] = []
+    return doc
+
+
+@pytest.fixture()
+def drafting(conn, monkeypatch):
+    monkeypatch.setattr(settings, "platform", "espn")
+    monkeypatch.setattr(settings, "league_id", "1435831655")
+    monkeypatch.setattr(settings, "my_roster_id", 3)
+    for t in ("league", "rosters", "matchups"):
+        conn.execute(f"DELETE FROM {t}")
+    conn.execute("DELETE FROM drafts")
+    conn.execute("DELETE FROM draft_picks")
+    conn.commit()
+    c = EspnClient(conn)
+    doc = _mid_draft_doc()
+    monkeypatch.setattr(c, "_league_doc", lambda season, fresh=False: doc)
+    ingest.etl_league(c, conn)      # the board needs to know it is 8 teams
+    # The real _pool fetches player objects by id from ESPN. Stubbing it to
+    # {} made every pick resolve to a synthetic id and cross nobody off the
+    # board — which tested nothing. Stand in with sixteen DISTINCT real men
+    # from the demo table: cycling eight names resolved three round-two picks
+    # onto round-one players, and `picked` is keyed by player.
+    POS_ID = {"QB": 1, "RB": 2, "WR": 3, "TE": 4, "K": 5, "DEF": 16}
+    real = conn.execute(
+        "SELECT name, pos FROM players WHERE pos IN ('QB','RB','WR','TE') "
+        "ORDER BY sleeper_id LIMIT 16").fetchall()
+    pool = {20000 + i: {"id": 20000 + i, "fullName": r["name"],
+                        "defaultPositionId": POS_ID[r["pos"]], "proTeamId": 1}
+            for i, r in enumerate(real)}
+    monkeypatch.setattr(c, "_pool", lambda ids: {i: pool[i] for i in ids if i in pool})
+    return c
+
+
+def test_a_draft_in_progress_reads_as_drafting(drafting):
+    [d] = drafting.league_drafts(settings.league_id)
+    got = drafting.draft(d["draft_id"])
+    assert got["status"] == "drafting", (
+        "`drafted` alone cannot say 'happening right now', and a board that "
+        "only knows finished-or-not is no use on the night it matters")
+    assert got["settings"]["start_time"] == 1788905700000
+
+
+def test_unfilled_slots_are_not_picks(drafting, conn):
+    [d] = drafting.league_drafts(settings.league_id)
+    n = ingest.etl_draft_picks(drafting, conn, d["draft_id"], fresh=True)
+    assert n == 11, f"the -1 placeholder grid leaked in as picks ({n})"
+    rows = conn.execute("SELECT pick_no FROM draft_picks ORDER BY pick_no").fetchall()
+    assert [r["pick_no"] for r in rows] == list(range(1, 12))
+
+
+def test_the_seating_plan_survives_an_empty_roster(drafting, conn):
+    """The order is published BEFORE anyone picks, so the room strip can be
+    drawn while the room is still filling."""
+    [d] = drafting.league_drafts(settings.league_id)
+    ingest.etl_draft_picks(drafting, conn, d["draft_id"], fresh=True)
+    st = json.loads(conn.execute("SELECT settings_json FROM drafts WHERE draft_id=?",
+                                 (d["draft_id"],)).fetchone()[0])
+    assert st["slot_to_roster_id"]["1"] == 1
+    assert st["slot"] == 3, "my seat, read off the published order"
+
+
+def test_the_board_follows_a_live_espn_draft(drafting, conn, monkeypatch):
+    """End to end: the ESPN board must show a draft in flight the way the
+    Sleeper board did — status drafting, men crossed off, a seat on the
+    clock."""
+    import app.config as cfg
+    [d] = drafting.league_drafts(settings.league_id)
+    ingest.etl_draft_picks(drafting, conn, d["draft_id"], fresh=True)
+    old = cfg.settings.mode
+    cfg.settings.mode = "live"
+    try:
+        board = brain.get_board(conn)
+    finally:
+        cfg.settings.mode = old
+    dd = board["draft"]
+    assert dd["status"] == "drafting"
+    assert dd["current_pick"] == 12, f"eleven gone, twelve on the clock ({dd})"
+    assert dd["on_clock_slot"], "nobody is shown on the clock"
+    assert len([p for p in board["players"] if p.get("pick_no")]) == 11
