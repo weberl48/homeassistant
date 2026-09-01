@@ -81,11 +81,16 @@ ESPN_DATA=/mnt/data/supervisor/share/bootlegger/data-espn
 mkdir -p "$ESPN_DATA"
 ENV_ESPN="-e BOOTLEGGER_MODE=live -e BOOTLEGGER_PLATFORM=espn   -e BOOTLEGGER_LEAGUE_ID=$ESPN_LEAGUE -e BOOTLEGGER_MY_ROSTER_ID=$ESPN_ROSTER   -e BOOTLEGGER_SEASON=$SEASON -e FANTASYPROS_API_KEY=$FANTASYPROS_API_KEY    -e BOOTLEGGER_LEAGUE_LABEL=No_Punts_Intended -e BOOTLEGGER_SIBLING_PORT=8484 -e BOOTLEGGER_SIBLING_LABEL=Boko_no_Football  -e BOOTLEGGER_API_TOKEN=$API_TOKEN -v $ESPN_DATA:/data"
 
-docker rm -f bootlegger-espn bootlegger-espn-nightly 2>/dev/null || true
+docker rm -f bootlegger-espn bootlegger-espn-nightly bootlegger-espn-ingest 2>/dev/null || true
 # shellcheck disable=SC2086
 docker run -d --name bootlegger-espn --restart unless-stopped -p 8486:8484   $ENV_ESPN $IMG
 # shellcheck disable=SC2086
 docker run -d --name bootlegger-espn-nightly --restart unless-stopped $ENV_ESPN   --entrypoint sh $IMG -c 'while true; do python -m app.ingest nightly; sleep 86400; done'
+# The draft watcher. ESPN publishes no pick stream, so this polls the league
+# document: 30s while the room is idle, 3s once it is live, 5min once it is
+# done. Without it the board sits at pre_draft through the whole draft.
+# shellcheck disable=SC2086
+docker run -d --name bootlegger-espn-ingest --restart unless-stopped $ENV_ESPN $IMG python -m app.ingest draft-poll
 
 sleep 5
 curl -sf http://192.168.1.160:8484/health && echo && echo "deployed."

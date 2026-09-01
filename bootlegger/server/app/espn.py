@@ -91,6 +91,7 @@ class EspnClient:
         self._cache: dict[str, Any] = {}
         self._name_map: dict[tuple[str, str], str] | None = None
         self._ambiguous: set[tuple[str, str]] = set()
+        self._players_seen: dict[int, dict] = {}   # ESPN id -> player, draft-long
 
     # -- auth ----------------------------------------------------------------
 
@@ -368,19 +369,37 @@ class EspnClient:
         draft_picks used to read names out of the TEAM ROSTERS, which is fine
         for a finished draft and useless during one: mid-draft the rosters are
         still filling, so the man just taken is not in them and every pick
-        resolved to a synthetic id. The player endpoint answers for anyone.
+        resolved to a synthetic id.
+
+        Two things verified against the live API on 2026-09-01, both of which
+        would have hurt on draft night:
+
+        1. The SEASON-wide players endpoint IGNORES x-fantasy-filter — asking
+           it for three men returns all 11,617, which at a three-second poll
+           is megabytes a cycle. The LEAGUE-scoped endpoint honours it and
+           returned exactly the three asked for.
+        2. Identity does not change mid-draft, so what is fetched is kept.
+           Only genuinely new ids ever cost a request, and a whole draft
+           resolves in a handful of calls.
         """
+        ids = {i for i in ids if i not in self._players_seen}
         if not ids:
             return {}
-        url = (f"{READ_HOST}/seasons/{settings.season}/players"
-               f"?view=players_wl")
+        url = (f"{READ_HOST}/seasons/{settings.season}/segments/0/leagues/"
+               f"{settings.league_id}?view=kona_player_info")
         try:
             r = httpx.get(url, cookies=self._cookies(), timeout=self.timeout,
                           headers={"Accept": "application/json",
                                    "x-fantasy-filter": json.dumps(
                                        {"players": {"filterIds": {"value": sorted(ids)}}})})
             r.raise_for_status()
-            return {p["id"]: p for p in r.json() if p.get("id") is not None}
+            got = {}
+            for row in (r.json() or {}).get("players") or []:
+                pl = row.get("player") or {}
+                if pl.get("id") is not None:
+                    got[pl["id"]] = pl
+            self._players_seen.update(got)
+            return got
         except Exception:
             return {}      # names degrade to synthetic ids; picks still land
 
@@ -401,6 +420,7 @@ class EspnClient:
         picks = sorted([p for p in (dd.get("picks") or [])
                         if p.get("playerId") not in (None, -1)],
                        key=lambda p: p.get("overallPickNumber", 0))
+        players.update(self._players_seen)
         missing = {p["playerId"] for p in picks if p["playerId"] not in players}
         players.update(self._pool(missing))
 
