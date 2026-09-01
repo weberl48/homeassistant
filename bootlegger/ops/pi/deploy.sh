@@ -86,10 +86,10 @@ ENV_ESPN="-e BOOTLEGGER_MODE=live -e BOOTLEGGER_PLATFORM=espn   -e BOOTLEGGER_LE
 
 docker rm -f bootlegger-espn bootlegger-espn-nightly 2>/dev/null || true
 # shellcheck disable=SC2086
-docker run -d --name bootlegger-espn --restart unless-stopped -p 8485:8484   $ENV_ESPN $IMG
+docker run -d --name bootlegger-espn --restart unless-stopped -p 8486:8484   $ENV_ESPN $IMG
 # shellcheck disable=SC2086
 docker run -d --name bootlegger-espn-nightly --restart unless-stopped $ENV_ESPN   --entrypoint sh $IMG -c 'while true; do python -m app.ingest nightly; sleep 86400; done'
 
 sleep 5
 curl -sf http://192.168.1.160:8484/health && echo && echo "deployed."
-curl -sf http://192.168.1.160:8485/health >/dev/null && echo "espn stack up on :8485."   || echo "espn stack not answering yet (fine on first boot — nightly seeds it)."
+curl -sf http://192.168.1.160:8486/health >/dev/null && echo "espn stack up on :8486."   || echo "espn stack not answering yet (fine on first boot — nightly seeds it)."
